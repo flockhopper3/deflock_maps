@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+
+# Misc
+*.tsbuildinfo
+
+# GraphHopper
+graphhopper/*.osm.pbf
+graphhopper/graph-cache/
+graphhopper/*.jar
+
+# Archive (unused/backup files)
+_archive/
+
+# Large media files (except public audio assets)
+*.mp3
+*.mp4
+*.webm
+*.mov
+!public/audio/*.mp3
+
+# Large fork directory
+ROAM ROTER FORK 1:19/
+
+# Python virtual environments
+venv/
+__pycache__/
+
+# Large OSM data files
+*.osm.pbf
+*.pbf
+
+# Large tract GeoJSON files
+**/tracts-metrics.geojson
+
+.wrangler/
+worker/node_modules/
+.superpowers/
+
+# R2 boundary data (uploaded separately, too large for git)
+data/boundaries/

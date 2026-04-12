@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0f" />
+
+    <!-- DNS Prefetch for external resources -->
+    <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
+
+    <!-- Prefetch camera data for instant map loading -->
+    <link rel="prefetch" href="/cameras-us.json" as="fetch" crossorigin="anonymous">
+
+    <!-- Self-hosted fonts (no third-party requests) -->
+    <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/space-grotesk-700-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <style>
+      @font-face {
+        font-family: 'DM Sans';
+        font-style: normal;
+        font-weight: 400 600;
+        font-display: swap;
+        src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Space Grotesk';
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url('/fonts/space-grotesk-700-latin.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        font-style: normal;
+        font-weight: 400 500;
+        font-display: swap;
+        src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2');
+      }
+    </style>
+
+    <!-- Static fallback meta (overridden per-page by React Helmet) -->
+    <title>DeFlock Maps | ALPR Camera Map & Privacy Routes</title>
+    <meta name="description" content="Explore ALPR camera locations and plan privacy-optimized routes across the United States." />
+    <link rel="canonical" href="https://maps.deflock.org/" />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DeFlock Maps" />
+    <meta property="og:title" content="DeFlock Maps | ALPR Camera Map & Privacy Routes" />
+    <meta property="og:description" content="Explore ALPR camera locations and plan privacy-optimized routes across the United States." />
+    <meta property="og:url" content="https://maps.deflock.org/" />
+    <meta property="og:image" content="https://maps.deflock.org/deflock-logo.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="DeFlock Maps | ALPR Camera Map & Privacy Routes" />
+    <meta name="twitter:description" content="Explore ALPR camera locations and plan privacy-optimized routes across the United States." />
+    <meta name="twitter:image" content="https://maps.deflock.org/deflock-logo.svg" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "DeFlock Maps",
+      "url": "https://maps.deflock.org",
+      "description": "ALPR camera map and privacy-focused route planning across the United States.",
+      "applicationCategory": "NavigationApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "creator": {
+        "@type": "Organization",
+        "name": "DeFlock",
+        "url": "https://deflock.org"
+      }
+    }
+    </script>
+  </head>
+  <body class="bg-dark-900 text-dark-100">
+    <style>
+      .font-bold { font-weight: 700; }
+      h1 { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
+    </style>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,647 @@
+/* Fonts loaded via index.html with preconnect for better performance */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Shadcn-style CSS variables for landing page theme */
+:root {
+  --background: #0a0a0f;
+  --foreground: #f3f4f6;
+  --card: #101018;
+  --card-foreground: #f3f4f6;
+  --popover: #101018;
+  --popover-foreground: #f3f4f6;
+  --primary: #0080BC;
+  --primary-foreground: #fafafa;
+  --secondary: #1a1a24;
+  --secondary-foreground: #f3f4f6;
+  --muted: #252530;
+  --muted-foreground: #9ca3af;
+  --accent: #0080BC;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #252530;
+  --input: #1a1a24;
+  --ring: #0080BC;
+  --radius: 0.375rem;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+/* Base border color applied via CSS variable */
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4a4a5a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ========================================
+   Glowing Camera Markers for Zip Code Map
+   Subtle glow matching main map theme
+   ======================================== */
+
+/* Wrapper for the glowing camera marker */
+.glowing-camera-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.camera-glow-wrapper {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: camera-fade-in 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+/* Fade in animation for cameras appearing */
+@keyframes camera-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Core dot */
+.camera-core {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0080BC;
+}
+
+/* Lighter map tiles filter */
+.map-tiles-lighter img {
+  filter: brightness(1.15) contrast(0.95) saturate(0.9);
+}
+
+/* Hide overlays during map zoom/pan transitions to prevent rendering artifacts */
+.map-transitioning .radius-circle,
+.map-transitioning .glowing-camera-marker {
+  visibility: hidden !important;
+}
+
+/* Prevent tile gap artifacts during zoom - critical fixes */
+.leaflet-tile-container {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.leaflet-tile {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  /* Prevent sub-pixel rendering gaps */
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* Prevent tile gaps during zoom animation */
+.leaflet-zoom-animated {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Fix for white/gray lines between tiles during zoom */
+.leaflet-tile-pane {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Ensure smooth tile transitions and no gaps */
+.leaflet-tile-loaded {
+  opacity: 1 !important;
+}
+
+/* Prevent transform artifacts on zoom */
+.leaflet-proxy {
+  backface-visibility: hidden;
+}
+
+/* Hide zoom animation artifacts */
+.leaflet-zoom-hide {
+  visibility: hidden !important;
+}
+
+/* Leaflet tooltip styling for zip code map */
+.leaflet-tooltip {
+  background: rgba(18, 18, 26, 0.95) !important;
+  border: 1px solid rgba(30, 144, 255, 0.3) !important;
+  border-radius: 8px !important;
+  color: #f3f4f6 !important;
+  font-family: 'DM Sans', system-ui, sans-serif !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: rgba(18, 18, 26, 0.95) !important;
+}
+
+/* Focus states */
+input:focus,
+button:focus {
+  outline: none;
+}
+
+/* Loading animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  border-radius: 1px;
+  background: #252530;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #101018;
+  cursor: pointer;
+  border: 2px solid #0080BC;
+  box-shadow: none;
+  transition: transform 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #101018;
+  cursor: pointer;
+  border: 2px solid #0080BC;
+  box-shadow: none;
+}
+
+/* MapLibre GL customizations - Dark theme */
+.maplibregl-map {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgba(10, 10, 15, 0.95) !important;
+  color: #9ca3af !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  max-width: none !important;
+}
+
+/* Ensure attribution stays in bottom-right corner */
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: auto !important;
+  padding: 2px 24px 2px 6px !important;
+}
+
+/* Mobile attribution - keep compact and in corner */
+@media (max-width: 640px) {
+  .maplibregl-ctrl-attrib {
+    font-size: 9px !important;
+    padding: 2px 6px !important;
+    max-width: 180px !important;
+  }
+
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    padding: 2px 20px 2px 4px !important;
+  }
+}
+
+.maplibregl-ctrl-attrib a {
+  color: #0080BC !important;
+}
+
+.maplibregl-ctrl-group {
+  background: #101018 !important;
+  border-radius: 6px !important;
+  border: 1px solid #252530 !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  background: #101018 !important;
+  border: none !important;
+  border-bottom: 1px solid #252530 !important;
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: #1a1a24 !important;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid #252530 !important;
+}
+
+.maplibregl-ctrl-icon {
+  filter: invert(0.9);
+}
+
+/* MapLibre Popup styles - Dark theme */
+.maplibregl-popup-content {
+  background: #1a1a24 !important;
+  color: #f3f4f6 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid #252530 !important;
+  padding: 0 !important;
+  font-family: 'DM Sans', system-ui, sans-serif !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #1a1a24 !important;
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: #1a1a24 !important;
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: #1a1a24 !important;
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #1a1a24 !important;
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #1a1a24 !important;
+}
+
+.maplibregl-popup-close-button {
+  color: #9ca3af !important;
+  font-size: 22px !important;
+  padding: 6px 10px !important;
+  right: 4px !important;
+  top: 4px !important;
+}
+
+.maplibregl-popup-close-button:hover {
+  color: #fff !important;
+  background: transparent !important;
+}
+
+/* Smooth canvas rendering */
+.maplibregl-canvas {
+  image-rendering: auto;
+}
+
+/* Navigation control positioning */
+.maplibregl-ctrl-bottom-right {
+  bottom: 24px !important;
+  right: 16px !important;
+}
+
+/* Map style control — inline above zoom controls */
+.map-page .map-style-control {
+  bottom: 156px; /* 24px (zoom offset) + 120px (zoom group with padding/rounding) + 12px gap */
+  right: 26px; /* 16px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
+}
+
+/* Mobile-specific styles for main map page (with bottom sheet) */
+@media (max-width: 1023px) {
+  /* Only apply bottom offset on the main map page, not landing page preview */
+  /* Bottom sheet minimized height is 64-80px; sit controls just above */
+  .map-page .maplibregl-ctrl-bottom-right {
+    bottom: 92px !important;
+    right: 12px !important;
+  }
+
+  .map-page .map-style-control {
+    bottom: 224px; /* 92px (zoom offset) + 120px (zoom group) + 12px gap */
+    right: 22px; /* 12px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
+  }
+
+  /* Ensure map controls don't overlap with bottom sheet */
+  .map-page .maplibregl-ctrl-bottom-left {
+    bottom: 92px !important;
+    left: 12px !important;
+  }
+
+  /* Timeline bar active — push controls up by 56px to clear the floating pill */
+  .map-page.timeline-active .maplibregl-ctrl-bottom-right {
+    bottom: 148px !important; /* 92px + 56px */
+  }
+
+  .map-page.timeline-active .map-style-control {
+    bottom: 280px; /* 224px + 56px */
+  }
+
+  .map-page.timeline-active .maplibregl-ctrl-bottom-left {
+    bottom: 148px !important; /* 92px + 56px */
+  }
+}
+
+/* Safe area padding for iOS devices */
+.safe-area-inset-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-inset-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+
+/* Safe area utilities for modern mobile devices */
+.top-safe {
+  top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
+}
+
+.bottom-safe {
+  bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.h-safe-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+/* Touch manipulation for better mobile dragging */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Typography utilities */
+.font-display {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* Border width utilities */
+.border-3 {
+  border-width: 3px;
+}
+
+/* Better button focus visibility */
+button:focus-visible {
+  outline: 2px solid #0080BC;
+  outline-offset: 2px;
+}
+
+/* Improved text selection */
+::selection {
+  background: rgba(0, 128, 188, 0.3);
+  color: #fff;
+}
+
+/* Container utility for landing page */
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1280px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container {
+    max-width: 1536px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Hide scrollbar for carousels while maintaining scroll functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
+/* Carousel scroll container - centers cards at all breakpoints */
+.carousel-scroll-container {
+  /* Mobile: cards are 85vw, so padding = (100vw - 85vw) / 2 = 7.5vw */
+  padding-left: 7.5vw;
+  padding-right: 7.5vw;
+}
+
+@media (min-width: 768px) {
+  .carousel-scroll-container {
+    /* md: cards are 450px, center them with calc */
+    padding-left: calc(50vw - 225px);
+    padding-right: calc(50vw - 225px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .carousel-scroll-container {
+    /* lg: cards are 500px, center them with calc */
+    padding-left: calc(50vw - 250px);
+    padding-right: calc(50vw - 250px);
+  }
+}
+
+/* ========================================
+   Cities Ticker Scroll Animations
+   Smooth infinite horizontal scroll
+   ======================================== */
+@keyframes ticker-scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes ticker-scroll-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.ticker-scroll-left {
+  animation: ticker-scroll-left 60s linear infinite;
+}
+
+.ticker-scroll-right {
+  animation: ticker-scroll-right 60s linear infinite;
+}
+
+/* Pause ticker on hover for readability */
+.ticker-scroll-left:hover,
+.ticker-scroll-right:hover {
+  animation-play-state: paused;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-scroll-left,
+  .ticker-scroll-right {
+    animation: none;
+  }
+}
+
+/* ========================================
+   Documented Abuses Horizontal Scroll
+   Clean scroll container with subtle scrollbar
+   ======================================== */
+.abuses-scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a5a transparent;
+}
+
+.abuses-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.abuses-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0 1rem;
+}
+
+.abuses-scroll-container::-webkit-scrollbar-thumb {
+  background: #3a3a4a;
+  border-radius: 3px;
+}
+
+.abuses-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #5a5a6a;
+}

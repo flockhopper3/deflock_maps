@@ -1,0 +1,2 @@
+# Wrangler handles SPA routing via wrangler.jsonc "not_found_handling": "single-page-application"
+# Only add specific redirects here if needed

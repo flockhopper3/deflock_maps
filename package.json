@@ -1,0 +1,73 @@
+{
+  "name": "deflock-maps",
+  "version": "1.0.0",
+  "description": "ALPR camera map and privacy-focused route planning application, hosted at maps.deflock.org",
+  "type": "module",
+  "license": "MIT",
+  "author": "FlockHopper Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/flockhopper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/flockhopper/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/flockhopper#readme",
+  "keywords": [
+    "privacy",
+    "routing",
+    "alpr",
+    "surveillance",
+    "maps",
+    "navigation",
+    "graphhopper",
+    "react",
+    "typescript"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.2.9",
+    "@deck.gl/layers": "^9.2.9",
+    "@deck.gl/mapbox": "^9.2.9",
+    "@protomaps/basemaps": "^5.7.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@turf/turf": "^7.1.0",
+    "@types/geojson": "^7946.0.16",
+    "@types/mapbox__point-geometry": "^0.1.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "d3-contour": "^4.0.2",
+    "framer-motion": "^12.23.26",
+    "lucide-react": "^0.562.0",
+    "maplibre-gl": "^5.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-helmet-async": "^2.0.5",
+    "react-map-gl": "^8.1.0",
+    "react-router-dom": "^7.11.0",
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/d3-contour": "^3.0.6",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^6.0.5"
+  }
+}
