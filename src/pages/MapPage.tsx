@@ -7,17 +7,21 @@ import { DensityPanel } from '@/components/panels/DensityPanel';
 import { NetworkPanel } from '@/components/panels/NetworkPanel';
 import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
-import { NetworkLegendBar } from '@/components/map/NetworkLegendBar';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
-import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
-import { parseViewportFromURL } from '@/utils/urlParams';
+import { Seo, LegacyMapLink, ShareButton, ProductSwitcher } from '@/components/common';
+import { parseViewportFromURL, writeViewportParams } from '@/utils/urlParams';
+import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
+import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
 import { Route, Compass, BarChart3, Menu, X, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
+
+const WEBGL_REQUIRED_MESSAGE =
+  'WebGL is required to display the interactive map. Please enable hardware acceleration in your browser settings, then reload the page.';
 
 const MODE_LABELS: Record<AppMode, { icon: typeof Route; label: string }> = {
   map: { icon: MapIcon, label: 'Map' },
@@ -38,8 +42,12 @@ export function MapPage() {
     loadPhase,
   } = useCameraStore();
   const bounds = useMapStore(s => s.bounds);
+  const center = useMapStore(s => s.center);
+  const zoom = useMapStore(s => s.zoom);
   const appMode = useAppModeStore(s => s.appMode);
+  const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const setAppMode = useAppModeStore(s => s.setAppMode);
+  const isEmbed = useEmbedMode();
   const updateTimelineSettings = useAppModeStore(s => s.updateTimelineSettings);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -60,6 +68,15 @@ export function MapPage() {
       useMapStore.setState({ center: [viewport.lat, viewport.lng], zoom: viewport.zoom });
     }
   });
+
+  // Debounced live URL sync: mirrors whatever buildShareURL would produce,
+  // so copying the address bar equals clicking Share.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [center, zoom, appMode, mapVisualization, setSearchParams]);
 
   // Responsive breakpoint — single source of truth for timeline bar layout
   const [isMobile, setIsMobile] = useState(false);
@@ -144,9 +161,9 @@ export function MapPage() {
   // Track map markers ready state
   const [markersReady, setMarkersReady] = useState(false);
   const [mapKey, setMapKey] = useState(0);
-  const [watchdogWarning, setWatchdogWarning] = useState(false);
+  const [mapInitError, setMapInitError] = useState<string | null>(null);
   const mapRef = useRef<MapLibreViewHandle>(null);
-  const watchdogTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const mapInitDeadlineRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Get cameras in view for mobile header display
   const viewCameraCount = bounds
@@ -163,7 +180,17 @@ export function MapPage() {
 
     // Reset UI state on mount (handles navigation back scenarios)
     setMarkersReady(false);
-    setWatchdogWarning(false);
+    setMapInitError(null);
+
+    // Probe for WebGL before doing any work — without it the map cannot
+    // render and there is no point fetching the camera dataset.
+    if (!isWebGLAvailable()) {
+      setMapInitError(WEBGL_REQUIRED_MESSAGE);
+      if (import.meta.env.DEV) {
+        console.warn('[MapPage] WebGL not available — surfacing error UI');
+      }
+      return;
+    }
 
     ensureCamerasLoaded()
       .then(() => {
@@ -176,25 +203,29 @@ export function MapPage() {
       });
   }, [ensureCamerasLoaded]);
 
-  // Watchdog: if markers don't become ready within 5s after cameras load, show warning
+  // Map-init deadline: if markers don't become ready within 15s after cameras
+  // load, treat the map init as failed and surface the existing error UI
+  // (Try Again + Legacy Maps Link). The inner retry pipeline in
+  // MapLibreContainer keeps event listeners attached for the full duration,
+  // so a successful late init before the deadline still clears markersReady.
   useEffect(() => {
-    if (isInitialized && cameras.length > 0 && !markersReady) {
-      watchdogTimeoutRef.current = setTimeout(() => {
+    if (isInitialized && cameras.length > 0 && !markersReady && !mapInitError) {
+      mapInitDeadlineRef.current = setTimeout(() => {
         if (!markersReady) {
-          setWatchdogWarning(true);
+          setMapInitError('Map failed to initialize. Please try again.');
           if (import.meta.env.DEV) {
-            console.warn('[MapPage] Watchdog: markers not ready after 5s');
+            console.warn('[MapPage] Map init deadline exceeded (15s) — surfacing error UI');
           }
         }
-      }, 5000);
-      
+      }, 15000);
+
       return () => {
-        if (watchdogTimeoutRef.current) {
-          clearTimeout(watchdogTimeoutRef.current);
+        if (mapInitDeadlineRef.current) {
+          clearTimeout(mapInitDeadlineRef.current);
         }
       };
     }
-  }, [isInitialized, cameras.length, markersReady]);
+  }, [isInitialized, cameras.length, markersReady, mapInitError]);
 
   // Handle markers ready callback from MapLibreView
   const handleMarkersReady = useCallback((ready: boolean) => {
@@ -203,7 +234,7 @@ export function MapPage() {
     }
     setMarkersReady(ready);
     if (ready) {
-      setWatchdogWarning(false);
+      setMapInitError(null);
     }
   }, []);
 
@@ -212,13 +243,25 @@ export function MapPage() {
     if (import.meta.env.DEV) {
       console.log('[MapPage] Retry with remount requested');
     }
-    setWatchdogWarning(false);
+
+    // Re-probe WebGL on every retry — if it's still unavailable, surface the
+    // same WebGL-specific message and skip the camera refetch / remount.
+    if (!isWebGLAvailable()) {
+      setMapInitError(WEBGL_REQUIRED_MESSAGE);
+      if (import.meta.env.DEV) {
+        console.warn('[MapPage] Retry: WebGL still not available');
+      }
+      return;
+    }
+
+    setMapInitError(null);
     setMarkersReady(false);
-    
+    // Force map remount with new key — unconditional so a failing
+    // retryCameraLoad still gets a fresh map instance on next attempt
+    setMapKey(k => k + 1);
+
     try {
       await retryCameraLoad();
-      // Force map remount with new key
-      setMapKey(k => k + 1);
     } catch {
       // Error handling done in store
     }
@@ -258,13 +301,12 @@ export function MapPage() {
     <>
       {seo}
       {/* Unified loading overlay — map renders underneath so tiles load in parallel */}
-      {(!isFullyReady || error) && (
+      {(!isFullyReady || error || mapInitError) && (
         <MapLoadingScreen
           cameraProgress={cameraProgress}
           cameraCount={cameras.length}
-          error={error}
+          error={error ?? mapInitError}
           onRetry={handleRetryWithRemount}
-          watchdogWarning={watchdogWarning}
           markersReady={markersReady}
           camerasReady={camerasReady}
         />
@@ -274,20 +316,27 @@ export function MapPage() {
         <header className="h-12 bg-dark-900 border-b border-dark-600 flex items-center z-50 shrink-0">
           <div className="w-full px-4 lg:px-5">
             <div className="flex items-center justify-between h-12">
-              {/* Logo */}
-              <a href="https://deflock.org" className="flex items-center gap-2 group flex-shrink-0">
-                <img
-                  src="/deflock-icon.png"
-                  alt="DeFlock Icon"
-                  className="h-7 lg:h-8 w-auto object-contain transition-opacity duration-150 group-hover:opacity-80"
-                />
-                <img
-                  src="/deflock-logo.svg"
-                  alt="DeFlock Logo"
-                  className="h-7 lg:h-8 w-auto object-contain transition-opacity duration-150 group-hover:opacity-80"
-                />
-                <span className="text-dark-400 text-[11px] font-medium tracking-[0.2em] uppercase hidden sm:inline self-end mb-[3px]">Maps</span>
-              </a>
+              {/* Logo + Product Switcher */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <ProductSwitcher />
+                <a
+                  href="https://deflock.org"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2"
+                >
+                  <img
+                    src="/deflock-icon.png"
+                    alt="DeFlock Icon"
+                    className="h-7 lg:h-8 w-auto object-contain"
+                  />
+                  <img
+                    src="/deflock-logo.svg"
+                    alt="DeFlock Logo"
+                    className="h-7 lg:h-8 w-auto object-contain"
+                  />
+                  <span className="text-dark-400 text-[11px] font-medium tracking-[0.2em] uppercase hidden sm:inline self-end mb-[3px]">Maps</span>
+                </a>
+              </div>
 
               {/* Desktop: Mode tabs - editorial underline style */}
               <nav className="hidden lg:flex items-center gap-6" aria-label="App modes">
@@ -326,11 +375,13 @@ export function MapPage() {
               </div>
 
               {/* Desktop: Share + Legacy map link */}
+              {!isEmbed && (
               <div className="hidden lg:flex items-center gap-4 flex-shrink-0">
                 <ShareButton variant="header" />
                 <div className="w-px h-4 bg-dark-600" />
                 <LegacyMapLink variant="header" />
               </div>
+              )}
             </div>
           </div>
         </header>
@@ -362,8 +413,8 @@ export function MapPage() {
               ))}
             </div>
             <div className="border-t border-dark-600 mt-1 pt-1 px-4 pb-2 space-y-0.5">
-              <ShareButton variant="menu-item" />
-              <LegacyMapLink variant="menu-item" />
+              {!isEmbed && <ShareButton variant="menu-item" />}
+              {!isEmbed && <LegacyMapLink variant="menu-item" />}
             </div>
           </nav>
         )}
@@ -390,7 +441,7 @@ export function MapPage() {
             />
 
             {/* Map Overlays */}
-            <MapSearch />
+            {!isEmbed && <MapSearch />}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
             <MapStyleControl />
 
@@ -400,8 +451,6 @@ export function MapPage() {
             {/* Density legend bar — horizontal bottom overlay */}
             {appMode === 'density' && <DensityLegendBar />}
 
-            {/* Network legend bar — horizontal bottom overlay */}
-            {appMode === 'network' && <NetworkLegendBar />}
 
             {/* Map Legend - route mode only (explore/density legends live in side panel) */}
             {appMode === 'route' && (

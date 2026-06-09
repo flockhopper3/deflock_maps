@@ -1,5 +1,4 @@
 import type { Location } from '../types';
-import { lookupZipCode } from './zipCodeService';
 
 // ============================================================================
 // TYPES
@@ -13,34 +12,6 @@ export interface GeocodingResult {
   description: string;
   type: 'address' | 'poi' | 'city' | 'state' | 'zip' | 'coordinates' | 'street';
   distance?: number; // Only for coordinate-based results
-}
-
-// LocationIQ types
-interface LocationIQResult {
-  place_id: string;
-  licence: string;
-  osm_type: string;
-  osm_id: string;
-  lat: string;
-  lon: string;
-  display_name: string;
-  class: string;
-  type: string;
-  importance: number;
-  address?: {
-    house_number?: string;
-    road?: string;
-    neighbourhood?: string;
-    suburb?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-    county?: string;
-    state?: string;
-    postcode?: string;
-    country?: string;
-    country_code?: string;
-  };
 }
 
 interface PhotonFeature {
@@ -101,131 +72,6 @@ interface NominatimResult {
 }
 
 // ============================================================================
-// LOCATIONIQ API (Primary - Best Address Accuracy)
-// ============================================================================
-
-const LOCATIONIQ_API = 'https://us1.locationiq.com/v1';
-// API key MUST be set via VITE_LOCATIONIQ_KEY environment variable
-const LOCATIONIQ_KEY = import.meta.env.VITE_LOCATIONIQ_KEY;
-
-if (!LOCATIONIQ_KEY) {
-  console.error('[Geocoding] VITE_LOCATIONIQ_KEY environment variable is required. Geocoding will fall back to Photon.');
-}
-
-// Rate limiting for LocationIQ (free tier: 2 requests/second)
-let lastLocationIQRequest = 0;
-const LOCATIONIQ_MIN_INTERVAL = 550; // 550ms = ~1.8 req/sec to stay under limit
-
-// Promise chain to serialize rate-limited requests (prevents race condition)
-let locationIQRateLimitPromise: Promise<void> = Promise.resolve();
-
-async function waitForLocationIQRateLimit(): Promise<void> {
-  // Chain onto existing promise to serialize requests and prevent race conditions
-  locationIQRateLimitPromise = locationIQRateLimitPromise.then(async () => {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastLocationIQRequest;
-
-    if (timeSinceLastRequest < LOCATIONIQ_MIN_INTERVAL) {
-      await new Promise(resolve =>
-        setTimeout(resolve, LOCATIONIQ_MIN_INTERVAL - timeSinceLastRequest)
-      );
-    }
-
-    lastLocationIQRequest = Date.now();
-  });
-
-  return locationIQRateLimitPromise;
-}
-
-/**
- * Search using LocationIQ geocoder (OSM + OpenAddresses, excellent for street addresses)
- */
-async function searchLocationIQ(query: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
-  // Apply rate limiting
-  await waitForLocationIQRateLimit();
-  const params = new URLSearchParams({
-    key: LOCATIONIQ_KEY,
-    q: query,
-    format: 'json',
-    addressdetails: '1',
-    limit: '8',
-    countrycodes: 'us',
-    dedupe: '1',
-  });
-
-  const response = await fetch(`${LOCATIONIQ_API}/search?${params}`, { signal });
-  
-  if (!response.ok) {
-    // If LocationIQ fails, throw to trigger fallback
-    throw new Error(`LocationIQ API error: ${response.status}`);
-  }
-
-  const data: LocationIQResult[] = await response.json();
-  
-  return data.map(locationIQToResult);
-}
-
-/**
- * Convert LocationIQ result to our result format
- */
-function locationIQToResult(result: LocationIQResult): GeocodingResult {
-  const addr = result.address;
-  
-  // Determine result type based on class and type
-  let type: GeocodingResult['type'] = 'address';
-  const resultClass = result.class?.toLowerCase() || '';
-  const resultType = result.type?.toLowerCase() || '';
-  
-  if (resultClass === 'shop' || resultClass === 'amenity' || resultClass === 'tourism' || resultClass === 'leisure') {
-    type = 'poi';
-  } else if (resultClass === 'place' && ['city', 'town', 'village', 'hamlet'].includes(resultType)) {
-    type = 'city';
-  } else if (resultClass === 'boundary' && resultType === 'administrative') {
-    // Check if it's a state
-    if (addr?.state && !addr?.city && !addr?.town && !addr?.village && !addr?.road) {
-      type = 'state';
-    } else {
-      type = 'city';
-    }
-  } else if (resultClass === 'highway') {
-    type = 'street';
-  } else if (resultType === 'postcode') {
-    type = 'zip';
-  }
-  
-  // Build name - prefer structured address parts
-  let name = '';
-  if (addr?.house_number && addr?.road) {
-    name = `${addr.house_number} ${addr.road}`;
-  } else if (addr?.road) {
-    name = addr.road;
-  } else {
-    // Use first part of display name
-    name = result.display_name.split(',')[0];
-  }
-  
-  // Build description from address parts
-  const descParts: string[] = [];
-  
-  // If we have a street address and name is the address, don't repeat it
-  const city = addr?.city || addr?.town || addr?.village;
-  if (city) descParts.push(city);
-  if (addr?.state) descParts.push(addr.state);
-  if (addr?.postcode) descParts.push(addr.postcode);
-  
-  const description = descParts.join(', ') || 'United States';
-  
-  return {
-    id: `liq-${result.place_id}`,
-    lat: parseFloat(result.lat),
-    lon: parseFloat(result.lon),
-    name: name || description.split(',')[0],
-    description,
-    type,
-  };
-}
-
-// ============================================================================
 // COORDINATE DETECTION
 // ============================================================================
 
@@ -262,19 +108,6 @@ function parseCoordinates(input: string): { lat: number; lon: number } | null {
   }
   
   return null;
-}
-
-// ============================================================================
-// ZIP CODE DETECTION
-// ============================================================================
-
-const ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
-
-/**
- * Check if input is a US zip code
- */
-function isZipCode(input: string): boolean {
-  return ZIP_PATTERN.test(input.trim());
 }
 
 // ============================================================================
@@ -375,41 +208,16 @@ function photonToResult(feature: PhotonFeature): GeocodingResult {
 }
 
 // ============================================================================
-// NOMINATIM GEOCODING (Fallback - OSM's own geocoder, strict 1 req/sec)
+// NOMINATIM-FORMAT RESULT CONVERTER
 // ============================================================================
 
-const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
-
-// Rate limiting for Nominatim (strict policy: max 1 request/second)
-let lastNominatimRequest = 0;
-const NOMINATIM_MIN_INTERVAL = 1100; // 1100ms = ~0.9 req/sec to stay safely under limit
-
-let nominatimRateLimitPromise: Promise<void> = Promise.resolve();
-
-async function waitForNominatimRateLimit(): Promise<void> {
-  nominatimRateLimitPromise = nominatimRateLimitPromise.then(async () => {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastNominatimRequest;
-
-    if (timeSinceLastRequest < NOMINATIM_MIN_INTERVAL) {
-      await new Promise(resolve =>
-        setTimeout(resolve, NOMINATIM_MIN_INTERVAL - timeSinceLastRequest)
-      );
-    }
-
-    lastNominatimRequest = Date.now();
-  });
-
-  return nominatimRateLimitPromise;
-}
-
 /**
- * Convert Nominatim result to our result format
+ * Convert Nominatim-format result to our result format
  */
 function nominatimToResult(result: NominatimResult): GeocodingResult {
   const addr = result.address;
 
-  // Determine result type based on class and type (same logic as LocationIQ)
+  // Determine result type based on class and type
   let type: GeocodingResult['type'] = 'address';
   const resultClass = result.class?.toLowerCase() || '';
   const resultType = result.type?.toLowerCase() || '';
@@ -459,57 +267,57 @@ function nominatimToResult(result: NominatimResult): GeocodingResult {
   };
 }
 
+// ============================================================================
+// PROXY GEOCODING (Primary - custom proxy returning Nominatim-format results)
+// ============================================================================
+
+const GEOCODE_PROXY_URL = (import.meta.env.VITE_GEOCODE_API_URL as string | undefined) || 'https://api.deflock.org/geocode/multi';
+
 /**
- * Search using Nominatim geocoder (OSM's official geocoder, 1 req/sec limit)
+ * Search using the custom geocoding proxy (returns Nominatim-format JSON).
+ * Uses ?query= param as required by the proxy.
  */
-async function searchNominatim(query: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
-  await waitForNominatimRateLimit();
-
-  const params = new URLSearchParams({
-    q: query,
-    format: 'json',
-    addressdetails: '1',
-    limit: '8',
-    countrycodes: 'us',
-    dedupe: '1',
-  });
-
-  const response = await fetch(`${NOMINATIM_API}?${params}`, {
-    signal,
-    headers: {
-      'User-Agent': 'DeFlock Maps (maps.deflock.org)',
-    },
-  });
+async function searchProxy(query: string, source: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
+  const params = new URLSearchParams({ query, source });
+  const response = await fetch(`${GEOCODE_PROXY_URL}?${params}`, { signal });
 
   if (!response.ok) {
-    throw new Error(`Nominatim API error: ${response.status}`);
+    throw new Error(`Geocoding proxy error: ${response.status}`);
   }
 
   const data: NominatimResult[] = await response.json();
+  const mapped = data.map(nominatimToResult);
 
-  return data.map(nominatimToResult);
+  // Deduplicate by name: when multiple results share the same display name
+  // (e.g. multiple buildings at the same street address), keep only the first.
+  const seen = new Set<string>();
+  return mapped.filter(r => {
+    const key = `${r.name}|${r.description}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // ============================================================================
 // FALLBACK CHAIN
 // ============================================================================
 
-type GeocodingProvider = (query: string, signal?: AbortSignal) => Promise<GeocodingResult[]>;
+type GeocodingProvider = (query: string, source: string, signal?: AbortSignal) => Promise<GeocodingResult[]>;
 
 /**
- * Search through providers in order: LocationIQ (1.8 req/sec) → Nominatim (1 req/sec) → Photon (no limit).
+ * Search through providers in order: Proxy → Photon (fallback).
  * Falls through to the next provider on failure or empty results.
  */
-async function searchWithFallback(query: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
+async function searchWithFallback(query: string, source: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
   const providers: { name: string; search: GeocodingProvider }[] = [
-    { name: 'LocationIQ', search: searchLocationIQ },
-    { name: 'Nominatim', search: searchNominatim },
-    { name: 'Photon', search: searchPhoton },
+    { name: 'Proxy', search: searchProxy },
+    { name: 'Photon', search: (q, _source, s) => searchPhoton(q, s) },
   ];
 
   for (const provider of providers) {
     try {
-      const results = await provider.search(query, signal);
+      const results = await provider.search(query, source, signal);
       if (results.length > 0) {
         return results;
       }
@@ -535,12 +343,12 @@ async function searchWithFallback(query: string, signal?: AbortSignal): Promise<
 /**
  * Smart geocoding search that handles:
  * - GPS coordinates (40.7128, -74.0060)
- * - ZIP codes (43215) - uses local bundled data for instant lookups
+ * - ZIP codes (43215) - resolved by the backend proxy
  * - Addresses (123 Main St, Columbus, OH)
  * - Cities (Columbus, Ohio)
  * - POI/Business (Walmart Columbus)
  */
-export async function smartSearch(query: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
+export async function smartSearch(query: string, source: string, signal?: AbortSignal): Promise<GeocodingResult[]> {
   const trimmed = query.trim();
   
   if (!trimmed || trimmed.length < 2) {
@@ -560,32 +368,8 @@ export async function smartSearch(query: string, signal?: AbortSignal): Promise<
     }];
   }
 
-  // Check for ZIP codes - use local bundled data for instant, reliable lookups
-  if (isZipCode(trimmed)) {
-    try {
-      const zipData = await lookupZipCode(trimmed);
-      if (zipData) {
-        // Return the ZIP code result from local data
-        return [{
-          id: `zip-${trimmed}`,
-          lat: zipData.lat,
-          lon: zipData.lon,
-          name: trimmed,
-          description: `${zipData.city}, ${zipData.state}`,
-          type: 'zip',
-        }];
-      }
-    } catch {
-      // If local lookup fails, fall through to API search
-      console.warn('Local ZIP lookup failed, falling back to API');
-    }
-    
-    // Fall back to API providers for ZIP lookup
-    return searchWithFallback(`${trimmed}, USA`, signal);
-  }
-
-  // Search with 3-tier fallback: LocationIQ → Nominatim → Photon
-  return searchWithFallback(trimmed, signal);
+  // Search with 2-tier fallback: Proxy → Photon
+  return searchWithFallback(trimmed, source, signal);
 }
 
 // ============================================================================
