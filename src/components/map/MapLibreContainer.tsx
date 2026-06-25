@@ -57,8 +57,12 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
+import { Protocol } from 'pmtiles';
 
-const TILES_URL = 'https://tiles.dontgetflocked.com';
+const TILES_URL = "https://sanitas.deflock.org";
+
+const _pmtilesProtocol = new Protocol();
+maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
 const FLAVOR_MAP: Record<MapTileStyleId, string> = {
@@ -93,7 +97,7 @@ function buildMapStyle(tileStyleId: MapTileStyleId): maplibregl.StyleSpecificati
     sources: {
       protomaps: {
         type: 'vector',
-        url: `${TILES_URL}/planet.json`,
+        url: `pmtiles://${TILES_URL}/basemap.pmtiles`,
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
       },
     },
@@ -1117,8 +1121,6 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         </Popup>
       )}
 
-      {/* Camera count is now shown in the header on mobile and CameraStats on desktop */}
-      
       {/* Location picking mode indicator */}
       {pickingLocation && (
         <div className="absolute inset-0 z-40 pointer-events-none">
