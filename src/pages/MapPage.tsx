@@ -9,8 +9,9 @@ import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
-import { Seo, LegacyMapLink, ShareButton, ProductSwitcher } from '@/components/common';
+import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
 import { parseViewportFromURL, writeViewportParams } from '@/utils/urlParams';
+import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
@@ -18,6 +19,9 @@ import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
 import { Route, Compass, BarChart3, Menu, X, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
+
+const WEBGL_REQUIRED_MESSAGE =
+  'WebGL is required to display the interactive map. Please enable hardware acceleration in your browser settings, then reload the page.';
 
 const MODE_LABELS: Record<AppMode, { icon: typeof Route; label: string }> = {
   map: { icon: MapIcon, label: 'Map' },
@@ -159,9 +163,9 @@ export function MapPage() {
   // Track map markers ready state
   const [markersReady, setMarkersReady] = useState(false);
   const [mapKey, setMapKey] = useState(0);
-  const [watchdogWarning, setWatchdogWarning] = useState(false);
+  const [mapInitError, setMapInitError] = useState<string | null>(null);
   const mapRef = useRef<MapLibreViewHandle>(null);
-  const watchdogTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const mapInitDeadlineRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Get cameras in view for mobile header display
   const viewCameraCount = bounds
@@ -178,7 +182,17 @@ export function MapPage() {
 
     // Reset UI state on mount (handles navigation back scenarios)
     setMarkersReady(false);
-    setWatchdogWarning(false);
+    setMapInitError(null);
+
+    // Probe for WebGL before doing any work — without it the map cannot
+    // render and there is no point fetching the camera dataset.
+    if (!isWebGLAvailable()) {
+      setMapInitError(WEBGL_REQUIRED_MESSAGE);
+      if (import.meta.env.DEV) {
+        console.warn('[MapPage] WebGL not available — surfacing error UI');
+      }
+      return;
+    }
 
     ensureCamerasLoaded()
       .then(() => {
@@ -191,25 +205,29 @@ export function MapPage() {
       });
   }, [ensureCamerasLoaded]);
 
-  // Watchdog: if markers don't become ready within 5s after cameras load, show warning
+  // Map-init deadline: if markers don't become ready within 15s after cameras
+  // load, treat the map init as failed and surface the existing error UI
+  // (Try Again + Legacy Maps Link). The inner retry pipeline in
+  // MapLibreContainer keeps event listeners attached for the full duration,
+  // so a successful late init before the deadline still clears markersReady.
   useEffect(() => {
-    if (isInitialized && cameras.length > 0 && !markersReady) {
-      watchdogTimeoutRef.current = setTimeout(() => {
+    if (isInitialized && cameras.length > 0 && !markersReady && !mapInitError) {
+      mapInitDeadlineRef.current = setTimeout(() => {
         if (!markersReady) {
-          setWatchdogWarning(true);
+          setMapInitError('Map failed to initialize. Please try again.');
           if (import.meta.env.DEV) {
-            console.warn('[MapPage] Watchdog: markers not ready after 5s');
+            console.warn('[MapPage] Map init deadline exceeded (15s) — surfacing error UI');
           }
         }
-      }, 5000);
-      
+      }, 15000);
+
       return () => {
-        if (watchdogTimeoutRef.current) {
-          clearTimeout(watchdogTimeoutRef.current);
+        if (mapInitDeadlineRef.current) {
+          clearTimeout(mapInitDeadlineRef.current);
         }
       };
     }
-  }, [isInitialized, cameras.length, markersReady]);
+  }, [isInitialized, cameras.length, markersReady, mapInitError]);
 
   // Handle markers ready callback from MapLibreView
   const handleMarkersReady = useCallback((ready: boolean) => {
@@ -218,7 +236,7 @@ export function MapPage() {
     }
     setMarkersReady(ready);
     if (ready) {
-      setWatchdogWarning(false);
+      setMapInitError(null);
     }
   }, []);
 
@@ -227,13 +245,25 @@ export function MapPage() {
     if (import.meta.env.DEV) {
       console.log('[MapPage] Retry with remount requested');
     }
-    setWatchdogWarning(false);
+
+    // Re-probe WebGL on every retry — if it's still unavailable, surface the
+    // same WebGL-specific message and skip the camera refetch / remount.
+    if (!isWebGLAvailable()) {
+      setMapInitError(WEBGL_REQUIRED_MESSAGE);
+      if (import.meta.env.DEV) {
+        console.warn('[MapPage] Retry: WebGL still not available');
+      }
+      return;
+    }
+
+    setMapInitError(null);
     setMarkersReady(false);
-    
+    // Force map remount with new key — unconditional so a failing
+    // retryCameraLoad still gets a fresh map instance on next attempt
+    setMapKey(k => k + 1);
+
     try {
       await retryCameraLoad();
-      // Force map remount with new key
-      setMapKey(k => k + 1);
     } catch {
       // Error handling done in store
     }
@@ -273,13 +303,12 @@ export function MapPage() {
     <>
       {seo}
       {/* Unified loading overlay — map renders underneath so tiles load in parallel */}
-      {(!isFullyReady || error) && (
+      {(!isFullyReady || error || mapInitError) && (
         <MapLoadingScreen
           cameraProgress={cameraProgress}
           cameraCount={cameras.length}
-          error={error}
+          error={error ?? mapInitError}
           onRetry={handleRetryWithRemount}
-          watchdogWarning={watchdogWarning}
           markersReady={markersReady}
           camerasReady={camerasReady}
         />
@@ -292,7 +321,6 @@ export function MapPage() {
             <div className="flex items-center justify-between h-12">
               {/* Logo + Product Switcher */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <ProductSwitcher />
                 <a
                   href="https://deflock.org"
                   rel="noopener noreferrer"
