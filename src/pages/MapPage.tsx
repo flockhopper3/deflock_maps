@@ -9,7 +9,7 @@ import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
-import { Seo, LegacyMapLink, ShareButton, ProductSwitcher } from '@/components/common';
+import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
 import { parseViewportFromURL, writeViewportParams } from '@/utils/urlParams';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
@@ -318,7 +318,6 @@ export function MapPage() {
             <div className="flex items-center justify-between h-12">
               {/* Logo + Product Switcher */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <ProductSwitcher />
                 <a
                   href="https://deflock.org"
                   rel="noopener noreferrer"
