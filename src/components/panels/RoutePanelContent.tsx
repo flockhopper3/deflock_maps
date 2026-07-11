@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useRouteStore, useMapStore } from '../../store';
 import { AddressSearch } from '../inputs/AddressSearch';
 import { LoadingSpinner } from '../common/LoadingSpinner';
-import { FlockHopperAppPromo } from './FlockHopperAppPromo';
+import { FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 import { downloadGPX } from '../../services/gpxService';
 import { formatDistance, formatDuration } from '../../utils/geo';
 import { formatPercent } from '../../utils/formatting';
@@ -107,21 +107,13 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
             <div className="space-y-4">
               <div>
                 <img src="/FlockHopper-2.png" alt="FlockHopper" className="h-14 w-auto" />
-                <div className="flex items-center gap-2 mt-2">
-                  <p className="text-xs text-dark-400">
-                    Powered by{' '}
-                    <a
-                      href="https://dontgetflocked.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent hover:text-accent-hover font-medium transition-colors"
-                    >
-                      dontgetflocked.com
-                    </a>
-                  </p>
-                  <span className="text-dark-600">·</span>
-                  <FlockHopperAppPromo />
+                <p className="text-sm text-gray-200 leading-relaxed mt-3">
+                  Real-time, turn-by-turn navigation that avoids ALPR cameras — get the app that powers this map.
+                </p>
+                <div className="mt-3">
+                  <FlockHopperStoreButtons />
                 </div>
+                <FlockHopperLearnMore className="mt-2.5" />
               </div>
               <p className="text-sm text-gray-200 leading-relaxed">
                 Enter your starting point and destination to analyze ALPR camera exposure along your route and discover safer alternatives.
