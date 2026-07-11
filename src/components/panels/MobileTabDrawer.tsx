@@ -7,6 +7,7 @@ import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { AlertTriangle } from 'lucide-react';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
+import { FlockHopperCTA } from './FlockHopperCTA';
 import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
@@ -67,7 +68,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- route auto-expand ---- */
   useEffect(() => {
     if (hasRoutes && appMode === 'route' && !didAutoExpand) {
-      setSnapPoint('full');
+      setSnapPoint('peek');
       setDidAutoExpand(true);
     }
     if (!hasRoutes && didAutoExpand) {
@@ -105,24 +106,34 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /*  Header: single-row pill tabs                                     */
   /* ================================================================ */
 
+  const isRoutePeekable = appMode === 'route' && hasRoutes;
+
   const headerContent = (
-    <div className="grid grid-cols-5 gap-1">
-      {TABS.map(({ mode, label }) => {
-        const isActive = appMode === mode;
-        return (
-          <button
-            key={mode}
-            onClick={() => handleTabPress(mode)}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
-              isActive
-                ? 'bg-accent/10 text-accent border border-dark-600'
-                : 'bg-zinc-800/60 text-zinc-400 border border-zinc-700 active:bg-zinc-700'
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
+    <div>
+      <div className="grid grid-cols-5 gap-1">
+        {TABS.map(({ mode, label }) => {
+          const isActive = appMode === mode;
+          return (
+            <button
+              key={mode}
+              onClick={() => handleTabPress(mode)}
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                isActive
+                  ? 'bg-accent/10 text-accent border border-dark-600'
+                  : 'bg-zinc-800/60 text-zinc-400 border border-zinc-700 active:bg-zinc-700'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      {isRoutePeekable && snapPoint !== 'minimized' && (
+        <div className="mt-3 space-y-3 animate-fade-in">
+          <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
+          {snapPoint === 'peek' && <FlockHopperCTA variant="row" />}
+        </div>
+      )}
     </div>
   );
 
@@ -150,11 +161,6 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       case 'route':
         return (
           <div className="pb-8">
-            {/* Compact route strip at top */}
-            <div className="mb-4">
-              <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-            </div>
-
             <RoutePanelContent
               isBottomSheet
               onExpandSheet={handleExpandSheet}
@@ -298,7 +304,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         snapPoint={snapPoint}
         onSnapPointChange={setSnapPoint}
         minimizedHeight={80}
-        peekHeight={80}
+        peekHeight={isRoutePeekable ? 210 : 80}
         fullHeight={85}
         headerContent={headerContent}
         disableHeaderTap
