@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useRouteStore, useMapStore } from '../../store';
 import { AddressSearch } from '../inputs/AddressSearch';
 import { LoadingSpinner } from '../common/LoadingSpinner';
-import { FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
+import { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 import { downloadGPX } from '../../services/gpxService';
 import { formatDistance, formatDuration } from '../../utils/geo';
 import { formatPercent } from '../../utils/formatting';
@@ -414,6 +414,13 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
                   </div>
                 </div>
               )}
+
+              {/* FlockHopper Navigation CTA */}
+              <FlockHopperCTA
+                variant="card"
+                title="Drive this route with live navigation"
+                description="FlockHopper gives you real-time, turn-by-turn camera avoidance."
+              />
 
               {/* Export Button */}
               <button
