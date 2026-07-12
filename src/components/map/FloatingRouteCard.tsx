@@ -9,7 +9,7 @@ type GeoState = 'idle' | 'loading' | 'error';
  * Floating route inputs rendered over the map on the Route tab.
  * Replaces MapSearch there. Two connected rows (start / destination),
  * Enter-to-search with a dropdown below the card, use-my-location on the
- * start row, swap on the divider, and "Choose on map" in the dropdown.
+ * start row, swap on the divider, and choose-on-map pin buttons on each row.
  * Auto-calculates when both endpoints are set.
  */
 export function FloatingRouteCard() {
@@ -24,6 +24,8 @@ export function FloatingRouteCard() {
     error: routeError,
     normalRoute,
     startPickingLocation,
+    pickingLocation,
+    cancelPickingLocation,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
 
@@ -148,12 +150,15 @@ export function FloatingRouteCard() {
     );
   }, [setOrigin, flyTo]);
 
-  const handleChooseOnMap = useCallback(() => {
-    if (!activeField) return;
-    startPickingLocation(activeField);
+  const togglePickOnMap = useCallback((field: Field) => {
+    if (pickingLocation === field) {
+      cancelPickingLocation();
+    } else {
+      startPickingLocation(field);
+    }
     setActiveField(null);
     setResults([]);
-  }, [activeField, startPickingLocation]);
+  }, [pickingLocation, startPickingLocation, cancelPickingLocation]);
 
   const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
     abortRef.current?.abort();
@@ -188,15 +193,17 @@ export function FloatingRouteCard() {
     setSearchError(null);
   };
 
-  const dropdownOpen = activeField !== null;
   const activeQuery = activeField === 'origin' ? originQuery : destQuery;
   const committedName = activeField === 'origin' ? origin?.name ?? '' : destination?.name ?? '';
   const showSearchAction =
-    dropdownOpen &&
+    activeField !== null &&
     activeQuery.trim().length >= 2 &&
     activeQuery.trim() !== committedName &&
     results.length === 0 &&
     !searchError;
+  const dropdownOpen =
+    activeField !== null &&
+    (showSearchAction || isSearching || results.length > 0 || searchError !== null);
 
   return (
     <div
@@ -237,6 +244,22 @@ export function FloatingRouteCard() {
               </svg>
             </button>
           )}
+          <button
+            onClick={() => togglePickOnMap('origin')}
+            type="button"
+            aria-label="Choose start on map"
+            aria-pressed={pickingLocation === 'origin'}
+            title="Choose on map"
+            className={`p-2 rounded-lg border transition-colors flex-shrink-0 ${
+              pickingLocation === 'origin'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-dark-800 border-dark-600 text-dark-300 hover:text-white'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+            </svg>
+          </button>
           <button
             onClick={handleUseMyLocation}
             type="button"
@@ -305,6 +328,22 @@ export function FloatingRouteCard() {
               </svg>
             </button>
           )}
+          <button
+            onClick={() => togglePickOnMap('destination')}
+            type="button"
+            aria-label="Choose destination on map"
+            aria-pressed={pickingLocation === 'destination'}
+            title="Choose on map"
+            className={`p-2 rounded-lg border transition-colors flex-shrink-0 ${
+              pickingLocation === 'destination'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-dark-800 border-dark-600 text-dark-300 hover:text-white'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -335,7 +374,7 @@ export function FloatingRouteCard() {
         </div>
       )}
 
-      {/* Dropdown: results + Choose on map */}
+      {/* Dropdown: search action + results */}
       {dropdownOpen && (
         <div className="mt-2 bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl overflow-hidden animate-fade-in backdrop-blur-sm">
           {showSearchAction && (
@@ -386,16 +425,6 @@ export function FloatingRouteCard() {
               ))}
             </ul>
           )}
-          <button
-            onClick={handleChooseOnMap}
-            type="button"
-            className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm text-accent hover:bg-dark-700/70 transition-colors"
-          >
-            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" />
-            </svg>
-            Choose on map
-          </button>
         </div>
       )}
     </div>
