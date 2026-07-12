@@ -115,6 +115,13 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         avoidanceCameras: result.avoidanceRoute.camerasOnRoute,
       };
 
+      // Discard stale results if endpoints changed while the request was in flight
+      const current = get();
+      if (current.origin !== origin || current.destination !== destination) {
+        set({ isCalculating: false });
+        return;
+      }
+
       set({
         normalRoute: result.normalRoute.route,
         avoidanceRoute: result.avoidanceRoute.route,
@@ -130,6 +137,14 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       });
     } catch (error) {
       console.error('Routing failed:', error);
+
+      // Discard stale errors if endpoints changed while the request was in flight
+      const current = get();
+      if (current.origin !== origin || current.destination !== destination) {
+        set({ isCalculating: false });
+        return;
+      }
+
       set({
         error:
           error instanceof Error ? error.message : 'Failed to calculate route',
