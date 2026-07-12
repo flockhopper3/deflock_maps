@@ -23,9 +23,7 @@ export function FloatingRouteCard() {
     isCalculating,
     error: routeError,
     normalRoute,
-    pickingLocation,
     startPickingLocation,
-    cancelPickingLocation,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
 
@@ -150,6 +148,7 @@ export function FloatingRouteCard() {
   }, [activeField, startPickingLocation]);
 
   const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    abortRef.current?.abort();
     if (field === 'origin') setOriginQuery(e.target.value);
     else setDestQuery(e.target.value);
     if (results.length > 0 || searchError) {
@@ -310,16 +309,6 @@ export function FloatingRouteCard() {
           <div className="h-0.5 bg-accent/60 rounded-b-xl animate-pulse" />
         )}
       </div>
-
-      {/* Picking-from-map hint */}
-      {pickingLocation && (
-        <div className="mt-2 flex items-center justify-between px-3 py-2 bg-dark-900/95 border border-accent/40 rounded-lg text-xs text-accent animate-fade-in">
-          <span>Tap the map to set your {pickingLocation === 'origin' ? 'start' : 'destination'}</span>
-          <button onClick={cancelPickingLocation} type="button" className="font-semibold hover:text-white transition-colors">
-            Cancel
-          </button>
-        </div>
-      )}
 
       {/* Dropdown: results + Choose on map */}
       {dropdownOpen && (
