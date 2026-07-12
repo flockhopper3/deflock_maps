@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { MapLibreView, MapSearch, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
+import { MapLibreView, MapSearch, FloatingRouteCard, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
 import { RoutePanel } from '@/components/panels';
 import { ExplorePanel } from '@/components/panels/ExplorePanel';
 import { DensityPanel } from '@/components/panels/DensityPanel';
@@ -441,7 +441,7 @@ export function MapPage() {
             />
 
             {/* Map Overlays */}
-            {!isEmbed && <MapSearch />}
+            {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
             <MapStyleControl />
 
