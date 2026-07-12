@@ -31,6 +31,8 @@ export function RoutePanelContent() {
     setUseDirectionalZones,
   } = useRouteStore();
 
+  const hasRoutes = normalRoute && avoidanceRoute && comparison;
+
   useEffect(() => {
     if (isCalculating) {
       setAppliedOptions({
@@ -39,6 +41,18 @@ export function RoutePanelContent() {
       });
     }
   }, [isCalculating, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
+
+  /* Remount with routes already in the store (e.g. after a tab switch):
+     adopt current options as the applied baseline so settings edits can
+     still surface the Apply button. */
+  useEffect(() => {
+    if (hasRoutes && appliedOptions === null) {
+      setAppliedOptions({
+        distance: routeOptions.cameraDistanceMeters,
+        directional: routeOptions.useDirectionalZones,
+      });
+    }
+  }, [hasRoutes, appliedOptions, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
 
   const openNamingModal = () => {
     // Pre-fill with a suggested name based on origin/destination
@@ -62,8 +76,6 @@ export function RoutePanelContent() {
       setRouteName('');
     }
   };
-
-  const hasRoutes = normalRoute && avoidanceRoute && comparison;
 
   const settingsDirty = !!hasRoutes && appliedOptions !== null &&
     (appliedOptions.distance !== routeOptions.cameraDistanceMeters ||
