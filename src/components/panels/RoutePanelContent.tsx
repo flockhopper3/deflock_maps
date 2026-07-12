@@ -1,6 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouteStore } from '../../store';
-import { LoadingSpinner } from '../common/LoadingSpinner';
 import { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 import { downloadGPX } from '../../services/gpxService';
 import { formatDistance, formatDuration } from '../../utils/geo';
@@ -12,6 +11,10 @@ export function RoutePanelContent() {
   const [routeName, setRouteName] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
 
+  /* Options the current results were calculated with — settings edits after
+     a calculation surface an "Apply & recalculate" button. */
+  const [appliedOptions, setAppliedOptions] = useState<{ distance: number; directional: boolean } | null>(null);
+
   const {
     origin,
     destination,
@@ -21,7 +24,6 @@ export function RoutePanelContent() {
     avoidanceRoute,
     comparison,
     isCalculating,
-    error,
     activeRoute,
     setActiveRoute,
     routeOptions,
@@ -29,9 +31,14 @@ export function RoutePanelContent() {
     setUseDirectionalZones,
   } = useRouteStore();
 
-  const handleCalculate = () => {
-    calculateRoutes();
-  };
+  useEffect(() => {
+    if (isCalculating) {
+      setAppliedOptions({
+        distance: routeOptions.cameraDistanceMeters,
+        directional: routeOptions.useDirectionalZones,
+      });
+    }
+  }, [isCalculating, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
 
   const openNamingModal = () => {
     // Pre-fill with a suggested name based on origin/destination
@@ -56,9 +63,12 @@ export function RoutePanelContent() {
     }
   };
 
-  const canCalculate = origin && destination && !isCalculating;
   const hasRoutes = normalRoute && avoidanceRoute && comparison;
-  
+
+  const settingsDirty = !!hasRoutes && appliedOptions !== null &&
+    (appliedOptions.distance !== routeOptions.cameraDistanceMeters ||
+     appliedOptions.directional !== routeOptions.useDirectionalZones);
+
   const normalCameraCount = comparison?.normalCameras.length ?? 0;
   const avoidanceCameraCount = comparison?.avoidanceCameras.length ?? 0;
   const cameraReduction = normalCameraCount > 0 
@@ -81,7 +91,7 @@ export function RoutePanelContent() {
                 <FlockHopperLearnMore className="mt-2.5" />
               </div>
               <p className="text-sm text-gray-200 leading-relaxed">
-                Enter your starting point and destination to analyze ALPR camera exposure along your route and discover safer alternatives.
+                Set your start and destination on the map to analyze ALPR camera exposure along your route and discover safer alternatives.
               </p>
             </div>
           )}
@@ -161,40 +171,20 @@ export function RoutePanelContent() {
                   </button>
                 </div>
               </div>
+
+              {/* Apply changed settings to the current route */}
+              {settingsDirty && (
+                <button
+                  onClick={() => calculateRoutes()}
+                  disabled={isCalculating}
+                  className="w-full py-3 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-semibold text-sm rounded-md transition-colors flex items-center justify-center gap-2 animate-fade-in"
+                >
+                  Apply &amp; recalculate
+                </button>
+              )}
             </div>
           )}
 
-          {/* Calculate Button */}
-          <button
-            onClick={handleCalculate}
-            disabled={!canCalculate}
-            className="w-full py-4 bg-accent hover:bg-accent-hover disabled:bg-dark-600 disabled:cursor-not-allowed text-white font-display font-bold text-base rounded-md transition-all duration-300 flex items-center justify-center gap-3"
-            aria-label="Analyze route"
-          >
-            {isCalculating ? (
-              <>
-                <LoadingSpinner size="sm" />
-                <span>Scanning route...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21.71 11.29l-9-9a.996.996 0 00-1.41 0l-9 9a.996.996 0 000 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 000-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z" />
-                </svg>
-                <span>Analyze Route</span>
-              </>
-            )}
-          </button>
-
-          {/* Error */}
-          {error && (
-            <div className="p-4 bg-accent/10 border border-accent/30 rounded-xl text-sm text-accent flex items-start gap-3">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-              </svg>
-              <span>{error}</span>
-            </div>
-          )}
 
           {/* Results */}
           {hasRoutes && (
@@ -415,7 +405,7 @@ export function RoutePanelContent() {
               </h4>
               <ol className="space-y-3">
                 {[
-                  'Enter your starting point and destination',
+                  'Set your start and destination on the map',
                   'See exactly how many cameras track your commute',
                   'FlockHopper generates an alternative private route',
                   'Customize by adding waypoints or avoiding areas',
