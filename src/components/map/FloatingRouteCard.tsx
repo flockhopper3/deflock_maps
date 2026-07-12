@@ -149,6 +149,15 @@ export function FloatingRouteCard() {
     setResults([]);
   }, [activeField, startPickingLocation]);
 
+  const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (field === 'origin') setOriginQuery(e.target.value);
+    else setDestQuery(e.target.value);
+    if (results.length > 0 || searchError) {
+      setResults([]);
+      setSearchError(null);
+    }
+  };
+
   const handleKeyDown = (field: Field, query: string) => (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -188,7 +197,7 @@ export function FloatingRouteCard() {
           <input
             type="text"
             value={originQuery}
-            onChange={(e) => setOriginQuery(e.target.value)}
+            onChange={handleQueryChange('origin')}
             onFocus={() => openField('origin')}
             onKeyDown={handleKeyDown('origin', originQuery)}
             placeholder="Where are you starting?"
@@ -256,7 +265,7 @@ export function FloatingRouteCard() {
           <input
             type="text"
             value={destQuery}
-            onChange={(e) => setDestQuery(e.target.value)}
+            onChange={handleQueryChange('destination')}
             onFocus={() => openField('destination')}
             onKeyDown={handleKeyDown('destination', destQuery)}
             placeholder="Where to?"
