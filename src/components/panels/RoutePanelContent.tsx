@@ -1,36 +1,22 @@
 import { useState, useRef } from 'react';
-import { useRouteStore, useMapStore } from '../../store';
-import { AddressSearch } from '../inputs/AddressSearch';
+import { useRouteStore } from '../../store';
 import { LoadingSpinner } from '../common/LoadingSpinner';
 import { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 import { downloadGPX } from '../../services/gpxService';
 import { formatDistance, formatDuration } from '../../utils/geo';
 import { formatPercent } from '../../utils/formatting';
-import type { Location } from '../../types';
 
-interface RoutePanelContentProps {
-  /** Callback to expand the bottom sheet (mobile only) */
-  onExpandSheet?: () => void;
-  /** Callback to collapse the bottom sheet (mobile only) */
-  onCollapseSheet?: () => void;
-  /** Whether this is rendered inside a bottom sheet (mobile) vs side panel (desktop) */
-  isBottomSheet?: boolean;
-}
-
-export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomSheet = false }: RoutePanelContentProps) {
+export function RoutePanelContent() {
   const [showSettings, setShowSettings] = useState(false);
   const [showNamingModal, setShowNamingModal] = useState(false);
   const [routeName, setRouteName] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
-  
+
   const {
     origin,
     destination,
-    setOrigin,
-    setDestination,
     calculateRoutes,
     clearRoutes,
-    swapLocations,
     normalRoute,
     avoidanceRoute,
     comparison,
@@ -41,21 +27,7 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
     routeOptions,
     setCameraDistance,
     setUseDirectionalZones,
-    pickingLocation,
-    startPickingLocation,
-    cancelPickingLocation,
   } = useRouteStore();
-
-  const flyTo = useMapStore(s => s.flyTo);
-
-  // Wrapper to set origin and zoom to it
-  const handleSetOrigin = (location: Location | null) => {
-    setOrigin(location);
-    if (location) {
-      // Zoom to the origin location at a city-level zoom
-      flyTo([location.lat, location.lon], 13);
-    }
-  };
 
   const handleCalculate = () => {
     calculateRoutes();
@@ -81,13 +53,6 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
       downloadGPX(route, filename);
       setShowNamingModal(false);
       setRouteName('');
-    }
-  };
-
-  // Expand sheet when user focuses on inputs (mobile only)
-  const handleInputFocus = () => {
-    if (isBottomSheet && onExpandSheet) {
-      onExpandSheet();
     }
   };
 
@@ -120,62 +85,6 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
               </p>
             </div>
           )}
-
-          {/* Route Inputs */}
-          <div className="space-y-1">
-            <AddressSearch
-              value={origin}
-              onChange={handleSetOrigin}
-              placeholder="Where are you starting?"
-              label="Start"
-              icon="origin"
-              onFocus={handleInputFocus}
-              onPickFromMap={() => {
-                if (pickingLocation === 'origin') {
-                  cancelPickingLocation();
-                } else {
-                  startPickingLocation('origin');
-                  // Collapse sheet so user can see the map
-                  if (isBottomSheet && onCollapseSheet) {
-                    onCollapseSheet();
-                  }
-                }
-              }}
-              isPickingFromMap={pickingLocation === 'origin'}
-            />
-            <div className="flex justify-center -my-1">
-              <button
-                onClick={swapLocations}
-                disabled={!origin && !destination}
-                className="p-1 text-gray-300 hover:text-white transition-all disabled:opacity-30"
-                title="Swap locations"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z" />
-                </svg>
-              </button>
-            </div>
-            <AddressSearch
-              value={destination}
-              onChange={setDestination}
-              placeholder="Where are you going?"
-              label="Destination"
-              icon="destination"
-              onFocus={handleInputFocus}
-              onPickFromMap={() => {
-                if (pickingLocation === 'destination') {
-                  cancelPickingLocation();
-                } else {
-                  startPickingLocation('destination');
-                  // Collapse sheet so user can see the map
-                  if (isBottomSheet && onCollapseSheet) {
-                    onCollapseSheet();
-                  }
-                }
-              }}
-              isPickingFromMap={pickingLocation === 'destination'}
-            />
-          </div>
 
           {/* Settings Toggle */}
           <button

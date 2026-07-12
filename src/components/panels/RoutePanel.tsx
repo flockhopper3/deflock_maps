@@ -49,16 +49,6 @@ export function RoutePanel() {
     setSnapPoint('full');
   }, []);
 
-  // Expand to full for input interaction
-  const handleExpandToFull = useCallback(() => {
-    setSnapPoint('full');
-  }, []);
-
-  // Collapse to minimized (e.g., when picking location from map)
-  const handleCollapseSheet = useCallback(() => {
-    setSnapPoint('minimized');
-  }, []);
-
   // Mobile/Tablet: Bottom Sheet
   if (isMobile) {
     return (
@@ -78,11 +68,7 @@ export function RoutePanel() {
         {/* Main content - only visible when fully expanded */}
         {snapPoint === 'full' && (
           <div className="pb-8">
-            <RoutePanelContent
-              isBottomSheet={true}
-              onExpandSheet={handleExpandToFull}
-              onCollapseSheet={handleCollapseSheet}
-            />
+            <RoutePanelContent />
 
             {/* Footer */}
             <div className="mt-6 pt-4 border-t border-dark-700/50">
@@ -107,7 +93,7 @@ export function RoutePanel() {
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-6">
-            <RoutePanelContent isBottomSheet={false} />
+            <RoutePanelContent />
           </div>
         </div>
 

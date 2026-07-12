@@ -78,9 +78,8 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   const densityIsLoading = densityLoadPhase === 'fetching';
 
-  /* ---- callbacks for BottomSheet + RoutePanelContent ---- */
+  /* ---- callbacks for BottomSheet ---- */
   const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
-  const handleCollapseSheet = useCallback(() => setSnapPoint('minimized'), []);
 
   /* ---- tab switch ---- */
   const handleTabPress = useCallback((mode: AppMode) => {
@@ -161,11 +160,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       case 'route':
         return (
           <div className="pb-8">
-            <RoutePanelContent
-              isBottomSheet
-              onExpandSheet={handleExpandSheet}
-              onCollapseSheet={handleCollapseSheet}
-            />
+            <RoutePanelContent />
 
             {/* Footer */}
             <div className="mt-6 pt-4 border-t border-dark-700/50">
