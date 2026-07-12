@@ -74,7 +74,7 @@ export function RoutePanelContent() {
                 <FlockHopperLearnMore className="mt-2.5" />
               </div>
               <p className="text-sm text-gray-200 leading-relaxed">
-                Set your start and destination on the map to analyze ALPR camera exposure along your route and discover safer alternatives.
+                Set your start and destination — search, use your location, or tap the map — to analyze ALPR camera exposure along your route and discover safer alternatives.
               </p>
             </div>
           )}

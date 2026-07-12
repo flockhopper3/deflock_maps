@@ -379,7 +379,7 @@ export function FloatingRouteCard() {
       {/* Dropdown: search action + results */}
       {dropdownOpen && (
         <div className="mt-2 bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl overflow-hidden animate-fade-in backdrop-blur-sm">
-          {showSearchAction && (
+          {(showSearchAction || isSearching) && (
             <button
               onClick={() => performSearch(activeField as Field, activeQuery)}
               type="button"
