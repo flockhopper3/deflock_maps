@@ -1,23 +1,17 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouteStore } from '../../store';
 import { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
-import { downloadGPX } from '../../services/gpxService';
 import { formatDistance, formatDuration } from '../../utils/geo';
 import { formatPercent } from '../../utils/formatting';
 
 export function RoutePanelContent() {
   const [showSettings, setShowSettings] = useState(false);
-  const [showNamingModal, setShowNamingModal] = useState(false);
-  const [routeName, setRouteName] = useState('');
-  const nameInputRef = useRef<HTMLInputElement>(null);
 
   /* Options the current results were calculated with — settings edits after
      a calculation surface an "Apply & recalculate" button. */
   const [appliedOptions, setAppliedOptions] = useState<{ distance: number; directional: boolean } | null>(null);
 
   const {
-    origin,
-    destination,
     calculateRoutes,
     clearRoutes,
     normalRoute,
@@ -53,29 +47,6 @@ export function RoutePanelContent() {
       });
     }
   }, [hasRoutes, appliedOptions, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
-
-  const openNamingModal = () => {
-    // Pre-fill with a suggested name based on origin/destination
-    const suggestedName = origin && destination 
-      ? `${origin.name?.split(',')[0] || 'Start'} to ${destination.name?.split(',')[0] || 'End'}`
-      : '';
-    setRouteName(suggestedName);
-    setShowNamingModal(true);
-  };
-
-  const handleExportGPX = () => {
-    const route = activeRoute === 'avoidance' ? avoidanceRoute : normalRoute;
-    if (route) {
-      // Sanitize filename: remove special chars, replace spaces with hyphens
-      const sanitizedName = routeName.trim()
-        ? routeName.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-')
-        : `${activeRoute}-route`;
-      const filename = `flockhopper-${sanitizedName}-${Date.now()}.gpx`;
-      downloadGPX(route, filename);
-      setShowNamingModal(false);
-      setRouteName('');
-    }
-  };
 
   const settingsDirty = !!hasRoutes && appliedOptions !== null &&
     (appliedOptions.distance !== routeOptions.cameraDistanceMeters ||
@@ -332,72 +303,6 @@ export function RoutePanelContent() {
                 description="FlockHopper gives you real-time, turn-by-turn camera avoidance."
               />
 
-              {/* Export Button */}
-              <button
-                onClick={openNamingModal}
-                className="w-full py-3.5 bg-dark-800 hover:bg-dark-700 border border-dark-600 text-white font-medium text-sm rounded-md transition-colors flex items-center justify-center gap-3"
-                aria-label="Download route as GPX"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
-                Download {activeRoute === 'avoidance' ? 'Privacy' : 'Direct'} Route (GPX)
-              </button>
-
-              {/* Route Naming Modal */}
-              {showNamingModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 animate-fade-in">
-                  <div
-                    className="bg-dark-800 border border-dark-600 rounded-md p-6 w-full max-w-md animate-scale-in"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                        <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-display font-bold text-white">Name Your Route</h3>
-                        <p className="text-sm text-gray-400">Give this route a memorable name</p>
-                      </div>
-                    </div>
-
-                    <input
-                      ref={nameInputRef}
-                      type="text"
-                      autoFocus
-                      value={routeName}
-                      onChange={(e) => setRouteName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleExportGPX();
-                        if (e.key === 'Escape') setShowNamingModal(false);
-                      }}
-                      placeholder="e.g., Work Commute, Weekend Trip..."
-                      className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                    />
-
-                    <div className="flex gap-3 mt-5">
-                      <button
-                        onClick={() => setShowNamingModal(false)}
-                        className="flex-1 py-3 bg-dark-700 hover:bg-dark-600 text-gray-300 font-medium rounded-xl transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleExportGPX}
-                        className="flex-1 py-3 bg-accent hover:bg-accent-hover text-white font-medium rounded-md transition-all flex items-center justify-center gap-2"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                        </svg>
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Clear */}
               <button
                 onClick={clearRoutes}
@@ -416,11 +321,10 @@ export function RoutePanelContent() {
               </h4>
               <ol className="space-y-3">
                 {[
-                  'Set your start and destination on the map',
-                  'See exactly how many cameras track your commute',
-                  'FlockHopper generates an alternative private route',
-                  'Customize by adding waypoints or avoiding areas',
-                  'Export to GPX and navigate with OsmAnd or Organic Maps',
+                  'Set your start and destination — search, use your location, or tap the map',
+                  'We instantly compare the direct route against a privacy route',
+                  'See exactly how many ALPR cameras each route passes',
+                  'Get FlockHopper Mobile for real-time, turn-by-turn navigation',
                 ].map((step, idx) => (
                   <li key={idx} className="flex gap-4 text-sm text-gray-200">
                     <span className="w-6 h-6 rounded-full bg-dark-700 flex items-center justify-center text-sm font-bold text-accent flex-shrink-0">
