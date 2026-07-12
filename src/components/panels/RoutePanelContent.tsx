@@ -197,7 +197,6 @@ export function RoutePanelContent() {
             </div>
           )}
 
-
           {/* Results */}
           {hasRoutes && (
             <div className="space-y-5 animate-fade-in">

@@ -190,8 +190,13 @@ export function FloatingRouteCard() {
 
   const dropdownOpen = activeField !== null;
   const activeQuery = activeField === 'origin' ? originQuery : destQuery;
+  const committedName = activeField === 'origin' ? origin?.name ?? '' : destination?.name ?? '';
   const showSearchAction =
-    dropdownOpen && activeQuery.trim().length >= 2 && results.length === 0 && !searchError;
+    dropdownOpen &&
+    activeQuery.trim().length >= 2 &&
+    activeQuery.trim() !== committedName &&
+    results.length === 0 &&
+    !searchError;
 
   return (
     <div
@@ -305,13 +310,20 @@ export function FloatingRouteCard() {
 
       {/* Status banner: calculating, or error with retry */}
       {isCalculating && (
-        <div className="mt-2 flex items-center gap-2.5 px-3 py-2.5 bg-dark-900/95 border border-dark-600 rounded-lg text-xs text-gray-200 animate-fade-in backdrop-blur-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-2 flex items-center gap-2.5 px-3 py-2.5 bg-dark-900/95 border border-dark-600 rounded-lg text-xs text-gray-200 animate-fade-in backdrop-blur-sm"
+        >
           <div className="w-3.5 h-3.5 border-2 border-accent/30 border-t-accent rounded-full animate-spin flex-shrink-0" />
-          Finding routes…
+          Analyzing route…
         </div>
       )}
       {!isCalculating && routeError && origin && destination && (
-        <div className="mt-2 flex items-center justify-between gap-3 px-3 py-2.5 bg-danger/10 border border-danger/40 rounded-lg text-xs text-danger animate-fade-in backdrop-blur-sm">
+        <div
+          role="alert"
+          className="mt-2 flex items-center justify-between gap-3 px-3 py-2.5 bg-danger/10 border border-danger/40 rounded-lg text-xs text-danger animate-fade-in backdrop-blur-sm"
+        >
           <span className="min-w-0">{routeError}</span>
           <button
             onClick={() => calculateRoutes()}
