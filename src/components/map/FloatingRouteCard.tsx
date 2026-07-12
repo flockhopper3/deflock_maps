@@ -156,9 +156,11 @@ export function FloatingRouteCard() {
     } else {
       startPickingLocation(field);
     }
+    revertQueries();
     setActiveField(null);
     setResults([]);
-  }, [pickingLocation, startPickingLocation, cancelPickingLocation]);
+    setSearchError(null);
+  }, [pickingLocation, startPickingLocation, cancelPickingLocation, revertQueries]);
 
   const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
     abortRef.current?.abort();
