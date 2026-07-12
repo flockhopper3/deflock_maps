@@ -47,6 +47,13 @@ export function FloatingRouteCard() {
     setDestQuery(destination?.name ?? '');
   }, [destination]);
 
+  /* Uncommitted text must not outlive the dropdown: closing without a
+     selection reverts inputs to the committed store values. */
+  const revertQueries = useCallback(() => {
+    setOriginQuery(origin?.name ?? '');
+    setDestQuery(destination?.name ?? '');
+  }, [origin, destination]);
+
   /* Auto-calculate: setOrigin/setDestination clear routes AND error, so
      "both set, no routes, no error, not calculating" === needs calculation.
      The error guard prevents infinite retries after a failed calculation. */
@@ -56,17 +63,18 @@ export function FloatingRouteCard() {
     }
   }, [origin, destination, normalRoute, isCalculating, routeError, calculateRoutes]);
 
-  /* Close dropdown on outside click. */
+  /* Close dropdown on outside click, reverting any uncommitted text. */
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        revertQueries();
         setActiveField(null);
         setResults([]);
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, []);
+  }, [revertQueries]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -167,18 +175,23 @@ export function FloatingRouteCard() {
       }
     }
     if (e.key === 'Escape') {
+      revertQueries();
       setActiveField(null);
       setResults([]);
     }
   };
 
   const openField = (field: Field) => {
+    if (activeField && activeField !== field) revertQueries();
     setActiveField(field);
     setResults([]);
     setSearchError(null);
   };
 
   const dropdownOpen = activeField !== null;
+  const activeQuery = activeField === 'origin' ? originQuery : destQuery;
+  const showSearchAction =
+    dropdownOpen && activeQuery.trim().length >= 2 && results.length === 0 && !searchError;
 
   return (
     <div
@@ -197,7 +210,7 @@ export function FloatingRouteCard() {
             type="text"
             value={originQuery}
             onChange={handleQueryChange('origin')}
-            onFocus={() => openField('origin')}
+            onFocus={(e) => { e.target.select(); openField('origin'); }}
             onKeyDown={handleKeyDown('origin', originQuery)}
             placeholder="Where are you starting?"
             enterKeyHint="search"
@@ -265,7 +278,7 @@ export function FloatingRouteCard() {
             type="text"
             value={destQuery}
             onChange={handleQueryChange('destination')}
-            onFocus={() => openField('destination')}
+            onFocus={(e) => { e.target.select(); openField('destination'); }}
             onKeyDown={handleKeyDown('destination', destQuery)}
             placeholder="Where to?"
             enterKeyHint="search"
@@ -287,32 +300,56 @@ export function FloatingRouteCard() {
               </svg>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Status banner: calculating, or error with retry */}
+      {isCalculating && (
+        <div className="mt-2 flex items-center gap-2.5 px-3 py-2.5 bg-dark-900/95 border border-dark-600 rounded-lg text-xs text-gray-200 animate-fade-in backdrop-blur-sm">
+          <div className="w-3.5 h-3.5 border-2 border-accent/30 border-t-accent rounded-full animate-spin flex-shrink-0" />
+          Finding routes…
+        </div>
+      )}
+      {!isCalculating && routeError && origin && destination && (
+        <div className="mt-2 flex items-center justify-between gap-3 px-3 py-2.5 bg-danger/10 border border-danger/40 rounded-lg text-xs text-danger animate-fade-in backdrop-blur-sm">
+          <span className="min-w-0">{routeError}</span>
           <button
-            onClick={() => performSearch('destination', destQuery)}
+            onClick={() => calculateRoutes()}
             type="button"
-            aria-label="Search destination"
-            disabled={isSearching || destQuery.trim().length < 2}
-            className="p-2 rounded-lg bg-dark-800 border border-dark-600 text-dark-300 hover:text-white disabled:opacity-40 transition-colors flex-shrink-0"
+            className="font-semibold px-2.5 py-1 rounded-md bg-danger/20 hover:bg-danger/30 transition-colors flex-shrink-0"
           >
-            {isSearching && activeField === 'destination' ? (
-              <div className="w-4 h-4 border-2 border-dark-500 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-              </svg>
-            )}
+            Retry
           </button>
         </div>
-
-        {/* Calculating shimmer strip */}
-        {isCalculating && (
-          <div className="h-0.5 bg-accent/60 rounded-b-xl animate-pulse" />
-        )}
-      </div>
+      )}
 
       {/* Dropdown: results + Choose on map */}
       {dropdownOpen && (
         <div className="mt-2 bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl overflow-hidden animate-fade-in backdrop-blur-sm">
+          {showSearchAction && (
+            <button
+              onClick={() => performSearch(activeField as Field, activeQuery)}
+              type="button"
+              disabled={isSearching}
+              className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm text-white hover:bg-dark-700/70 transition-colors border-b border-dark-700/50"
+            >
+              {isSearching ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-dark-500 border-t-white rounded-full animate-spin flex-shrink-0" />
+                  <span className="text-dark-300">Searching…</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 text-accent flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                  </svg>
+                  <span>
+                    Search "<span className="font-semibold">{activeQuery.trim()}</span>"
+                  </span>
+                </>
+              )}
+            </button>
+          )}
           {searchError && (
             <div className="px-4 py-3 text-sm text-dark-300">{searchError}</div>
           )}
