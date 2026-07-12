@@ -4,3 +4,4 @@ export { MapSearch } from './MapSearch';
 export { CameraStats } from './CameraStats';
 export { WaypointLayer } from './WaypointLayer';
 export { MapLoadingScreen } from './MapLoadingScreen';
+export { FloatingRouteCard } from './FloatingRouteCard';
