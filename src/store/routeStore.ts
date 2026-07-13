@@ -77,6 +77,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -87,6 +89,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -183,6 +187,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -210,7 +216,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
   // Location picking actions
   startPickingLocation: (mode: 'origin' | 'destination') => {
-    set({ pickingLocation: mode });
+    // Manual single-target pick takes over from any running guided sequence
+    set({ pickingLocation: mode, pickingSequence: null });
   },
 
   startPickingSequence: () => {
@@ -222,6 +229,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     } else {
       // Both empty, or both set (redo): start fresh so the first pick
       // can't auto-calculate against a leftover endpoint mid-sequence.
+      // Note: re-invoking mid-sequence intentionally re-evaluates from the
+      // current endpoint state (manual mutations cancel the sequence anyway).
       set({
         origin: null,
         destination: null,
