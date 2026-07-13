@@ -214,7 +214,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     isMarkersReady: markersReady,
     forceRemount: () => forceUpdate(n => n + 1),
   }), [markersReady]);
-  const { origin, destination, normalRoute, avoidanceRoute, activeRoute, pickingLocation, setPickedLocation, cancelPickingLocation } = useRouteStore();
+  const { origin, destination, normalRoute, avoidanceRoute, activeRoute, pickingLocation, pickingSequence, setPickedLocation, cancelPickingLocation } = useRouteStore();
 
   // Handle flyTo commands from store
   useEffect(() => {
@@ -658,6 +658,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
     // If in location picking mode (for route origin/destination), handle click
     if (pickingLocation) {
+      // Ignore taps while the camera is animating or gliding (accidental picks)
+      if (event.target.isMoving()) return;
       const { lng, lat } = event.lngLat;
       
       // Create location with coordinates first
@@ -753,6 +755,28 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       setCursor('');
     }
   }, [pickingLocation]);
+
+  // While picking, a double-tap must not zoom (its first tap would register
+  // as an accidental selection on touch devices).
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (pickingLocation) {
+      map.doubleClickZoom.disable();
+    } else {
+      map.doubleClickZoom.enable();
+    }
+  }, [pickingLocation]);
+
+  // Escape exits the picking sequence (keeps endpoints picked so far)
+  useEffect(() => {
+    if (!pickingLocation) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelPickingLocation();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [pickingLocation, cancelPickingLocation]);
 
   // Auto mode: update activeView based on zoom level
   useEffect(() => {
@@ -1149,7 +1173,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
               {/* Text */}
               <p className="text-white font-medium text-sm flex-1">
-                Tap to set {pickingLocation === 'origin' ? 'start' : 'destination'}
+                {pickingSequence === 'full'
+                  ? pickingLocation === 'origin'
+                    ? 'Step 1 of 2 — Tap the map to set your start'
+                    : 'Step 2 of 2 — Now tap your destination'
+                  : `Tap the map to set your ${pickingLocation === 'origin' ? 'start' : 'destination'}`}
               </p>
 
               {/* Cancel button */}
