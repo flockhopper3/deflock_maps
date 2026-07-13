@@ -29,6 +29,9 @@ interface RouteState {
   // Location picking mode - for "choose on map" feature
   pickingLocation: LocationPickingMode;
 
+  // Guided picking sequence state
+  pickingSequence: 'single' | 'full' | null;
+
   // Actions
   setOrigin: (location: Location | null) => void;
   setDestination: (location: Location | null) => void;
@@ -41,6 +44,7 @@ interface RouteState {
 
   // Location picking actions
   startPickingLocation: (mode: 'origin' | 'destination') => void;
+  startPickingSequence: () => void;
   cancelPickingLocation: () => void;
   setPickedLocation: (location: Location) => void;
 }
@@ -64,6 +68,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
   activeRoute: 'normal',
   routeOptions: DEFAULT_ROUTE_OPTIONS,
   pickingLocation: null,
+  pickingSequence: null,
 
   setOrigin: (location: Location | null) => {
     set({
@@ -208,16 +213,41 @@ export const useRouteStore = create<RouteState>((set, get) => ({
     set({ pickingLocation: mode });
   },
 
+  startPickingSequence: () => {
+    const { origin, destination } = get();
+    if (origin && !destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'destination' });
+    } else if (!origin && destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'origin' });
+    } else {
+      // Both empty, or both set (redo): start fresh so the first pick
+      // can't auto-calculate against a leftover endpoint mid-sequence.
+      set({
+        origin: null,
+        destination: null,
+        normalRoute: null,
+        avoidanceRoute: null,
+        comparison: null,
+        error: null,
+        pickingSequence: 'full',
+        pickingLocation: 'origin',
+      });
+    }
+  },
+
   cancelPickingLocation: () => {
-    set({ pickingLocation: null });
+    set({ pickingLocation: null, pickingSequence: null });
   },
 
   setPickedLocation: (location: Location) => {
-    const { pickingLocation } = get();
+    const { pickingLocation, pickingSequence } = get();
     if (pickingLocation === 'origin') {
+      const continuing = pickingSequence === 'full';
       set({
         origin: location,
-        pickingLocation: null,
+        // In a full guided sequence, advance straight to the destination pick
+        pickingLocation: continuing ? 'destination' : null,
+        pickingSequence: continuing ? 'full' : null,
         normalRoute: null,
         avoidanceRoute: null,
         comparison: null,
@@ -227,6 +257,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       set({
         destination: location,
         pickingLocation: null,
+        pickingSequence: null,
         normalRoute: null,
         avoidanceRoute: null,
         comparison: null,
