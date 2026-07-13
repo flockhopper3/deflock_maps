@@ -9,7 +9,8 @@ type GeoState = 'idle' | 'loading' | 'error';
  * Floating route inputs rendered over the map on the Route tab.
  * Replaces MapSearch there. Two connected rows (start / destination),
  * Enter-to-search with a dropdown below the card, use-my-location on the
- * start row, swap on the divider, and choose-on-map pin buttons on each row.
+ * start row, swap on the divider, and a guided "Choose on map" sequence
+ * button under the card.
  * Auto-calculates when both endpoints are set.
  */
 export function FloatingRouteCard() {
@@ -23,9 +24,8 @@ export function FloatingRouteCard() {
     isCalculating,
     error: routeError,
     normalRoute,
-    startPickingLocation,
     pickingLocation,
-    cancelPickingLocation,
+    startPickingSequence,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
 
@@ -150,18 +150,6 @@ export function FloatingRouteCard() {
     );
   }, [setOrigin, flyTo]);
 
-  const togglePickOnMap = useCallback((field: Field) => {
-    if (pickingLocation === field) {
-      cancelPickingLocation();
-    } else {
-      startPickingLocation(field);
-    }
-    revertQueries();
-    setActiveField(null);
-    setResults([]);
-    setSearchError(null);
-  }, [pickingLocation, startPickingLocation, cancelPickingLocation, revertQueries]);
-
   const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
     abortRef.current?.abort();
     if (field === 'origin') setOriginQuery(e.target.value);
@@ -247,22 +235,6 @@ export function FloatingRouteCard() {
             </button>
           )}
           <button
-            onClick={() => togglePickOnMap('origin')}
-            type="button"
-            aria-label="Choose start on map"
-            aria-pressed={pickingLocation === 'origin'}
-            title="Choose on map"
-            className={`p-2 rounded-lg border transition-colors flex-shrink-0 ${
-              pickingLocation === 'origin'
-                ? 'bg-accent/20 border-accent text-accent'
-                : 'bg-dark-800 border-dark-600 text-dark-300 hover:text-white'
-            }`}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-            </svg>
-          </button>
-          <button
             onClick={handleUseMyLocation}
             type="button"
             aria-label="Use my location"
@@ -330,22 +302,6 @@ export function FloatingRouteCard() {
               </svg>
             </button>
           )}
-          <button
-            onClick={() => togglePickOnMap('destination')}
-            type="button"
-            aria-label="Choose destination on map"
-            aria-pressed={pickingLocation === 'destination'}
-            title="Choose on map"
-            className={`p-2 rounded-lg border transition-colors flex-shrink-0 ${
-              pickingLocation === 'destination'
-                ? 'bg-accent/20 border-accent text-accent'
-                : 'bg-dark-800 border-dark-600 text-dark-300 hover:text-white'
-            }`}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -374,6 +330,26 @@ export function FloatingRouteCard() {
             Retry
           </button>
         </div>
+      )}
+
+      {/* Guided pick-on-map entry */}
+      {!pickingLocation && !isCalculating && !dropdownOpen && (
+        <button
+          onClick={() => {
+            revertQueries();
+            setActiveField(null);
+            setResults([]);
+            setSearchError(null);
+            startPickingSequence();
+          }}
+          type="button"
+          className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-900/95 border border-dark-600 text-xs text-dark-300 hover:text-white hover:border-dark-500 transition-colors backdrop-blur-sm"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+          </svg>
+          Choose on map
+        </button>
       )}
 
       {/* Dropdown: search action + results */}
