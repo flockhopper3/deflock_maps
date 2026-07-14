@@ -1037,6 +1037,9 @@ var index_default = {
           if (!m || (m[1] === "" && m[2] === "")) {
             return new Response("Invalid range", { status: 416, headers: cors });
           }
+          if (m[1] !== "" && m[2] !== "" && Number(m[1]) > Number(m[2])) {
+            return new Response("Invalid range", { status: 416, headers: cors });
+          }
           let r2range;
           if (m[1] === "") {
             r2range = { suffix: Number(m[2]) };
@@ -1045,10 +1048,22 @@ var index_default = {
           } else {
             r2range = { offset: Number(m[1]), length: Number(m[2]) - Number(m[1]) + 1 };
           }
-          const obj = await env.BUCKET.get(key, { range: r2range });
+          let obj;
+          try {
+            obj = await env.BUCKET.get(key, { range: r2range });
+          } catch (rangeErr) {
+            const rangeMsg = rangeErr instanceof Error ? rangeErr.message : String(rangeErr);
+            if (/not satisfiable|satisfiable/i.test(rangeMsg)) {
+              const head = await env.BUCKET.head(key);
+              const headers = new Headers(cors);
+              headers.set("Content-Range", `bytes */${head ? head.size : 0}`);
+              return new Response("Range not satisfiable", { status: 416, headers });
+            }
+            throw rangeErr;
+          }
           if (!obj) return new Response("Not found", { status: 404, headers: cors });
           const total = obj.size;
-          const start = m[1] === "" ? total - Number(m[2]) : Number(m[1]);
+          const start = m[1] === "" ? Math.max(0, total - Number(m[2])) : Number(m[1]);
           const end = m[1] !== "" && m[2] !== "" ? Math.min(Number(m[2]), total - 1) : total - 1;
           const headers = new Headers(cors);
           headers.set("Content-Type", "application/octet-stream");
@@ -1135,7 +1150,7 @@ var index_default = {
       if (/not found|does not exist/i.test(msg)) {
         return new Response("Not found", { status: 404, headers: cors });
       }
-      return new Response(`Worker error: ${msg}`, { status: 500, headers: cors });
+      return new Response("Worker error", { status: 500, headers: cors });
     }
 
     // Store in Cloudflare edge cache (non-blocking); raw archives are never cached
