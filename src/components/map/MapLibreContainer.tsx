@@ -1024,7 +1024,6 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       <CameraMarkerLayers
         cameras={cameraSource}
         visible={!isTilesMode && showCameraMarkers}
-        clustered={false}
         mapLoaded={mapLoaded}
         mapRef={mapRef}
       />
