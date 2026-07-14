@@ -321,7 +321,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   }, [markersReady, onMarkersReady]);
 
   // --- Timeline filter handler (imperative setFilter, no GeoJSON rebuild) ---
-  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'cameras-dots-lowzoom', 'pulse-ring-outer', 'pulse-ring-inner'], []);
+  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'cameras-dots-lowzoom'], []);
   // Cache the last cutoff to skip redundant setFilter calls (same date = same filter).
   // With 71 Protomaps vector layers, every setFilter triggers an expensive render cycle.
   const lastCutoffRef = useRef<number>(0);
@@ -345,9 +345,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       if (lastCutoffRef.current === Infinity) return; // already cleared
       lastCutoffRef.current = Infinity;
       if (markersVisible) {
-        const defaultUnclustered: maplibregl.FilterSpecification = ['!', ['has', 'point_count']];
         for (const layerId of TIMELINE_LAYERS) {
-          if (map.getLayer(layerId)) map.setFilter(layerId, defaultUnclustered, { validate: false });
+          if (map.getLayer(layerId)) map.setFilter(layerId, null, { validate: false });
         }
         if (map.getLayer('direction-cones')) map.setFilter('direction-cones', null, { validate: false });
         if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', null, { validate: false });
@@ -370,16 +369,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     // Evaluated 78K times per tick — this matters.
     const vizFilter: maplibregl.FilterSpecification = ['<=', ['get', 'ts'], cutoffMs];
 
-    // Only filter layers that are actually visible — avoids expensive
-    // Supercluster re-evaluation on hidden clustered layers
+    // Only filter layers that are actually visible — avoids an unnecessary
+    // render cycle on layers nobody can see
     if (markersVisible) {
-      const timelineFilter: maplibregl.FilterSpecification = [
-        'all',
-        ['!', ['has', 'point_count']],
-        vizFilter,
-      ];
       for (const layerId of TIMELINE_LAYERS) {
-        if (map.getLayer(layerId)) map.setFilter(layerId, timelineFilter, { validate: false });
+        if (map.getLayer(layerId)) map.setFilter(layerId, vizFilter, { validate: false });
       }
       if (map.getLayer('direction-cones')) map.setFilter('direction-cones', vizFilter, { validate: false });
       if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', vizFilter, { validate: false });
@@ -399,9 +393,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // Restore default filters when timeline is disabled
       const map = mapRef.current?.getMap();
       if (map && map.isStyleLoaded()) {
-        const defaultFilter: maplibregl.FilterSpecification = ['!', ['has', 'point_count']];
         for (const layerId of TIMELINE_LAYERS) {
-          if (map.getLayer(layerId)) map.setFilter(layerId, defaultFilter);
+          if (map.getLayer(layerId)) map.setFilter(layerId, null);
         }
         if (map.getLayer('direction-cones')) map.setFilter('direction-cones', null);
         if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', null);
@@ -709,7 +702,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
   }, [setBounds, updateVisibleCameras]);
 
-  // Handle cluster click - zoom in or pick location
+  // Handle map clicks - density feature selection, location picking, or
+  // camera marker click to open its popup
   const onClick = useCallback(async (event: MapLayerMouseEvent) => {
     if (!mapRef.current) return;
 

@@ -452,6 +452,9 @@ export function MapPanelContent() {
   // Viewport-reactive stats (respects active filters)
   const bounds = useMapStore(s => s.bounds);
   const filteredCameras = useCameraStore((s) => s.filteredCameras);
+  // Tiles mode reports the rendered viewport count before the (lazily-loaded)
+  // GeoJSON dataset exists — prefer it so the hero stat isn't stuck at 0.
+  const tileViewCameraCount = useMapStore(s => s.tileViewCameraCount);
 
   const viewportStats = useMemo(() => {
     if (!bounds) return { count: 0, uniqueBrands: 0, brands: [] as { name: string; count: number }[] };
@@ -589,6 +592,11 @@ export function MapPanelContent() {
     return { count: inView.length, uniqueBrands, brands: brands.slice(0, 5) };
   }, [bounds, filteredCameras]);
 
+  // In tiles mode (default render path), filteredCameras is empty until the
+  // GeoJSON dataset lazy-loads, so viewportStats.count reads 0. Prefer the
+  // tile-rendered viewport count when available — same pattern as CameraStats.tsx.
+  const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportStats.count;
+
   const totalInView = viewportStats.count || 1;
 
   return (
@@ -599,7 +607,7 @@ export function MapPanelContent() {
           <div className="flex items-baseline justify-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_rgba(56,189,248,0.5)] flex-shrink-0 relative -top-0.5" />
             <span className="text-[40px] font-bold text-accent tracking-tight leading-none tabular-nums">
-              {viewportStats.count.toLocaleString()}
+              {heroViewCount.toLocaleString()}
             </span>
           </div>
           <p className="text-[11px] text-dark-500 uppercase tracking-[1.5px] mt-1">

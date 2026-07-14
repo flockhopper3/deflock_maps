@@ -31,7 +31,12 @@ npm run preview   # Preview production build
 
 ### Key Data Flow
 
-1. **Camera Data Loading**: `PreloadManager` starts background fetch → `cameraStore` loads camera data → builds spatial grid (0.5° cells) for O(1) lookups
+1. **Camera Rendering**: Default path renders straight from PMTiles vector
+   tiles (`tiles.dontgetflocked.com/cameras.pmtiles`, source-layer `cameras`,
+   attributes at z11+ only) via the client-side pmtiles protocol — no dataset
+   download. The full GeoJSON (`cameraStore`) loads lazily only when filters,
+   Explore/timeline, heatmap, or Canada need per-camera attributes
+   (`useCameraRenderMode` decides which path is visible).
 
 2. **Route Calculation** (`src/services/apiClient.ts`): Calls `api.dontgetflocked.com/api/v1/route` with origin, destination, and options. API handles all camera-aware routing. Returns both normal and avoidance routes with comparison metrics.
 
@@ -50,13 +55,16 @@ The map has 4 modes, selectable via the header tabs:
 | `src/services/apiClient.ts` | API client — calls FlockHopper routing API |
 | `src/services/routingConfig.ts` | Visualization constants for camera cones on map |
 | `src/services/cameraDataService.ts` | Camera data fetching and processing |
+| `src/services/cameraTilesService.ts` | PMTiles protocol registration + camera tile source/archive constants |
 | `src/services/boundaryDataService.ts` | Boundary geometry data loading |
 | `src/services/densityDataService.ts` | Density visualization data loading |
+| `src/hooks/useCameraRenderMode.ts` | Decides tiles vs. GeoJSON camera rendering path |
 | `src/store/cameraStore.ts` | Camera data management + spatial grid indexing |
 | `src/store/routeStore.ts` | Route calculation state and UI state |
 | `src/store/mapModeStore.ts` | Map style/mode management |
 | `src/pages/MapPage.tsx` | Main application page container |
 | `src/components/map/MapLibreContainer.tsx` | Map rendering, camera markers, route layers |
+| `src/components/map/layers/CameraTileLayers.tsx` | Default camera rendering — dots/points/cones from PMTiles vector tiles |
 | `src/components/panels/MapPanel.tsx` | Main panel container component |
 | `src/components/panels/TabbedPanel.tsx` | Tab navigation for mode panels |
 
@@ -80,18 +88,20 @@ src/
 │   ├── common/     # ErrorBoundary, LoadingSpinner, BottomSheet, Seo, LegacyMapLink
 │   ├── inputs/     # AddressSearch autocomplete
 │   ├── map/        # MapLibreContainer, MapSearch, CameraStats, MapLoadingScreen
-│   │   └── layers/ # CameraMarkerLayers, DensityLayers, DotDensityLayers,
-│   │               # HeatmapLayers, NetworkLayers, BoundaryOverlayLayers
+│   │   └── layers/ # CameraTileLayers (default), CameraMarkerLayers (lazy),
+│   │               # DensityLayers, DotDensityLayers, HeatmapLayers,
+│   │               # NetworkLayers, BoundaryOverlayLayers
 │   ├── panels/     # MapPanel, TabbedPanel, RoutePanel, ExplorePanel,
 │   │               # DensityPanel, NetworkPanel, CustomRoutePanel,
 │   │               # MobileTabDrawer, MobileRoutePreview, RouteComparison
 │   └── ui/         # Shadcn components (button, input)
+├── hooks/          # useCameraRenderMode, useEmbedMode
 ├── lib/            # Utility helpers (cn)
 ├── modes/          # Visualization modes (heatmap, timeline, dots, density)
 ├── pages/          # MapPage, NotFound
-├── services/       # apiClient, cameraDataService, boundaryDataService,
-│                   # densityDataService, geocodingService, gpxService,
-│                   # zipCodeService, routingConfig, performanceLogger
+├── services/       # apiClient, cameraDataService, cameraTilesService,
+│                   # boundaryDataService, densityDataService, geocodingService,
+│                   # gpxService, zipCodeService, routingConfig, performanceLogger
 ├── store/          # Zustand stores
 ├── types/          # TypeScript definitions (camera, density, route, map)
 └── utils/          # geo, polyline, formatting
@@ -113,14 +123,15 @@ Found in .env file. Environment variables are prefixed with `VITE_` for Vite to 
 The spatial grid (0.5° cells) is critical for performance. Always use `getCamerasInBounds()` or `getCamerasInBoundsFromGrid()` rather than filtering the full camera array.
 
 ### Map Rendering
-`MapLibreContainer.tsx` is the main map component. Map layers are organized into dedicated components under `src/components/map/layers/` — CameraMarkerLayers, DensityLayers, DotDensityLayers, HeatmapLayers, NetworkLayers, and BoundaryOverlayLayers.
+`MapLibreContainer.tsx` is the main map component. Map layers are organized into dedicated components under `src/components/map/layers/` — CameraTileLayers (default PMTiles rendering), CameraMarkerLayers (lazy GeoJSON path for filters/timeline/heatmap/Canada), DensityLayers, DotDensityLayers, HeatmapLayers, NetworkLayers, and BoundaryOverlayLayers. `useCameraRenderMode` (`src/hooks/`) decides which camera layer is active.
 
 ### Code Splitting
 Vite splits bundles by vendor: react-vendor, map-vendor, motion, geo-utils, state, deck-vendor. MapPage uses React lazy loading with Suspense. Path alias `@/` maps to `src/`.
 
 ## Data Sources
 
-- **Camera Data**: `/public/cameras-us.json.gz` — fetched and decompressed via `cameraDataService`
+- **Camera Tiles**: `tiles.dontgetflocked.com/cameras.pmtiles` — PMTiles archive, Range requests via `flockhopper-tiles` worker
+- **Camera Data (attributes)**: `data.dontgetflocked.com/cameras.geojson.gz` — lazy-loaded for filters/timeline/heatmap/Canada; ~114k (July 2026) cameras
 - **ZIP Codes**: `/public/zipcodes-us.json` — local lookup, no API needed
 - **Map Tiles**: Protomaps vector tiles via `VITE_TILES_URL`
 - **Geocoding**: Nominatim (OSM) with Photon fallback

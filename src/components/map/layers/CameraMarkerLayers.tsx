@@ -81,24 +81,24 @@ const unclusteredPointLayer: maplibregl.LayerSpecification = {
   },
 };
 
-// Direction cone layer style - only show when zoomed past clusters
+// Direction cone layer style - only show once individual cameras are distinguishable
 const directionConeLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones',
   type: 'fill',
   source: 'direction-cones',
-  minzoom: 12, // Only show when zoomed in past cluster level
+  minzoom: 12, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'fill-color': '#4DA6FF',
     'fill-opacity': 0.35,
   },
 };
 
-// Direction cone outline - only show when zoomed past clusters
+// Direction cone outline - only show once individual cameras are distinguishable
 const directionConeOutlineLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones-outline',
   type: 'line',
   source: 'direction-cones',
-  minzoom: 12, // Only show when zoomed in past cluster level
+  minzoom: 12, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'line-color': '#0080BC',
     'line-width': 2,

@@ -278,16 +278,20 @@ export function MapPage() {
 
     setMapInitError(null);
     setMarkersReady(false);
-    // Force map remount with new key — unconditional so a failing
-    // retryCameraLoad still gets a fresh map instance on next attempt
+    // Force map remount with new key — unconditional, always the recovery
+    // path for a stalled tile source. The (multi-MB) GeoJSON refetch only
+    // helps when a feature actually needs it (filters/timeline/heatmap/Canada);
+    // skip it in tiles mode where the remount alone drives recovery.
     setMapKey(k => k + 1);
 
-    try {
-      await retryCameraLoad();
-    } catch {
-      // Error handling done in store
+    if (needsGeojson) {
+      try {
+        await retryCameraLoad();
+      } catch {
+        // Error handling done in store
+      }
     }
-  }, [retryCameraLoad]);
+  }, [retryCameraLoad, needsGeojson]);
 
   // Tiles mode: the map is "ready" when the tile source has rendered
   // (markersReady). The JSON dataset only gates readiness when a feature

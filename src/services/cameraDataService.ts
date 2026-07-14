@@ -4,7 +4,7 @@ import type { ALPRCamera } from '../types';
  * Camera data is fetched from the data Worker at data.dontgetflocked.com
  * which serves gzipped GeoJSON from Cloudflare R2, one dataset per country.
  *
- * The US dataset contains ~62,000 cameras as a GeoJSON FeatureCollection.
+ * The US dataset contains ~114k (July 2026) cameras as a GeoJSON FeatureCollection.
  * Canada is fetched lazily, only when the user selects it.
  * Browser handles gzip decompression automatically via Content-Encoding header.
  */

@@ -87,7 +87,6 @@ interface CameraState {
   spatialGrid: SpatialGrid | null;
   isLoading: boolean;
   isInitialized: boolean;
-  isPreloading: boolean;
   error: string | null;
 
   // Active country dataset — Canada is fetched lazily on first selection
@@ -122,7 +121,6 @@ interface CameraState {
   _initPromise: Promise<void> | null;
 
   // Actions
-  preloadCameras: () => void;
   initializeCameras: () => Promise<void>;
   ensureCamerasLoaded: () => Promise<void>;
   retryCameraLoad: () => Promise<void>;
@@ -151,7 +149,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   spatialGrid: null,
   isLoading: false,
   isInitialized: false,
-  isPreloading: false,
   error: null,
   country: 'us',
   isCountrySwitching: false,
@@ -183,24 +180,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     operators: [],
     surveillanceZones: [],
     mountTypes: [],
-  },
-
-  // Background preload - starts loading without blocking UI
-  // Called from landing page after initial render completes
-  preloadCameras: () => {
-    const { isInitialized, _initPromise, isPreloading } = get();
-
-    // Skip if already loaded or loading
-    if (isInitialized || _initPromise || isPreloading) return;
-
-    set({ isPreloading: true, loadPhase: 'fetching' });
-
-    // Start loading immediately - the 300ms delay in PreloadManager
-    // already gives the landing page time to render
-    get().initializeCameras().catch(() => {
-      // Errors are handled in initializeCameras, just stop preloading state
-      set({ isPreloading: false, loadPhase: 'idle' });
-    });
   },
 
   // Load camera data from bundled JSON (fast!)
@@ -247,7 +226,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           ...dataset,
           isLoading: false,
           isInitialized: true,
-          isPreloading: false,
           loadPhase: 'ready',
           dataVersion: state.dataVersion + 1,
         }));
@@ -256,7 +234,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         set({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
-          isPreloading: false,
           loadPhase: 'error',
           _initPromise: null, // Clear promise on error so retry can work
         });
@@ -289,18 +266,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     // Already loading - wait for it
     if (state._initPromise) return state._initPromise;
 
-    // If preloading flag is set but promise not yet, wait briefly (race condition)
-    if (state.isPreloading && !state._initPromise) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const updatedState = get();
-      if (updatedState._initPromise) {
-        return updatedState._initPromise;
-      }
-      if (updatedState.isInitialized && updatedState.cameras.length > 0) {
-        return;
-      }
-    }
-
     if (import.meta.env.DEV) {
       console.log('[CameraStore] ensureCamerasLoaded: starting fresh initialization');
     }
@@ -314,7 +279,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     }
     
     // Clear any existing promise to allow fresh retry
-    set({ isLoading: true, error: null, _initPromise: null, isPreloading: false, loadPhase: 'fetching' });
+    set({ isLoading: true, error: null, _initPromise: null, loadPhase: 'fetching' });
 
     const retryPromise = (async () => {
       try {
@@ -332,7 +297,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           ...dataset,
           isLoading: false,
           isInitialized: true,
-          isPreloading: false,
           loadPhase: 'ready',
           dataVersion: state.dataVersion + 1,
         }));
@@ -341,7 +305,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         set({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
-          isPreloading: false,
           loadPhase: 'error',
           _initPromise: null,
         });
