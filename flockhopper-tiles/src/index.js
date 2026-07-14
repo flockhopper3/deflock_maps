@@ -981,10 +981,15 @@ var index_default = {
       });
     }
 
+    // Raw .pmtiles archives bypass the Cache API entirely: the cache key is
+    // URL-only (no Range), so caching a full 200 would poison later ranged
+    // requests with a full-body response. Range perf relies on browser cache + R2.
+    const isRawArchive = /\.pmtiles$/.test(url.pathname);
+
     // Cloudflare Cache API — check edge cache before hitting R2
     const cfCache = caches.default;
     const cacheKey = new Request(url.toString(), { method: "GET" });
-    const cachedResponse = await cfCache.match(cacheKey);
+    const cachedResponse = isRawArchive ? void 0 : await cfCache.match(cacheKey);
     if (cachedResponse) {
       const response = new Response(cachedResponse.body, cachedResponse);
       // Re-apply CORS headers (vary by origin, not stored in cache)
@@ -1133,8 +1138,10 @@ var index_default = {
       return new Response(`Worker error: ${msg}`, { status: 500, headers: cors });
     }
 
-    // Store in Cloudflare edge cache (non-blocking)
-    ctx.waitUntil(cfCache.put(cacheKey, response.clone()));
+    // Store in Cloudflare edge cache (non-blocking); raw archives are never cached
+    if (!isRawArchive) {
+      ctx.waitUntil(cfCache.put(cacheKey, response.clone()));
+    }
     return response;
   }
 };
