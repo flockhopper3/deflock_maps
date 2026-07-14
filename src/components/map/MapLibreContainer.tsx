@@ -55,6 +55,8 @@ import { DensityLayers } from './layers/DensityLayers';
 import { NetworkLayers } from './layers/NetworkLayers';
 import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
+import { CameraTileLayers } from './layers/CameraTileLayers';
+import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
 
@@ -212,22 +214,21 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const isNetworkMode = appMode === 'network';
   const isMapMode = appMode === 'map';
   const mapModeViz = useMapModeStore(s => s.visualization);
-  const activeView = useMapModeStore(s => s.activeView);
   const setActiveView = useMapModeStore(s => s.setActiveView);
   const isHeatmapMode = isExploreMode && mapVisualization === 'heatmap';
   const isDotsMode = isExploreMode && mapVisualization === 'dots';
+  const { renderMode } = useCameraRenderMode();
+  const isTilesMode = renderMode === 'tiles';
   // Only render camera markers + direction cones when needed.
-  // In map-mode auto, both heatmap & markers are mounted — crossfade opacity handles
-  // the transition seamlessly. For explicit heatmap/clusters/individual selections,
-  // only the chosen layer is shown so they never overlap.
+  // Map-mode auto no longer crossfades heatmap→markers; heatmap is only shown
+  // when explicitly selected (isMapModeHeatmap below).
   // In explore mode, auto-show markers when zoomed past 13 (heatmap crossfades out 13-14),
   // or when the user explicitly toggles "Show Markers" at any zoom.
   // In density mode, hide camera markers entirely to keep choropleth clean.
-  const isMapModeAuto = isMapMode && mapModeViz === 'auto';
-  const showCameraMarkers = !isNetworkMode && !isDensityMode && (
+  const isMapModeHeatmap = isMapMode && mapModeViz === 'heatmap';
+  const showCameraMarkers = !isNetworkMode && !isDensityMode && !isMapModeHeatmap && (
     appMode === 'route'
-    || isMapModeAuto
-    || (isMapMode && activeView !== 'heatmap')
+    || isMapMode
     || (isHeatmapMode && (heatmapSettings.showMarkers || zoom >= 13))
     || (isDotsMode && (dotDensitySettings.showMarkers || zoom >= 13))
   );
@@ -580,7 +581,39 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     };
   }, [mapLoaded, dataVersion, geojsonData]);
 
+  // Tiles mode readiness: first successful camera-tiles load ⇒ markers ready.
+  // Repeated failures before any load ⇒ flip tilesFailed (geojson fallback).
+  useEffect(() => {
+    if (!mapLoaded || renderMode !== 'tiles') return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
 
+    let tileLoadSeen = false;
+    let errorCount = 0;
+
+    const onSourceData = (e: maplibregl.MapSourceDataEvent) => {
+      if (e.sourceId !== 'camera-tiles' || !e.isSourceLoaded) return;
+      tileLoadSeen = true;
+      setMarkersReady(true);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onError = (e: any) => {
+      if (e?.sourceId !== 'camera-tiles' && e?.source?.id !== 'camera-tiles') return;
+      if (tileLoadSeen) return;
+      errorCount += 1;
+      if (errorCount >= 3) {
+        console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
+        useCameraStore.getState().setTilesFailed(true);
+      }
+    };
+
+    map.on('sourcedata', onSourceData);
+    map.on('error', onError);
+    return () => {
+      map.off('sourcedata', onSourceData);
+      map.off('error', onError);
+    };
+  }, [mapLoaded, renderMode]);
 
   // Handle map move - batch center, zoom, and bounds in a single store update
   const onMove = useCallback((evt: ViewStateChangeEvent) => {
@@ -705,52 +738,31 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const feature = event.features?.[0];
     if (!feature) return;
 
-    const clusterId = feature.properties?.cluster_id;
-    
-    if (clusterId) {
-      // It's a cluster - zoom into it
-      const map = mapRef.current.getMap();
-      const source = map.getSource('cameras') as maplibregl.GeoJSONSource;
-      
-      source.getClusterExpansionZoom(clusterId).then((zoomLevel: number) => {
-        const geometry = feature.geometry as GeoJSON.Point;
-        map.easeTo({
-          center: geometry.coordinates as [number, number],
-          zoom: zoomLevel,
-          duration: 500,
-        });
-      }).catch((error) => {
-        if (import.meta.env.DEV) {
-          console.warn('[MapLibre] Cluster expansion failed:', error);
-        }
-      });
-    } else {
-      // It's an unclustered point - show popup
-      const props = feature.properties;
-      if (props) {
-        const camera: ALPRCamera = {
-          osmId: props.osmId,
-          osmType: props.osmType as 'node' | 'way',
-          lat: props.lat,
-          lon: props.lon,
-          operator: props.operator || undefined,
-          brand: props.brand || undefined,
-          direction: props.direction ?? undefined,
-          directionCardinal: props.directionCardinal || undefined,
-          surveillanceZone: props.surveillanceZone || undefined,
-          mountType: props.mountType || undefined,
-          ref: props.ref || undefined,
-          startDate: props.startDate || undefined,
-          wikimediaCommons: props.wikimediaCommons || undefined,
-        };
-        
-        setPopupInfo({
-          longitude: props.lon,
-          latitude: props.lat,
-          camera,
-        });
-      }
-    }
+    const props = feature.properties;
+    if (!props || props.osmId == null) return;
+
+    const [lon, lat] = (feature.geometry as GeoJSON.Point).coordinates;
+    const camera: ALPRCamera = {
+      osmId: Number(props.osmId),
+      osmType: (props.osmType as 'node' | 'way') || 'node',
+      lat: props.lat ?? lat,
+      lon: props.lon ?? lon,
+      operator: props.operator || undefined,
+      brand: props.brand || undefined,
+      direction: props.direction ?? undefined,
+      directionCardinal: props.directionCardinal || undefined,
+      surveillanceZone: props.surveillanceZone || undefined,
+      mountType: props.mountType || undefined,
+      ref: props.ref || undefined,
+      startDate: props.startDate || undefined,
+      wikimediaCommons: props.wikimediaCommons || undefined,
+    };
+
+    setPopupInfo({
+      longitude: camera.lon,
+      latitude: camera.lat,
+      camera,
+    });
   }, [pickingLocation, setPickedLocation, isDensityMode, isNetworkMode]);
 
   // Cursor handling - crosshair when adding waypoints or picking location
@@ -986,9 +998,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         : isDensityMode
           ? ['density-states-fill', 'density-counties-fill', 'density-states-extrusion', 'density-counties-extrusion']
           : showCameraMarkers
-            ? (isMapMode && activeView === 'individual')
-              ? ['unclustered-point']
-              : ['clusters', 'unclustered-point']
+            ? (isTilesMode ? ['camera-tile-points'] : ['unclustered-point'])
             : []}
       attributionControl={false}
       // Removed reuseMaps to avoid stale reused instances
@@ -999,23 +1009,24 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
       {/* Explore visualization layers */}
       {isHeatmapMode && <HeatmapLayers />}
-      {isMapMode && <HeatmapLayers visible={mapModeViz === 'auto' || activeView === 'heatmap'} />}
+      {isMapMode && <HeatmapLayers visible={mapModeViz === 'heatmap'} />}
       {isDotsMode && <DotDensityLayers />}
       {isDensityMode && <DensityLayers />}
       {isNetworkMode && <NetworkLayers />}
       {isMapMode && <BoundaryOverlayLayers />}
 
+      {/* Camera tiles — the default rendering path. Always mounted; hidden
+          when the geojson path (filters/timeline/heatmap/CA) is active. */}
+      <CameraTileLayers visible={isTilesMode && showCameraMarkers && showCameraLayer} />
 
-      {/* Direction cones + Camera markers — always mounted, visibility toggled.
-          In map-mode auto, crossfadeZoom makes markers fade in at zoom 9-11
-          while the heatmap fades out 9-14, giving a seamless GPU-driven transition. */}
+      {/* Legacy GeoJSON camera layers — empty until the dataset lazily loads;
+          becomes the active path for filters/timeline/heatmap/Canada. */}
       <CameraMarkerLayers
         cameras={cameraSource}
-        visible={showCameraMarkers}
-        clustered={isMapModeAuto ? false : (!isMapMode || activeView !== 'individual')}
+        visible={!isTilesMode && showCameraMarkers}
+        clustered={false}
         mapLoaded={mapLoaded}
         mapRef={mapRef}
-        crossfadeZoom={isMapModeAuto ? 9 : undefined}
       />
 
       {/* Routes (only in route mode) */}
