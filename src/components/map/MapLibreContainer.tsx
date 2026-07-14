@@ -300,7 +300,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   }, [markersReady, onMarkersReady]);
 
   // --- Timeline filter handler (imperative setFilter, no GeoJSON rebuild) ---
-  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'unclustered-glow', 'pulse-ring-outer', 'pulse-ring-inner'], []);
+  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'cameras-dots-lowzoom', 'pulse-ring-outer', 'pulse-ring-inner'], []);
   // Cache the last cutoff to skip redundant setFilter calls (same date = same filter).
   // With 71 Protomaps vector layers, every setFilter triggers an expensive render cycle.
   const lastCutoffRef = useRef<number>(0);
