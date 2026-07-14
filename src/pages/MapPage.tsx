@@ -217,13 +217,21 @@ export function MapPage() {
     }
   }, []);
 
-  // Map-init deadline: if markers don't become ready within 15s after cameras
-  // load, treat the map init as failed and surface the existing error UI
-  // (Try Again + Legacy Maps Link). The inner retry pipeline in
-  // MapLibreContainer keeps event listeners attached for the full duration,
-  // so a successful late init before the deadline still clears markersReady.
+  const { needsGeojson } = useCameraRenderMode();
+
+  // Map-init deadline: if markers don't become ready within 15s, treat the
+  // map init as failed and surface the existing error UI (Try Again + Legacy
+  // Maps Link). Arms on either rendering path:
+  // - geojson: after the dataset is hydrated (isInitialized && cameras)
+  // - tiles: immediately (!needsGeojson) — a silently stalled pmtiles load
+  //   emits neither sourcedata nor 'error' events, so without this the
+  //   loading screen would spin forever with no retry UI.
+  // The inner retry pipeline in MapLibreContainer keeps event listeners
+  // attached for the full duration, so a successful late init before the
+  // deadline still clears markersReady (which also clears this timer).
   useEffect(() => {
-    if (isInitialized && cameras.length > 0 && !markersReady && !mapInitError) {
+    const watchdogArmed = !needsGeojson || (isInitialized && cameras.length > 0);
+    if (watchdogArmed && !markersReady && !mapInitError) {
       mapInitDeadlineRef.current = setTimeout(() => {
         if (!markersReady) {
           setMapInitError('Map failed to initialize. Please try again.');
@@ -239,7 +247,7 @@ export function MapPage() {
         }
       };
     }
-  }, [isInitialized, cameras.length, markersReady, mapInitError]);
+  }, [needsGeojson, isInitialized, cameras.length, markersReady, mapInitError]);
 
   // Handle markers ready callback from MapLibreView
   const handleMarkersReady = useCallback((ready: boolean) => {
@@ -280,8 +288,6 @@ export function MapPage() {
       // Error handling done in store
     }
   }, [retryCameraLoad]);
-
-  const { needsGeojson } = useCameraRenderMode();
 
   // Tiles mode: the map is "ready" when the tile source has rendered
   // (markersReady). The JSON dataset only gates readiness when a feature
