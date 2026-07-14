@@ -1,4 +1,4 @@
-import { StrictMode, Suspense, lazy, useEffect } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
@@ -6,9 +6,9 @@ import { ErrorBoundary } from './components/common';
 import { useCameraStore } from './store/cameraStore';
 import './index.css';
 
-// Seed the camera country from the URL before PreloadManager starts the
-// background fetch, so a ?country=ca link downloads only the Canadian dataset.
-// (MapPage seeds it too, but it's lazy-loaded and can mount after the preload.)
+// Seed the camera country from the URL before anything triggers the lazy
+// camera JSON load, so a ?country=ca link downloads only the Canadian dataset.
+// (MapPage seeds it too, but it's lazy-loaded and can mount after this runs.)
 if (new URLSearchParams(window.location.search).get('country') === 'ca') {
   useCameraStore.setState({ country: 'ca' });
 }
@@ -66,42 +66,11 @@ function PageLoader() {
   );
 }
 
-/**
- * PreloadManager - Starts camera data fetch in the background.
- * Uses requestIdleCallback to avoid blocking user interactions.
- */
-function PreloadManager() {
-  const preloadCameras = useCameraStore((state) => state.preloadCameras);
-  const isInitialized = useCameraStore((state) => state.isInitialized);
-
-  useEffect(() => {
-    if (!isInitialized) {
-      // Start camera fetch immediately — no idle delay.
-      // The map loads tiles in parallel, so no reason to wait.
-      preloadCameras();
-    }
-  }, [isInitialized, preloadCameras]);
-
-  useEffect(() => {
-    if (!document.querySelector('link[href="/cameras-us.json"]')) {
-      const prefetchLink = document.createElement('link');
-      prefetchLink.rel = 'prefetch';
-      prefetchLink.href = '/cameras-us.json';
-      prefetchLink.as = 'fetch';
-      prefetchLink.crossOrigin = 'anonymous';
-      document.head.appendChild(prefetchLink);
-    }
-  }, []);
-
-  return null;
-}
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <HelmetProvider>
         <BrowserRouter>
-          <PreloadManager />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<MapPage />} />

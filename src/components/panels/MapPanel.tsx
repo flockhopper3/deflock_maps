@@ -24,10 +24,8 @@ const MOUNT_TYPES = [
 ] as const;
 
 const CAMERA_VIEW_OPTIONS: { id: MapVisualization; label: string; description: string }[] = [
-  { id: 'auto', label: 'Auto', description: 'Zoom-based transitions' },
+  { id: 'auto', label: 'Auto', description: 'Dots that sharpen as you zoom' },
   { id: 'heatmap', label: 'Heatmap', description: 'Density blobs' },
-  { id: 'clusters', label: 'Clusters', description: 'Grouped markers' },
-  { id: 'individual', label: 'Individual', description: 'All camera points' },
 ];
 
 const BRAND_COLORS = [
@@ -351,6 +349,46 @@ function CheckboxGroup({
   );
 }
 
+/**
+ * Filters need the full dataset (brand/operator lists). Mounts only when the
+ * Filters section is expanded (Section renders children lazily), so this is
+ * the lazy-load trigger for the JSON download.
+ */
+function FilterDataGate({ children }: { children: React.ReactNode }) {
+  const isInitialized = useCameraStore((s) => s.isInitialized);
+  const loadPhase = useCameraStore((s) => s.loadPhase);
+  const ensureCamerasLoaded = useCameraStore((s) => s.ensureCamerasLoaded);
+  const retryCameraLoad = useCameraStore((s) => s.retryCameraLoad);
+
+  useEffect(() => {
+    void ensureCamerasLoaded().catch(() => {});
+  }, [ensureCamerasLoaded]);
+
+  if (!isInitialized) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-6">
+        {loadPhase === 'error' ? (
+          <>
+            <span className="text-xs text-dark-400">Couldn't load camera data</span>
+            <button
+              onClick={() => void retryCameraLoad().catch(() => {})}
+              className="text-xs text-accent hover:underline"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
+            <span className="text-xs text-dark-400">Loading camera data…</span>
+          </>
+        )}
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 // ─── MapPanelContent ────────────────────────────────────────────────────────
 export function MapPanelContent() {
   const filters = useCameraStore((s) => s.filters);
@@ -647,54 +685,56 @@ export function MapPanelContent() {
 
       {/* Section: Filters */}
       <Section title="Filters" badge={appliedFilterCount} defaultOpen={false}>
-        <div className="space-y-1">
-          <SearchableMultiSelect
-            label="Brand"
-            items={availableBrands}
-            selected={pendingFilters.brands}
-            onToggle={(v) => togglePendingFilter('brands', v)}
-          />
-          <SearchableMultiSelect
-            label="Operator"
-            items={availableOperators}
-            selected={pendingFilters.operators}
-            onToggle={(v) => togglePendingFilter('operators', v)}
-            note="~28% of cameras have operator data"
-          />
-          <CheckboxGroup
-            label="Surveillance Zone"
-            options={SURVEILLANCE_ZONES}
-            selected={pendingFilters.surveillanceZones}
-            onToggle={(v) => togglePendingFilter('surveillanceZones', v)}
-          />
-          <CheckboxGroup
-            label="Mount Type"
-            options={MOUNT_TYPES}
-            selected={pendingFilters.mountTypes}
-            onToggle={(v) => togglePendingFilter('mountTypes', v)}
-          />
-        </div>
+        <FilterDataGate>
+          <div className="space-y-1">
+            <SearchableMultiSelect
+              label="Brand"
+              items={availableBrands}
+              selected={pendingFilters.brands}
+              onToggle={(v) => togglePendingFilter('brands', v)}
+            />
+            <SearchableMultiSelect
+              label="Operator"
+              items={availableOperators}
+              selected={pendingFilters.operators}
+              onToggle={(v) => togglePendingFilter('operators', v)}
+              note="~28% of cameras have operator data"
+            />
+            <CheckboxGroup
+              label="Surveillance Zone"
+              options={SURVEILLANCE_ZONES}
+              selected={pendingFilters.surveillanceZones}
+              onToggle={(v) => togglePendingFilter('surveillanceZones', v)}
+            />
+            <CheckboxGroup
+              label="Mount Type"
+              options={MOUNT_TYPES}
+              selected={pendingFilters.mountTypes}
+              onToggle={(v) => togglePendingFilter('mountTypes', v)}
+            />
+          </div>
 
-        {/* Apply / Reset buttons */}
-        <div className="flex gap-2 mt-3 pt-3 border-t border-dark-700/30">
-          <button
-            onClick={resetAllFilters}
-            className="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium text-dark-400 hover:text-dark-200 hover:bg-dark-800 transition-colors"
-          >
-            Reset
-          </button>
-          <button
-            onClick={applyPendingFilters}
-            disabled={pendingChangeCount === 0}
-            className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-150 ${
-              pendingChangeCount > 0
-                ? 'bg-accent text-white hover:bg-accent/90'
-                : 'bg-dark-800 text-dark-600 cursor-not-allowed'
-            }`}
-          >
-            Apply{pendingChangeCount > 0 ? ` (${pendingChangeCount})` : ''}
-          </button>
-        </div>
+          {/* Apply / Reset buttons */}
+          <div className="flex gap-2 mt-3 pt-3 border-t border-dark-700/30">
+            <button
+              onClick={resetAllFilters}
+              className="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium text-dark-400 hover:text-dark-200 hover:bg-dark-800 transition-colors"
+            >
+              Reset
+            </button>
+            <button
+              onClick={applyPendingFilters}
+              disabled={pendingChangeCount === 0}
+              className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-150 ${
+                pendingChangeCount > 0
+                  ? 'bg-accent text-white hover:bg-accent/90'
+                  : 'bg-dark-800 text-dark-600 cursor-not-allowed'
+              }`}
+            >
+              Apply{pendingChangeCount > 0 ? ` (${pendingChangeCount})` : ''}
+            </button>
+          </div>
+        </FilterDataGate>
       </Section>
 
       {/* Section: Heatmap Settings */}
