@@ -261,16 +261,37 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const updateVisibleCameras = useCallback(() => {
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
+
+    if (renderMode === 'tiles') {
+      // Approximate: rendered tile features, deduped (tile buffers duplicate
+      // edge features — osmId exists z11+, coordinates otherwise)
+      try {
+        const feats = map.queryRenderedFeatures(undefined, {
+          layers: ['camera-tile-dots', 'camera-tile-points'],
+        });
+        const seen = new Set<string>();
+        for (const f of feats) {
+          const key = f.properties?.osmId != null
+            ? String(f.properties.osmId)
+            : (f.geometry as GeoJSON.Point).coordinates.join(',');
+          seen.add(key);
+        }
+        useMapStore.getState().setTileViewCameraCount(seen.size);
+      } catch {
+        // layers not ready yet
+      }
+      return;
+    }
+
+    useMapStore.getState().setTileViewCameraCount(null);
     const bounds = map.getBounds();
-    
-    // Get visible cameras for bounds update (count is now shown in MapPage header)
     getCamerasInBounds(
       bounds.getNorth(),
       bounds.getSouth(),
       bounds.getEast(),
       bounds.getWest()
     );
-  }, [getCamerasInBounds]);
+  }, [getCamerasInBounds, renderMode]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -591,6 +612,15 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     let tileLoadSeen = false;
     let errorCount = 0;
 
+    // Seed check: if every camera-tiles tile already finished loading before
+    // this effect attached (e.g. a fast/cached load), the sourcedata event
+    // that would normally flip markersReady already fired and won't fire
+    // again — poll the source's current state once, synchronously.
+    if (map.getSource('camera-tiles') && map.isSourceLoaded('camera-tiles')) {
+      tileLoadSeen = true;
+      setMarkersReady(true);
+    }
+
     const onSourceData = (e: maplibregl.MapSourceDataEvent) => {
       if (e.sourceId !== 'camera-tiles' || !e.isSourceLoaded) return;
       tileLoadSeen = true;
@@ -632,8 +662,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       );
     }
 
-    updateVisibleCameras();
-  }, [setViewState, updateVisibleCameras]);
+    // Tile mode's viewport count is derived from queryRenderedFeatures, which
+    // is too hot to run on every onMove tick — it runs once per gesture via
+    // onMoveEnd instead.
+    if (renderMode !== 'tiles') {
+      updateVisibleCameras();
+    }
+  }, [setViewState, updateVisibleCameras, renderMode]);
 
   // Handle map load
   const onLoad = useCallback(() => {
@@ -988,6 +1023,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       style={{ width: '100%', height: '100%' }}
       mapStyle={mapStyle}
       onMove={onMove}
+      onMoveEnd={updateVisibleCameras}
       onLoad={onLoad}
       onClick={onClick}
       onMouseEnter={onMouseEnter}

@@ -15,6 +15,7 @@ import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/c
 import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
+import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
@@ -33,8 +34,7 @@ const MODE_LABELS: Record<AppMode, { icon: typeof Route; label: string }> = {
 };
 
 export function MapPage() {
-  const { 
-    ensureCamerasLoaded,
+  const {
     retryCameraLoad,
     isInitialized,
     cameras,
@@ -195,38 +195,27 @@ export function MapPage() {
     ? getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west).length
     : 0;
 
-  // Load cameras on mount - immediately, not waiting for idle
-  // Also resets UI state in case of stale state from previous navigation
+  // Reset UI state on mount (handles stale state from previous navigation)
+  // and probe for WebGL before doing any work — without it the map cannot
+  // render. Camera JSON is no longer fetched here: tiles are the default
+  // rendering path and need no JSON at all, and useCameraRenderMode()
+  // lazily triggers ensureCamerasLoaded() the moment a feature actually
+  // needs the dataset (filters/timeline/heatmap/Canada).
   useEffect(() => {
-    const mountTime = performance.now();
     if (import.meta.env.DEV) {
-      console.log('[MapPage] Component mounted, starting camera load...');
+      console.log('[MapPage] Component mounted');
     }
 
-    // Reset UI state on mount (handles navigation back scenarios)
     setMarkersReady(false);
     setMapInitError(null);
 
-    // Probe for WebGL before doing any work — without it the map cannot
-    // render and there is no point fetching the camera dataset.
     if (!isWebGLAvailable()) {
       setMapInitError(WEBGL_REQUIRED_MESSAGE);
       if (import.meta.env.DEV) {
         console.warn('[MapPage] WebGL not available — surfacing error UI');
       }
-      return;
     }
-
-    ensureCamerasLoaded()
-      .then(() => {
-        if (import.meta.env.DEV) {
-          console.log(`[MapPage] Camera load complete in ${(performance.now() - mountTime).toFixed(0)}ms`);
-        }
-      })
-      .catch((err) => {
-        console.error('Camera initialization failed:', err);
-      });
-  }, [ensureCamerasLoaded]);
+  }, []);
 
   // Map-init deadline: if markers don't become ready within 15s after cameras
   // load, treat the map init as failed and surface the existing error UI
@@ -292,14 +281,13 @@ export function MapPage() {
     }
   }, [retryCameraLoad]);
 
-  // Map progress: idle -> loading -> hydrating -> ready (for cameras)
-  // Then map also needs markers to be ready
-  const cameraProgress = error ? 'error' : loadPhase;
-  
-  // Show map only when cameras are fully loaded
-  const camerasReady = isInitialized && cameras.length > 0;
-  
-  // Full ready state: cameras loaded AND map markers rendered
+  const { needsGeojson } = useCameraRenderMode();
+
+  // Tiles mode: the map is "ready" when the tile source has rendered
+  // (markersReady). The JSON dataset only gates readiness when a feature
+  // actually needs it (filters/timeline/heatmap/Canada).
+  const cameraProgress = needsGeojson ? (error ? 'error' : loadPhase) : 'ready';
+  const camerasReady = needsGeojson ? (isInitialized && cameras.length > 0) : true;
   const isFullyReady = camerasReady && markersReady;
 
   // /timeline path: auto-play dot density animation once map is ready

@@ -20,6 +20,9 @@ interface MapStoreState extends MapState {
   // Timeline tick callback - MapLibreContainer registers its filter handler here
   _timelineTickCallback: ((dateStr: string) => void) | null;
 
+  /** Approximate camera count in view when rendering from tiles (null = geojson mode). */
+  tileViewCameraCount: number | null;
+
   // Actions
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
@@ -34,6 +37,7 @@ interface MapStoreState extends MapState {
   clearFlyToCommand: () => void;
   fitBounds: (bounds: MapBounds) => void;
   setTimelineTickCallback: (cb: ((dateStr: string) => void) | null) => void;
+  setTileViewCameraCount: (count: number | null) => void;
 }
 
 // Default center: Geographic center of the contiguous US
@@ -51,6 +55,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   showRouteLayer: true,
   flyToCommand: null,
   _timelineTickCallback: null,
+  tileViewCameraCount: null,
 
   setCenter: (center: [number, number]) => {
     set({ center });
@@ -101,5 +106,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   },
 
   setTimelineTickCallback: (cb) => set({ _timelineTickCallback: cb }),
+
+  setTileViewCameraCount: (count) => set({ tileViewCameraCount: count }),
 }));
 

@@ -3,15 +3,18 @@ import { COUNTRIES } from '../../services/cameraDataService';
 
 export function CameraStats() {
   const bounds = useMapStore(s => s.bounds);
+  const tileViewCameraCount = useMapStore(s => s.tileViewCameraCount);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const cameraCount = useCameraStore(s => s.cameras.length);
+  const isInitialized = useCameraStore(s => s.isInitialized);
   const isLoading = useCameraStore(s => s.isLoading);
   const country = useCameraStore(s => s.country);
-  
-  // Get cameras in actual map bounds
-  const viewCameraCount = bounds 
-    ? getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west).length
-    : 0;
+
+  const viewCameraCount = tileViewCameraCount !== null
+    ? tileViewCameraCount
+    : bounds
+      ? getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west).length
+      : 0;
 
   // Only show on desktop - mobile shows camera count in header
   return (
@@ -26,7 +29,7 @@ export function CameraStats() {
               <div className="w-3.5 h-3.5 rounded-full bg-primary"></div>
             )}
           </div>
-          
+
           {/* Camera count - fixed width to prevent jumping */}
           <div className="flex-1">
             {isLoading ? (
@@ -56,8 +59,10 @@ export function CameraStats() {
           <span className="text-sm font-medium text-dark-100 tabular-nums">
             {isLoading ? (
               <span className="text-dark-400">—</span>
-            ) : (
+            ) : isInitialized ? (
               cameraCount.toLocaleString()
+            ) : (
+              <span className="text-dark-400">—</span>
             )}
           </span>
         </div>
