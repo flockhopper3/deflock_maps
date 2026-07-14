@@ -2,17 +2,24 @@ import type { OverpassResponse, OverpassElement, GeoJSON } from '../types';
 import { queryOverpass } from '../lib/overpass';
 import { pointFeature, buildFeatureCollection } from '../lib/geojson';
 
-export const CAMERAS_OVERPASS_QUERY = `[out:json][timeout:300];
-area["ISO3166-1"="US"]->.us;
+export function buildCamerasQuery(isoCountry: string): string {
+  return `[out:json][timeout:300];
+area["ISO3166-1"="${isoCountry}"]->.country;
 (
-  node["man_made"="surveillance"]["surveillance:type"="ALPR"](area.us);
-  way["man_made"="surveillance"]["surveillance:type"="ALPR"](area.us);
+  node["man_made"="surveillance"]["surveillance:type"="ALPR"](area.country);
+  way["man_made"="surveillance"]["surveillance:type"="ALPR"](area.country);
 );
 out meta;
 >;
 out skel qt;`;
+}
 
-const MIN_CAMERA_COUNT = 50_000;
+export const CAMERAS_OVERPASS_QUERY = buildCamerasQuery('US');
+
+const MIN_CAMERA_COUNT_US = 50_000;
+// Canada's ALPR coverage in OSM is far sparser — guard against empty/broken
+// responses without blocking legitimate small datasets
+const MIN_CAMERA_COUNT_CA = 100;
 
 const CARDINALS: Record<string, number> = {
   N: 0, NNE: 22.5, NE: 45, ENE: 67.5,
@@ -168,12 +175,15 @@ export function transformOverpassToGeoJSON(
   return buildFeatureCollection(features);
 }
 
-export async function fetchCameras(): Promise<{
+async function fetchCamerasForCountry(
+  isoCountry: string,
+  minCount: number
+): Promise<{
   featureCollection: GeoJSON.FeatureCollection;
   featureCount: number;
 }> {
-  console.log('Fetching camera data from Overpass API...');
-  const data = await queryOverpass(CAMERAS_OVERPASS_QUERY);
+  console.log(`Fetching ${isoCountry} camera data from Overpass API...`);
+  const data = await queryOverpass(buildCamerasQuery(isoCountry));
 
   console.log(`Received ${data.elements.length} elements, transforming to GeoJSON...`);
   const featureCollection = transformOverpassToGeoJSON(data);
@@ -181,11 +191,25 @@ export async function fetchCameras(): Promise<{
 
   console.log(`Transformed to ${featureCount} camera features`);
 
-  if (featureCount < MIN_CAMERA_COUNT) {
+  if (featureCount < minCount) {
     throw new Error(
-      `Validation failed: only ${featureCount} cameras (minimum ${MIN_CAMERA_COUNT}). Skipping update.`
+      `Validation failed: only ${featureCount} cameras (minimum ${minCount}). Skipping update.`
     );
   }
 
   return { featureCollection, featureCount };
+}
+
+export async function fetchCameras(): Promise<{
+  featureCollection: GeoJSON.FeatureCollection;
+  featureCount: number;
+}> {
+  return fetchCamerasForCountry('US', MIN_CAMERA_COUNT_US);
+}
+
+export async function fetchCamerasCA(): Promise<{
+  featureCollection: GeoJSON.FeatureCollection;
+  featureCount: number;
+}> {
+  return fetchCamerasForCountry('CA', MIN_CAMERA_COUNT_CA);
 }

@@ -2,61 +2,122 @@ import type { ALPRCamera } from '../types';
 
 /**
  * Camera data is fetched from the data Worker at data.dontgetflocked.com
- * which serves gzipped GeoJSON from Cloudflare R2.
+ * which serves gzipped GeoJSON from Cloudflare R2, one dataset per country.
  *
- * The data contains ~62,000 US cameras as a GeoJSON FeatureCollection.
+ * The US dataset contains ~62,000 cameras as a GeoJSON FeatureCollection.
+ * Canada is fetched lazily, only when the user selects it.
  * Browser handles gzip decompression automatically via Content-Encoding header.
  */
 
-// Cache the loaded cameras
-let cachedCameras: ALPRCamera[] | null = null;
-let isLoading = false;
-let loadPromise: Promise<ALPRCamera[]> | null = null;
-let loadAttempts = 0;
+export type CameraCountry = 'us' | 'ca';
+
+export interface CountryConfig {
+  id: CameraCountry;
+  label: string;
+  flag: string;
+  dataUrl: string;
+  /** Default map view when switching to this country */
+  center: [number, number]; // [lat, lng]
+  zoom: number;
+}
+
+export const COUNTRIES: Record<CameraCountry, CountryConfig> = {
+  us: {
+    id: 'us',
+    label: 'United States',
+    flag: '🇺🇸',
+    dataUrl: 'https://data.dontgetflocked.com/cameras.geojson.gz',
+    center: [39.8283, -98.5795],
+    zoom: 4,
+  },
+  ca: {
+    id: 'ca',
+    label: 'Canada',
+    flag: '🇨🇦',
+    // Center sits east of the geographic middle so the Toronto–Montreal and
+    // Vancouver corridors (where the cameras are) both frame in
+    dataUrl: 'https://data.dontgetflocked.com/cameras-ca.geojson.gz',
+    center: [56.5, -96],
+    zoom: 3.3,
+  },
+};
+
+/** Country zoom levels are tuned for desktop; phones need to sit further out
+ *  (same 1.5-level offset the initial US view uses). */
+export function countryZoomForViewport(country: CameraCountry): number {
+  const mobileOffset =
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 1.5 : 0;
+  return COUNTRIES[country].zoom - mobileOffset;
+}
+
+/** App modes that depend on US-only backends: the routing API, US census
+ *  boundary data, and the US agency sharing network. Map and Timeline run
+ *  off the loaded camera dataset and work for any country. */
+const US_ONLY_MODES = new Set(['route', 'density', 'network']);
+
+export function isModeAvailable(mode: string, country: CameraCountry): boolean {
+  return country === 'us' || !US_ONLY_MODES.has(mode);
+}
+
+// Per-country cache and in-flight load state
+interface CountryLoadState {
+  cachedCameras: ALPRCamera[] | null;
+  isLoading: boolean;
+  loadPromise: Promise<ALPRCamera[]> | null;
+  loadAttempts: number;
+}
+
+const loadStates: Record<CameraCountry, CountryLoadState> = {
+  us: { cachedCameras: null, isLoading: false, loadPromise: null, loadAttempts: 0 },
+  ca: { cachedCameras: null, isLoading: false, loadPromise: null, loadAttempts: 0 },
+};
+
 const MAX_LOAD_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 
 /**
- * Load camera data from bundled JSON file
- * This is instantaneous after first load (cached)
+ * Load camera data for a country from the data Worker
+ * This is instantaneous after first load (cached per country)
  * Includes retry logic for network failures
  */
-export async function loadBundledCameras(): Promise<ALPRCamera[]> {
+export async function loadBundledCameras(country: CameraCountry = 'us'): Promise<ALPRCamera[]> {
+  const state = loadStates[country];
+
   // Return cached data if available
-  if (cachedCameras && cachedCameras.length > 0) {
+  if (state.cachedCameras && state.cachedCameras.length > 0) {
     if (import.meta.env.DEV) {
-      console.log(`[CameraService] Returning ${cachedCameras.length} cached cameras`);
+      console.log(`[CameraService] Returning ${state.cachedCameras.length} cached ${country} cameras`);
     }
-    return cachedCameras;
+    return state.cachedCameras;
   }
-  
+
   // Return existing promise if already loading (prevents race conditions)
-  if (isLoading && loadPromise) {
+  if (state.isLoading && state.loadPromise) {
     if (import.meta.env.DEV) {
-      console.log('[CameraService] Already loading, returning existing promise');
+      console.log(`[CameraService] Already loading ${country}, returning existing promise`);
     }
-    return loadPromise;
+    return state.loadPromise;
   }
-  
+
   // Set loading state BEFORE creating promise (synchronous, prevents race condition)
-  isLoading = true;
-  loadAttempts = 0;
-  
+  state.isLoading = true;
+  state.loadAttempts = 0;
+
   if (import.meta.env.DEV) {
-    console.log('[CameraService] Starting camera data load...');
+    console.log(`[CameraService] Starting ${country} camera data load...`);
   }
-  
-  loadPromise = (async () => {
+
+  state.loadPromise = (async () => {
     const startTime = performance.now();
-    
+
     let lastError: Error | null = null;
-    
-    while (loadAttempts < MAX_LOAD_ATTEMPTS) {
-      loadAttempts++;
-      
+
+    while (state.loadAttempts < MAX_LOAD_ATTEMPTS) {
+      state.loadAttempts++;
+
       try {
         // Fetch from data Worker — browser handles gzip decompression automatically
-        const response = await fetch('https://data.dontgetflocked.com/cameras.geojson.gz', {
+        const response = await fetch(COUNTRIES[country].dataUrl, {
           headers: {
             'Accept': 'application/geo+json, application/json',
           },
@@ -133,51 +194,52 @@ export async function loadBundledCameras(): Promise<ALPRCamera[]> {
         
         const loadTime = (performance.now() - startTime).toFixed(0);
         if (import.meta.env.DEV) {
-          console.log(`[CameraService] Loaded ${cameras.length} cameras in ${loadTime}ms`);
+          console.log(`[CameraService] Loaded ${cameras.length} ${country} cameras in ${loadTime}ms`);
         }
-        
+
         // Cache the data (set before clearing loading state)
-        cachedCameras = cameras;
-        loadAttempts = 0;
-        isLoading = false;
-        
+        state.cachedCameras = cameras;
+        state.loadAttempts = 0;
+        state.isLoading = false;
+
         return cameras;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.warn(`[CameraService] Load attempt ${loadAttempts}/${MAX_LOAD_ATTEMPTS} failed:`, lastError.message);
-        
-        if (loadAttempts < MAX_LOAD_ATTEMPTS) {
+        console.warn(`[CameraService] ${country} load attempt ${state.loadAttempts}/${MAX_LOAD_ATTEMPTS} failed:`, lastError.message);
+
+        if (state.loadAttempts < MAX_LOAD_ATTEMPTS) {
           // Wait before retry with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * loadAttempts));
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * state.loadAttempts));
         }
       }
     }
-    
+
     // All attempts failed - clean up state
-    isLoading = false;
-    loadPromise = null;
-    cachedCameras = null;
+    state.isLoading = false;
+    state.loadPromise = null;
+    state.cachedCameras = null;
     throw lastError || new Error('Failed to load camera data after multiple attempts');
   })();
-  
-  return loadPromise;
+
+  return state.loadPromise;
 }
 
 /**
  * Retry loading cameras (for UI retry buttons)
  */
-export async function retryLoadCameras(): Promise<ALPRCamera[]> {
+export async function retryLoadCameras(country: CameraCountry = 'us'): Promise<ALPRCamera[]> {
   if (import.meta.env.DEV) {
-    console.log('[CameraService] Retry requested, clearing state...');
+    console.log(`[CameraService] Retry requested for ${country}, clearing state...`);
   }
-  
-  // Clear all state to allow fresh retry
-  loadPromise = null;
-  isLoading = false;
-  cachedCameras = null;
-  loadAttempts = 0;
-  
-  return loadBundledCameras();
+
+  // Clear country state to allow fresh retry
+  const state = loadStates[country];
+  state.loadPromise = null;
+  state.isLoading = false;
+  state.cachedCameras = null;
+  state.loadAttempts = 0;
+
+  return loadBundledCameras(country);
 }
 
 /**
@@ -221,8 +283,10 @@ export function getUniqueBrands(cameras: ALPRCamera[]): string[] {
  * Clear cached camera data (for testing/refresh)
  */
 export function clearCameraCache(): void {
-  cachedCameras = null;
-  loadPromise = null;
-  isLoading = false;
+  for (const state of Object.values(loadStates)) {
+    state.cachedCameras = null;
+    state.loadPromise = null;
+    state.isLoading = false;
+  }
 }
 

@@ -1,6 +1,8 @@
 import { useMapStore } from '@/store/mapStore';
 import { useAppModeStore } from '@/store/appModeStore';
+import { useCameraStore } from '@/store/cameraStore';
 import type { AppMode } from '@/store/appModeStore';
+import type { CameraCountry } from '@/services/cameraDataService';
 
 interface ViewportParams {
   lat: number;
@@ -53,7 +55,23 @@ export function writeViewportParams(params: URLSearchParams): URLSearchParams {
     params.delete('viz');
   }
 
+  const { country } = useCameraStore.getState();
+  if (country !== 'us') {
+    params.set('country', country);
+  } else {
+    params.delete('country');
+  }
+
   return params;
+}
+
+/**
+ * Parse the country param from URL search params. Returns null when absent
+ * or not a supported country.
+ */
+export function parseCountryFromURL(searchParams: URLSearchParams): CameraCountry | null {
+  const country = searchParams.get('country');
+  return country === 'ca' ? 'ca' : null;
 }
 
 /**

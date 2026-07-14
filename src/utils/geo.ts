@@ -18,8 +18,6 @@ export interface SpatialGrid {
   gridSize: number;
 }
 
-let cachedSpatialGrid: SpatialGrid | null = null;
-
 function getCellKey(lat: number, lon: number): string {
   const gridLat = Math.floor(lat / GRID_SIZE);
   const gridLon = Math.floor(lon / GRID_SIZE);
@@ -30,10 +28,8 @@ function getCellKey(lat: number, lon: number): string {
  * Build a spatial grid from cameras for fast lookups
  */
 export function buildSpatialGrid(cameras: ALPRCamera[]): SpatialGrid {
-  if (cachedSpatialGrid && cachedSpatialGrid.cells.size > 0) {
-    return cachedSpatialGrid;
-  }
-
+  // No caching here: the store holds the built grid, and the input dataset
+  // changes when the user switches countries
   const cells = new Map<string, ALPRCamera[]>();
 
   for (const camera of cameras) {
@@ -46,8 +42,7 @@ export function buildSpatialGrid(cameras: ALPRCamera[]): SpatialGrid {
     }
   }
 
-  cachedSpatialGrid = { cells, gridSize: GRID_SIZE };
-  return cachedSpatialGrid;
+  return { cells, gridSize: GRID_SIZE };
 }
 
 /**
@@ -87,12 +82,6 @@ export function getCamerasInBoundsFromGrid(
   return result;
 }
 
-/**
- * Clear cached spatial grid (for testing or when data changes)
- */
-export function clearSpatialGridCache(): void {
-  cachedSpatialGrid = null;
-}
 
 /**
  * Calculate the Haversine distance between two points in meters

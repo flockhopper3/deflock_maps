@@ -33,6 +33,16 @@ function GeolocateControl({ position }: { position: string }) {
   );
   return null;
 }
+// Attribution lives bottom-left on mobile so the bottom-right corner holds only
+// the geolocate/layers stack (their offsets assume nothing sits below them);
+// desktop keeps it bottom-right under the zoom controls.
+function AttributionCtl({ position }: { position: 'bottom-left' | 'bottom-right' }) {
+  useControl(
+    ({ mapLib }) => new (mapLib as typeof maplibregl).AttributionControl({}),
+    { position },
+  );
+  return null;
+}
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -156,6 +166,18 @@ interface MapLibreViewProps {
 export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   function MapLibreView({ onMarkersReady, mapKey }, ref) {
   const mapRef = useRef<MapRef>(null);
+
+  // Match the app's lg breakpoint so the attribution corner follows the layout
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const onChange = (e: MediaQueryListEvent) => setIsMobileLayout(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const attribPosition = isMobileLayout ? 'bottom-left' as const : 'bottom-right' as const;
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
   const lastFlyToRef = useRef<number>(0);
@@ -969,11 +991,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
               ? ['unclustered-point']
               : ['clusters', 'unclustered-point']
             : []}
-      attributionControl={{}}
+      attributionControl={false}
       // Removed reuseMaps to avoid stale reused instances
     >
       <NavigationControl position="bottom-right" showCompass={false} />
       <GeolocateControl position="bottom-right" />
+      <AttributionCtl key={attribPosition} position={attribPosition} />
 
       {/* Explore visualization layers */}
       {isHeatmapMode && <HeatmapLayers />}

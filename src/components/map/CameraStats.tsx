@@ -1,10 +1,12 @@
 import { useMapStore, useCameraStore } from '../../store';
+import { COUNTRIES } from '../../services/cameraDataService';
 
 export function CameraStats() {
   const bounds = useMapStore(s => s.bounds);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const cameraCount = useCameraStore(s => s.cameras.length);
   const isLoading = useCameraStore(s => s.isLoading);
+  const country = useCameraStore(s => s.country);
   
   // Get cameras in actual map bounds
   const viewCameraCount = bounds 
@@ -48,7 +50,9 @@ export function CameraStats() {
 
         {/* Total cameras badge */}
         <div className="mt-3 pt-3 border-t border-dark-700/50 flex items-center justify-between">
-          <span className="text-xs text-dark-200">Total US</span>
+          <span className="text-xs text-dark-200">
+            Total {country === 'us' ? 'US' : COUNTRIES[country].label}
+          </span>
           <span className="text-sm font-medium text-dark-100 tabular-nums">
             {isLoading ? (
               <span className="text-dark-400">—</span>

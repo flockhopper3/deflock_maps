@@ -6,6 +6,13 @@ import { ErrorBoundary } from './components/common';
 import { useCameraStore } from './store/cameraStore';
 import './index.css';
 
+// Seed the camera country from the URL before PreloadManager starts the
+// background fetch, so a ?country=ca link downloads only the Canadian dataset.
+// (MapPage seeds it too, but it's lazy-loaded and can mount after the preload.)
+if (new URLSearchParams(window.location.search).get('country') === 'ca') {
+  useCameraStore.setState({ country: 'ca' });
+}
+
 // Polyfill for Safari (doesn't support requestIdleCallback)
 if (typeof window !== 'undefined' && !window.requestIdleCallback) {
   window.requestIdleCallback = (callback: IdleRequestCallback): number => {

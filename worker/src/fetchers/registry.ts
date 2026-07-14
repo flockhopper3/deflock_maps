@@ -1,4 +1,4 @@
-import { fetchCameras } from './cameras';
+import { fetchCameras, fetchCamerasCA } from './cameras';
 import type { GeoJSON } from '../types';
 
 interface RegisteredFetcher {
@@ -14,6 +14,12 @@ const fetchers: RegisteredFetcher[] = [
     r2Key: 'cameras.geojson.gz',
     source: 'overpass',
     fetch: fetchCameras,
+  },
+  {
+    name: 'cameras-ca',
+    r2Key: 'cameras-ca.geojson.gz',
+    source: 'overpass',
+    fetch: fetchCamerasCA,
   },
 ];
 

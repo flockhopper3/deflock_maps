@@ -10,7 +10,8 @@ import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
 import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
-import { parseViewportFromURL, writeViewportParams } from '@/utils/urlParams';
+import { parseViewportFromURL, parseCountryFromURL, writeViewportParams } from '@/utils/urlParams';
+import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
@@ -40,6 +41,7 @@ export function MapPage() {
     error,
     getCamerasInBounds,
     loadPhase,
+    country,
   } = useCameraStore();
   const bounds = useMapStore(s => s.bounds);
   const center = useMapStore(s => s.center);
@@ -60,12 +62,25 @@ export function MapPage() {
   const isExploreMode = appMode === 'explore';
   const hasAutoPlayed = useRef(false);
 
-  // Seed map viewport from URL params once, before MapLibreContainer mounts.
-  // useState initializer runs once — sets store synchronously so initialViewState picks it up.
+  // Seed map viewport + country from URL params once, before MapLibreContainer
+  // mounts and before the camera load starts (so a ?country=ca link fetches
+  // the Canadian dataset directly and never downloads the US one).
+  // useState initializer runs once — sets stores synchronously.
   useState(() => {
-    const viewport = parseViewportFromURL(new URLSearchParams(window.location.search));
+    const params = new URLSearchParams(window.location.search);
+    const urlCountry = parseCountryFromURL(params);
+    if (urlCountry) {
+      useCameraStore.setState({ country: urlCountry });
+    }
+    const viewport = parseViewportFromURL(params);
     if (viewport) {
       useMapStore.setState({ center: [viewport.lat, viewport.lng], zoom: viewport.zoom });
+    } else if (urlCountry) {
+      // No explicit viewport — start on the linked country instead of the US default
+      useMapStore.setState({
+        center: COUNTRIES[urlCountry].center,
+        zoom: countryZoomForViewport(urlCountry),
+      });
     }
   });
 
@@ -76,7 +91,7 @@ export function MapPage() {
       setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
     }, 500);
     return () => clearTimeout(t);
-  }, [center, zoom, appMode, mapVisualization, setSearchParams]);
+  }, [center, zoom, appMode, mapVisualization, country, setSearchParams]);
 
   // Responsive breakpoint — single source of truth for timeline bar layout
   // Never go mobile in embed mode — the iframe width should not affect layout
@@ -156,6 +171,14 @@ export function MapPage() {
       setSearchParams({ mode: 'network' }, { replace: true });
     }
   }, [setAppMode, setSearchParams, navigate]);
+
+  // US-only modes (Route/Analysis/Network): bounce back to Map when Canada
+  // is active — covers the country switcher, deep links, and URL edits
+  useEffect(() => {
+    if (!isModeAvailable(appMode, country)) {
+      handleSetAppMode('map');
+    }
+  }, [appMode, country, handleSetAppMode]);
 
   // Mobile menu state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -313,7 +336,7 @@ export function MapPage() {
           camerasReady={camerasReady}
         />
       )}
-      <div className={`map-page h-screen w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''}`}>
+      <div className={`map-page h-screen w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''} ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
         {!isEmbed && (
         <header className="h-12 bg-dark-900 border-b border-dark-600 flex items-center z-50 shrink-0">
@@ -342,23 +365,30 @@ export function MapPage() {
 
               {/* Desktop: Mode tabs - editorial underline style */}
               <nav className="hidden lg:flex items-center gap-6" aria-label="App modes">
-                {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { label }]) => (
-                  <button
-                    key={mode}
-                    onClick={() => handleSetAppMode(mode)}
-                    className={`relative text-sm font-medium uppercase tracking-widest pb-1 transition-colors duration-150 ${
-                      appMode === mode
-                        ? 'text-accent'
-                        : 'text-dark-200 hover:text-white'
-                    }`}
-                    aria-current={appMode === mode ? 'page' : undefined}
-                  >
-                    {label}
-                    {appMode === mode && (
-                      <span className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-accent" />
-                    )}
-                  </button>
-                ))}
+                {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { label }]) => {
+                  const available = isModeAvailable(mode, country);
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => available && handleSetAppMode(mode)}
+                      disabled={!available}
+                      title={available ? undefined : 'Available in the US only'}
+                      className={`relative text-sm font-medium uppercase tracking-widest pb-1 transition-colors duration-150 ${
+                        appMode === mode
+                          ? 'text-accent'
+                          : available
+                            ? 'text-dark-200 hover:text-white'
+                            : 'text-dark-600 cursor-not-allowed'
+                      }`}
+                      aria-current={appMode === mode ? 'page' : undefined}
+                    >
+                      {label}
+                      {appMode === mode && (
+                        <span className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-accent" />
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
 
               {/* Mobile: Camera count + hamburger */}
@@ -393,24 +423,36 @@ export function MapPage() {
             aria-label="Mobile navigation"
           >
             <div className="px-4 py-2 space-y-0.5">
-              {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { icon: Icon, label }]) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    handleSetAppMode(mode);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 ${
-                    appMode === mode
-                      ? 'text-accent'
-                      : 'text-dark-300 hover:text-dark-100'
-                  }`}
-                  aria-current={appMode === mode ? 'page' : undefined}
-                >
-                  <Icon className="w-4 h-4" aria-hidden="true" />
-                  <span>{label}</span>
-                </button>
-              ))}
+              {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { icon: Icon, label }]) => {
+                const available = isModeAvailable(mode, country);
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      if (!available) return;
+                      handleSetAppMode(mode);
+                      setMobileMenuOpen(false);
+                    }}
+                    disabled={!available}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 ${
+                      appMode === mode
+                        ? 'text-accent'
+                        : available
+                          ? 'text-dark-300 hover:text-dark-100'
+                          : 'text-dark-600'
+                    }`}
+                    aria-current={appMode === mode ? 'page' : undefined}
+                  >
+                    <Icon className="w-4 h-4" aria-hidden="true" />
+                    <span>{label}</span>
+                    {!available && (
+                      <span className="ml-auto text-[10px] font-medium text-dark-500 border border-dark-600 rounded px-1.5 py-0.5">
+                        US only
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <div className="border-t border-dark-600 mt-1 pt-1 px-4 pb-2 space-y-0.5">
               <ShareButton variant="menu-item" />

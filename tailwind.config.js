@@ -72,8 +72,13 @@ export default {
       animation: {
         'fade-in': 'fadeIn 0.2s cubic-bezier(0.25, 1, 0.5, 1)',
         'slide-up': 'slideUp 0.2s cubic-bezier(0.25, 1, 0.5, 1)',
+        'nudge-up': 'nudgeUp 1.8s ease-in-out infinite',
       },
       keyframes: {
+        nudgeUp: {
+          '0%, 100%': { transform: 'translateY(1px)', opacity: '0.5' },
+          '50%': { transform: 'translateY(-2px)', opacity: '1' },
+        },
         fadeIn: {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
