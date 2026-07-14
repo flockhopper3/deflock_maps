@@ -159,6 +159,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
   const lastFlyToRef = useRef<number>(0);
+  const lastPickTimeRef = useRef(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [markersReady, setMarkersReady] = useState(false);
   const sourceDataVersion = useRef(0);
@@ -660,6 +661,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (pickingLocation) {
       // Ignore taps while the camera is animating or gliding (accidental picks)
       if (event.target.isMoving()) return;
+      // Debounce: a fast double-tap fires two click events even with
+      // double-tap zoom disabled — ignore the second pick.
+      const now = Date.now();
+      if (now - lastPickTimeRef.current < 400) return;
+      lastPickTimeRef.current = now;
       const { lng, lat } = event.lngLat;
       
       // Create location with coordinates first
@@ -756,8 +762,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
   }, [pickingLocation]);
 
-  // While picking, a double-tap must not zoom (its first tap would register
-  // as an accidental selection on touch devices).
+  // While picking, disable double-tap zoom so a double-tap doesn't lurch the
+  // camera; the pick debounce in onClick handles the duplicate click events
+  // a double-tap still fires.
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
