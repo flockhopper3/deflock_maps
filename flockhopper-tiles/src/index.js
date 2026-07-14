@@ -957,7 +957,10 @@ function corsHeaders(origin, allowedOrigins) {
     "Access-Control-Allow-Headers",
     "Range, If-Match, If-None-Match"
   );
-  headers.set("Access-Control-Expose-Headers", "ETag");
+  headers.set(
+    "Access-Control-Expose-Headers",
+    "ETag, Content-Range, Content-Length, Accept-Ranges"
+  );
   return headers;
 }
 __name(corsHeaders, "corsHeaders");
@@ -995,76 +998,139 @@ var index_default = {
     const path = url.pathname;
     let response;
 
-    if (path.startsWith("/fonts/") || path.startsWith("/sprites/")) {
-      const key = decodeURIComponent(path.slice(1));
-      const obj = await env.BUCKET.get(key);
-      if (!obj) {
+    try {
+      if (path.startsWith("/fonts/") || path.startsWith("/sprites/")) {
+        const key = decodeURIComponent(path.slice(1));
+        const obj = await env.BUCKET.get(key);
+        if (!obj) {
+          return new Response("Not found", { status: 404, headers: cors });
+        }
+        const headers = new Headers(cors);
+        headers.set("Content-Type", staticContentType(key));
+        headers.set("Cache-Control", "public, max-age=604800");
+        headers.set("ETag", obj.etag);
+        response = new Response(obj.body, { status: 200, headers });
+      } else if ((rawMatch = path.match(/^\/([^/]+)\.pmtiles$/))) {
+        var rawMatch;
+        const key = `${rawMatch[1]}.pmtiles`;
+
+        if (request.method === "HEAD") {
+          const head = await env.BUCKET.head(key);
+          if (!head) return new Response("Not found", { status: 404, headers: cors });
+          const headers = new Headers(cors);
+          headers.set("Content-Type", "application/octet-stream");
+          headers.set("Content-Length", String(head.size));
+          headers.set("Accept-Ranges", "bytes");
+          headers.set("ETag", head.httpEtag);
+          return new Response(null, { status: 200, headers });
+        }
+
+        const rangeHeader = request.headers.get("Range");
+        if (rangeHeader) {
+          // Support bytes=a-b, bytes=a-, and bytes=-n (suffix)
+          const m = rangeHeader.match(/^bytes=(\d*)-(\d*)$/);
+          if (!m || (m[1] === "" && m[2] === "")) {
+            return new Response("Invalid range", { status: 416, headers: cors });
+          }
+          let r2range;
+          if (m[1] === "") {
+            r2range = { suffix: Number(m[2]) };
+          } else if (m[2] === "") {
+            r2range = { offset: Number(m[1]) };
+          } else {
+            r2range = { offset: Number(m[1]), length: Number(m[2]) - Number(m[1]) + 1 };
+          }
+          const obj = await env.BUCKET.get(key, { range: r2range });
+          if (!obj) return new Response("Not found", { status: 404, headers: cors });
+          const total = obj.size;
+          const start = m[1] === "" ? total - Number(m[2]) : Number(m[1]);
+          const end = m[1] !== "" && m[2] !== "" ? Math.min(Number(m[2]), total - 1) : total - 1;
+          const headers = new Headers(cors);
+          headers.set("Content-Type", "application/octet-stream");
+          headers.set("Content-Range", `bytes ${start}-${end}/${total}`);
+          headers.set("Content-Length", String(end - start + 1));
+          headers.set("Accept-Ranges", "bytes");
+          headers.set("ETag", obj.httpEtag);
+          headers.set("Cache-Control", "public, max-age=86400");
+          // 206 responses must NOT go through cfCache.put (throws on partial content)
+          return new Response(obj.body, { status: 206, headers });
+        }
+
+        const obj = await env.BUCKET.get(key);
+        if (!obj) return new Response("Not found", { status: 404, headers: cors });
+        const headers = new Headers(cors);
+        headers.set("Content-Type", "application/octet-stream");
+        headers.set("Content-Length", String(obj.size));
+        headers.set("Accept-Ranges", "bytes");
+        headers.set("ETag", obj.httpEtag);
+        headers.set("Cache-Control", "public, max-age=86400");
+        response = new Response(obj.body, { status: 200, headers });
+      } else if ((tileMatch = path.match(
+        /^\/([^/]+)\/(\d+)\/(\d+)\/(\d+)\.(mvt|pbf|png|jpg|jpeg|webp|avif)$/
+      ))) {
+        var tileMatch;
+        const [, name, zStr, xStr, yStr] = tileMatch;
+        const z = parseInt(zStr, 10);
+        const x2 = parseInt(xStr, 10);
+        const y = parseInt(yStr, 10);
+        const pmtilesKey = `${name}.pmtiles`;
+        const source = new R2Source(env.BUCKET, pmtilesKey);
+        const pmtiles = new w(source, CACHE, nativeDecompress);
+        const header = await pmtiles.getHeader();
+        const tile = await pmtiles.getZxy(z, x2, y);
+        if (!tile || !tile.data) {
+          return new Response("Tile not found", {
+            status: 404,
+            headers: cors
+          });
+        }
+        const headers = new Headers(cors);
+        headers.set("Content-Type", tileTypeToContentType(header.tileType));
+        headers.set("Cache-Control", "public, max-age=86400");
+        response = new Response(tile.data, { status: 200, headers });
+      } else if ((jsonMatch = path.match(/^\/([^/]+)\.json$/))) {
+        var jsonMatch;
+        const name = jsonMatch[1];
+        const pmtilesKey = `${name}.pmtiles`;
+        const source = new R2Source(env.BUCKET, pmtilesKey);
+        const pmtiles = new w(source, CACHE, nativeDecompress);
+        const header = await pmtiles.getHeader();
+        const metadata = await pmtiles.getMetadata();
+        const tileJson = {
+          tilejson: "3.0.0",
+          name,
+          scheme: "xyz",
+          tiles: [`${url.origin}/${name}/{z}/{x}/{y}.mvt`],
+          minzoom: header.minZoom,
+          maxzoom: header.maxZoom,
+          bounds: [
+            header.minLon,
+            header.minLat,
+            header.maxLon,
+            header.maxLat
+          ],
+          center: [header.centerLon, header.centerLat, header.centerZoom],
+          ...typeof metadata === "object" ? metadata : {}
+        };
+        const headers = new Headers(cors);
+        headers.set("Content-Type", "application/json");
+        headers.set("Cache-Control", "public, max-age=86400");
+        response = new Response(JSON.stringify(tileJson, null, 2), {
+          status: 200,
+          headers
+        });
+      } else {
+        return new Response(
+          "Not found. Routes: /{name}.pmtiles, /{name}/{z}/{x}/{y}.mvt, /{name}.json, /fonts/*, /sprites/*",
+          { status: 404, headers: cors }
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not found|does not exist/i.test(msg)) {
         return new Response("Not found", { status: 404, headers: cors });
       }
-      const headers = new Headers(cors);
-      headers.set("Content-Type", staticContentType(key));
-      headers.set("Cache-Control", "public, max-age=604800");
-      headers.set("ETag", obj.etag);
-      response = new Response(obj.body, { status: 200, headers });
-    } else if ((tileMatch = path.match(
-      /^\/([^/]+)\/(\d+)\/(\d+)\/(\d+)\.(mvt|pbf|png|jpg|jpeg|webp|avif)$/
-    ))) {
-      var tileMatch;
-      const [, name, zStr, xStr, yStr] = tileMatch;
-      const z = parseInt(zStr, 10);
-      const x2 = parseInt(xStr, 10);
-      const y = parseInt(yStr, 10);
-      const pmtilesKey = `${name}.pmtiles`;
-      const source = new R2Source(env.BUCKET, pmtilesKey);
-      const pmtiles = new w(source, CACHE, nativeDecompress);
-      const header = await pmtiles.getHeader();
-      const tile = await pmtiles.getZxy(z, x2, y);
-      if (!tile || !tile.data) {
-        return new Response("Tile not found", {
-          status: 404,
-          headers: cors
-        });
-      }
-      const headers = new Headers(cors);
-      headers.set("Content-Type", tileTypeToContentType(header.tileType));
-      headers.set("Cache-Control", "public, max-age=86400");
-      response = new Response(tile.data, { status: 200, headers });
-    } else if ((jsonMatch = path.match(/^\/([^/]+)\.json$/))) {
-      var jsonMatch;
-      const name = jsonMatch[1];
-      const pmtilesKey = `${name}.pmtiles`;
-      const source = new R2Source(env.BUCKET, pmtilesKey);
-      const pmtiles = new w(source, CACHE, nativeDecompress);
-      const header = await pmtiles.getHeader();
-      const metadata = await pmtiles.getMetadata();
-      const tileJson = {
-        tilejson: "3.0.0",
-        name,
-        scheme: "xyz",
-        tiles: [`${url.origin}/${name}/{z}/{x}/{y}.mvt`],
-        minzoom: header.minZoom,
-        maxzoom: header.maxZoom,
-        bounds: [
-          header.minLon,
-          header.minLat,
-          header.maxLon,
-          header.maxLat
-        ],
-        center: [header.centerLon, header.centerLat, header.centerZoom],
-        ...typeof metadata === "object" ? metadata : {}
-      };
-      const headers = new Headers(cors);
-      headers.set("Content-Type", "application/json");
-      headers.set("Cache-Control", "public, max-age=86400");
-      response = new Response(JSON.stringify(tileJson, null, 2), {
-        status: 200,
-        headers
-      });
-    } else {
-      return new Response(
-        "Not found. Routes: /{name}/{z}/{x}/{y}.mvt, /{name}.json, /fonts/*, /sprites/*",
-        { status: 404, headers: cors }
-      );
+      return new Response(`Worker error: ${msg}`, { status: 500, headers: cors });
     }
 
     // Store in Cloudflare edge cache (non-blocking)
