@@ -93,6 +93,10 @@ interface CameraState {
   // Active country dataset — Canada is fetched lazily on first selection
   country: CameraCountry;
   isCountrySwitching: boolean;
+  /** Set when the camera tile source fails repeatedly before ever loading —
+   *  forces the legacy GeoJSON rendering path as a fallback. */
+  tilesFailed: boolean;
+  setTilesFailed: (failed: boolean) => void;
   filters: CameraFilters;
   availableOperators: string[];
   availableBrands: string[];
@@ -151,6 +155,8 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   error: null,
   country: 'us',
   isCountrySwitching: false,
+  tilesFailed: false,
+  setTilesFailed: (failed: boolean) => set({ tilesFailed: failed }),
   filters: {
     operators: [],
     brands: [],
