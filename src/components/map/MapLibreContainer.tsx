@@ -67,12 +67,11 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { Protocol } from 'pmtiles';
+import { ensurePMTilesProtocol } from '../../services/cameraTilesService';
 
 const TILES_URL = "https://sanitas.deflock.org";
 
-const _pmtilesProtocol = new Protocol();
-maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
+ensurePMTilesProtocol();
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
 const FLAVOR_MAP: Record<MapTileStyleId, string> = {
