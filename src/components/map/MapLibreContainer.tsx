@@ -69,10 +69,12 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol } from '../../services/cameraTilesService';
+import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM } from '../../services/cameraTilesService';
 
-const TILES_URL = "https://sanitas.deflock.org";
+const TILES_URL = 'https://tiles.dontgetflocked.com';
 
+// Camera tiles still use the pmtiles:// protocol (raw archive + Range); only the
+// basemap moved back to the per-tile TileJSON route.
 ensurePMTilesProtocol();
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
@@ -108,7 +110,9 @@ function buildMapStyle(tileStyleId: MapTileStyleId): maplibregl.StyleSpecificati
     sources: {
       protomaps: {
         type: 'vector',
-        url: `pmtiles://${TILES_URL}/basemap.pmtiles`,
+        // TileJSON → per-tile /planet/{z}/{x}/{y}.mvt URLs. Unlike raw pmtiles
+        // Range requests, these are edge-cacheable (URL-keyed, no Range header).
+        url: `${TILES_URL}/planet.json`,
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
       },
     },
@@ -263,20 +267,32 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const map = mapRef.current.getMap();
 
     if (renderMode === 'tiles') {
-      // Approximate: rendered tile features, deduped (tile buffers duplicate
-      // edge features — osmId exists z11+, coordinates otherwise)
+      // Exact viewport count, straight from the rendered tiles — no dedup.
+      //
+      // Dedup used to be the whole game here, and it was the bug. The old key
+      // was osmId when present, else lng/lat; z0–10 tiles are built
+      // --exclude-all so below z11 there are no properties and it fell back to
+      // coordinates. Tile geometry is quantised (~600m per unit at z4), so
+      // distinct cameras share a key and were merged away: 99k in view were
+      // reported as ~64.6k, a 35% undercount.
+      //
+      // No dedup is needed, because neither source of duplication survives:
+      //  - Tile buffers repeat neighbours' features, but MapLibre clips each
+      //    query to the tile's own bounds, so a buffer copy is never returned.
+      //  - The dots (z0–12) and points (z11+) layers OVERLAP at z11–12, and
+      //    queryRenderedFeatures ignores paint opacity — querying both there
+      //    returns every camera twice (measured: +102.8% at z11). Querying the
+      //    single layer that covers this zoom yields each camera exactly once.
+      //
+      // Verified against the dataset: z4 +0.21%, z9 −0.03%, z10.5 +2.0%. The
+      // small excess is real — a camera whose dot overlaps the viewport edge is
+      // in view — and grows with dot radius at high zoom.
       try {
-        const feats = map.queryRenderedFeatures(undefined, {
-          layers: ['camera-tile-dots', 'camera-tile-points'],
-        });
-        const seen = new Set<string>();
-        for (const f of feats) {
-          const key = f.properties?.osmId != null
-            ? String(f.properties.osmId)
-            : (f.geometry as GeoJSON.Point).coordinates.join(',');
-          seen.add(key);
-        }
-        useMapStore.getState().setTileViewCameraCount(seen.size);
+        const layerForZoom = map.getZoom() >= CAMERA_POINTS_MINZOOM
+          ? 'camera-tile-points'
+          : 'camera-tile-dots';
+        const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
+        useMapStore.getState().setTileViewCameraCount(feats.length);
       } catch {
         // layers not ready yet
       }
@@ -597,46 +613,41 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
   // Tiles mode readiness: first successful camera-tiles load ⇒ markers ready.
   // Repeated failures before any load ⇒ flip tilesFailed (geojson fallback).
+  //
+  // Deliberately NOT gated on `mapLoaded`. That flag comes from the map's
+  // `load` event, which by definition waits for the first visually complete
+  // render — i.e. every basemap tile in the viewport. Readiness would then
+  // trail the basemap by seconds on data the cameras never needed. These two
+  // handlers are passed to <Map> instead, so MapLibre binds them at map
+  // creation (react-map-gl reads the callback from props at dispatch time) —
+  // no sourcedata/error can slip through before we attach, which is what the
+  // old effect's synchronous seed check existed to cover.
+  const tileLoadSeenRef = useRef(false);
+  const tileErrorCountRef = useRef(0);
+
+  // Fresh map instance per remount (mapKey bumps on retry) ⇒ fresh counters.
   useEffect(() => {
-    if (!mapLoaded || renderMode !== 'tiles') return;
-    const map = mapRef.current?.getMap();
-    if (!map) return;
+    tileLoadSeenRef.current = false;
+    tileErrorCountRef.current = 0;
+  }, [mapKey]);
 
-    let tileLoadSeen = false;
-    let errorCount = 0;
+  const handleTileSourceData = useCallback((e: maplibregl.MapSourceDataEvent) => {
+    if (renderMode !== 'tiles') return;
+    if (e.sourceId !== 'camera-tiles' || !e.isSourceLoaded) return;
+    tileLoadSeenRef.current = true;
+    setMarkersReady(true);
+  }, [renderMode]);
 
-    // Seed check: if every camera-tiles tile already finished loading before
-    // this effect attached (e.g. a fast/cached load), the sourcedata event
-    // that would normally flip markersReady already fired and won't fire
-    // again — poll the source's current state once, synchronously.
-    if (map.getSource('camera-tiles') && map.isSourceLoaded('camera-tiles')) {
-      tileLoadSeen = true;
-      setMarkersReady(true);
+  const handleMapError = useCallback((e: maplibregl.ErrorEvent & { sourceId?: string }) => {
+    const sourceId = e?.sourceId ?? (e as { source?: { id?: string } })?.source?.id;
+    if (sourceId !== 'camera-tiles') return;
+    if (tileLoadSeenRef.current) return;
+    tileErrorCountRef.current += 1;
+    if (tileErrorCountRef.current >= 3) {
+      console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
+      useCameraStore.getState().setTilesFailed(true);
     }
-
-    const onSourceData = (e: maplibregl.MapSourceDataEvent) => {
-      if (e.sourceId !== 'camera-tiles' || !e.isSourceLoaded) return;
-      tileLoadSeen = true;
-      setMarkersReady(true);
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onError = (e: any) => {
-      if (e?.sourceId !== 'camera-tiles' && e?.source?.id !== 'camera-tiles') return;
-      if (tileLoadSeen) return;
-      errorCount += 1;
-      if (errorCount >= 3) {
-        console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
-        useCameraStore.getState().setTilesFailed(true);
-      }
-    };
-
-    map.on('sourcedata', onSourceData);
-    map.on('error', onError);
-    return () => {
-      map.off('sourcedata', onSourceData);
-      map.off('error', onError);
-    };
-  }, [mapLoaded, renderMode]);
+  }, []);
 
   // Handle map move - batch center, zoom, and bounds in a single store update
   const onMove = useCallback((evt: ViewStateChangeEvent) => {
@@ -1019,6 +1030,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       onMove={onMove}
       onMoveEnd={updateVisibleCameras}
       onLoad={onLoad}
+      // Bound at map creation — camera-tile readiness must not wait for `load`.
+      onSourceData={handleTileSourceData}
+      onError={handleMapError}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

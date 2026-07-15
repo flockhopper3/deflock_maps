@@ -17,6 +17,16 @@ export const CAMERA_TILES_SOURCE_LAYER = 'cameras';
 export const CAMERA_TILES_MAXZOOM = 14;
 /** Below this zoom, tile features have no attributes (no osmId, no direction). */
 export const CAMERA_METADATA_MINZOOM = 11;
+/**
+ * Zoom at which the full camera points layer takes over from the density dots.
+ * The dots layer runs to maxzoom 12, so the two overlap on [11, 12).
+ *
+ * Shared so the viewport count can query whichever single layer covers the
+ * current zoom: queryRenderedFeatures ignores paint opacity, so querying both
+ * across the overlap returns every camera twice (measured +102.8% at z11).
+ * Keep this equal to the points layer's minzoom in CameraTileLayers.
+ */
+export const CAMERA_POINTS_MINZOOM = 11;
 
 let _protocol: Protocol | null = null;
 
