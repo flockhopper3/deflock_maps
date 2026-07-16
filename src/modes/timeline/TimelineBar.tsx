@@ -16,18 +16,18 @@ import { useTimelineTicker } from './useTimelineTicker';
 import { useTimelineScrubber } from './useTimelineScrubber';
 
 export function TimelineBar() {
-  const {
-    cameras,
-    timelineMinDay,
-    timelineMaxDay,
-    timelineDailyCounts,
-    timelineWeeklyCounts,
-    timelineMinWeek,
-    timelineMaxWeek,
-  } = useCameraStore();
-  const { timelineSettings, updateTimelineSettings } = useAppModeStore();
+  const cameraCount = useCameraStore((s) => s.cameras.length);
+  const timelineMinDay = useCameraStore((s) => s.timelineMinDay);
+  const timelineMaxDay = useCameraStore((s) => s.timelineMaxDay);
+  const timelineDailyCounts = useCameraStore((s) => s.timelineDailyCounts);
+  const timelineWeeklyCounts = useCameraStore((s) => s.timelineWeeklyCounts);
+  const timelineMinWeek = useCameraStore((s) => s.timelineMinWeek);
+  const timelineMaxWeek = useCameraStore((s) => s.timelineMaxWeek);
 
-  const { currentDate, isPlaying, playSpeed } = timelineSettings;
+  const currentDate = useAppModeStore((s) => s.timelineSettings.currentDate);
+  const isPlaying = useAppModeStore((s) => s.timelineSettings.isPlaying);
+  const playSpeed = useAppModeStore((s) => s.timelineSettings.playSpeed);
+  const updateTimelineSettings = useAppModeStore((s) => s.updateTimelineSettings);
 
   const maxIndex = totalDays(timelineMinDay, timelineMaxDay);
   const currentIndex = dateToDayIndex(currentDate, timelineMinDay);
@@ -106,9 +106,9 @@ export function TimelineBar() {
     const idx = Math.min(clampedIndex, cumulativePrefixSum.length - 1);
     const countUpToDate = idx >= 0 ? cumulativePrefixSum[idx] : 0;
     const totalWithTimestamps = cumulativePrefixSum[cumulativePrefixSum.length - 1];
-    const noTimestampCount = cameras.length - totalWithTimestamps;
+    const noTimestampCount = cameraCount - totalWithTimestamps;
     return countUpToDate + noTimestampCount;
-  }, [clampedIndex, cumulativePrefixSum, cameras.length]);
+  }, [clampedIndex, cumulativePrefixSum, cameraCount]);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubber = useTimelineScrubber({
@@ -151,7 +151,7 @@ export function TimelineBar() {
       {/* Play / Pause */}
       <button
         onClick={handlePlayPause}
-        className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 active:bg-white/20 transition-colors"
+        className="flex-shrink-0 flex items-center justify-center w-11 h-11 lg:w-8 lg:h-8 rounded-full bg-white/10 hover:bg-white/15 active:bg-white/20 transition-colors"
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
@@ -191,8 +191,8 @@ export function TimelineBar() {
         </div>
       </div>
 
-      {/* Date · count — single flat line, fixed width to prevent shifting */}
-      <span className="flex-shrink-0 text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap w-[90px] lg:w-[180px] text-right">
+      {/* Date · count — fixed width to prevent shifting as the date changes */}
+      <span className="flex-shrink-0 text-[11px] sm:text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap w-[84px] sm:w-[92px] lg:w-[180px] text-right">
         {dateLabel}
         <span className="hidden lg:inline text-white/30"> · {cumulativeCount.toLocaleString()}</span>
       </span>

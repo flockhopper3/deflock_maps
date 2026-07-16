@@ -526,9 +526,13 @@ export function MapPage() {
             {/* Timeline Bar — single instance, wrapper switches on breakpoint */}
             {isExploreMode && (
               <div className={isMobile
-                ? "timeline-bar-mobile fixed bottom-[84px] left-3 right-3 z-[51] h-12 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
+                ? "timeline-bar-mobile fixed left-3 right-3 z-[51] h-12 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
                 : "timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
-              }>
+              }
+              // 84px clears the BottomSheet's minimized height; the inset keeps the
+              // bar off the iOS home indicator on notched phones.
+              style={isMobile ? { bottom: 'calc(84px + env(safe-area-inset-bottom))' } : undefined}
+              >
                 <TimelineBar />
               </div>
             )}
