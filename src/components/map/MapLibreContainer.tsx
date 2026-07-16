@@ -209,7 +209,6 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const appMode = useAppModeStore(s => s.appMode);
   const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const heatmapSettings = useAppModeStore(s => s.heatmapSettings);
-  const dotDensitySettings = useAppModeStore(s => s.dotDensitySettings);
   const mapTileStyle = useAppModeStore(s => s.mapTileStyle);
   const isTimelineActive = appMode === 'explore';
   const mapStyle = useMemo(() => buildMapStyle(mapTileStyle), [mapTileStyle]);
@@ -226,15 +225,16 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // Only render camera markers + direction cones when needed.
   // Map-mode auto no longer crossfades heatmap→markers; heatmap is only shown
   // when explicitly selected (isMapModeHeatmap below).
-  // In explore mode, auto-show markers when zoomed past 13 (heatmap crossfades out 13-14),
+  // In heatmap explore, auto-show markers when zoomed past 13 (heatmap crossfades out 13-14),
   // or when the user explicitly toggles "Show Markers" at any zoom.
   // In density mode, hide camera markers entirely to keep choropleth clean.
+  // Timeline (dots) never shows markers: the dot layer carries every zoom, and the
+  // markers it used to stack on top were never date-filtered past z13.
   const isMapModeHeatmap = isMapMode && mapModeViz === 'heatmap';
   const showCameraMarkers = !isNetworkMode && !isDensityMode && !isMapModeHeatmap && (
     appMode === 'route'
     || isMapMode
     || (isHeatmapMode && (heatmapSettings.showMarkers || zoom >= 13))
-    || (isDotsMode && (dotDensitySettings.showMarkers || zoom >= 13))
   );
   // Expose handle to parent
   useImperativeHandle(ref, () => ({
@@ -347,13 +347,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (!map) return;
 
     // Read viz state imperatively (no dependency needed — keeps callback stable)
-    const { mapVisualization, appMode, heatmapSettings, dotDensitySettings } = useAppModeStore.getState();
+    const { mapVisualization, appMode, heatmapSettings } = useAppModeStore.getState();
     const isExplore = appMode === 'explore';
     const isHeatmap = isExplore && mapVisualization === 'heatmap';
     const isDots = isExplore && mapVisualization === 'dots';
-    const markersVisible = !isExplore
-      || (isHeatmap && heatmapSettings.showMarkers)
-      || (isDots && dotDensitySettings.showMarkers);
+    // Timeline (dots) no longer mounts CameraMarkerLayers at all.
+    const markersVisible = !isExplore || (isHeatmap && heatmapSettings.showMarkers);
 
     // If date is at or past the max camera date, clear filters (every point passes)
     const { timelineMaxDay } = useCameraStore.getState();
@@ -1064,13 +1063,18 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       <CameraTileLayers visible={isTilesMode && showCameraMarkers && showCameraLayer} />
 
       {/* Legacy GeoJSON camera layers — empty until the dataset lazily loads;
-          becomes the active path for filters/timeline/heatmap/Canada. */}
-      <CameraMarkerLayers
-        cameras={cameraSource}
-        visible={!isTilesMode && showCameraMarkers}
-        mapLoaded={mapLoaded}
-        mapRef={mapRef}
-      />
+          becomes the active path for filters/heatmap/Canada.
+          Unmounted entirely in Timeline: `visible` only toggles layout visibility,
+          so a mounted instance still builds a 114k-feature source plus a cone
+          polygon per camera that Timeline would never draw. */}
+      {!isDotsMode && (
+        <CameraMarkerLayers
+          cameras={cameraSource}
+          visible={!isTilesMode && showCameraMarkers}
+          mapLoaded={mapLoaded}
+          mapRef={mapRef}
+        />
+      )}
 
       {/* Routes (only in route mode) */}
       {appMode === 'route' && hasRoutes && (

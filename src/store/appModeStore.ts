@@ -35,7 +35,6 @@ export interface DotDensitySettings {
   radius: number;          // dot size in px (1-6)
   opacity: number;         // per-dot opacity (0.05-0.5) — stacks visually in dense areas
   color: string;           // dot color hex
-  showMarkers: boolean;
 }
 
 export interface TimelineSettings {
@@ -65,7 +64,6 @@ const DEFAULT_DOT_DENSITY_SETTINGS: DotDensitySettings = {
   radius: 2,
   opacity: 0.25,
   color: '#4DA6FF',
-  showMarkers: false,
 };
 
 const DEFAULT_TIMELINE_SETTINGS: TimelineSettings = {
