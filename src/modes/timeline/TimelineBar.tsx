@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useCameraStore } from '../../store';
 import { useAppModeStore } from '../../store/appModeStore';
 import { Play, Pause } from 'lucide-react';
@@ -13,6 +13,7 @@ import {
 } from './timelineUtils';
 import { TimelineSparkline } from './TimelineSparkline';
 import { useTimelineTicker } from './useTimelineTicker';
+import { useTimelineScrubber } from './useTimelineScrubber';
 
 export function TimelineBar() {
   const {
@@ -33,7 +34,7 @@ export function TimelineBar() {
   const clampedIndex = Math.max(0, Math.min(currentIndex, maxIndex));
 
   const ticker = useTimelineTicker({ timelineMinDay, maxIndex, isPlaying, playSpeed });
-  const { dispatchTick, flushTick } = ticker;
+  const { flushTick } = ticker;
 
   // Visible range starts at Jan 2024 (or timelineMinDay if later)
   const visibleStartIndex = useMemo(
@@ -109,83 +110,15 @@ export function TimelineBar() {
     return countUpToDate + noTimestampCount;
   }, [clampedIndex, cumulativePrefixSum, cameras.length]);
 
-  // --- Scrubber via pointer events (maps to visible range) ---
   const trackRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-  const pendingDateRef = useRef<string | null>(null);
-  const rafRef = useRef<number>(0);
-
-  // Cleanup RAF on unmount
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  const indexFromPointer = useCallback(
-    (clientX: number) => {
-      const track = trackRef.current;
-      if (!track) return visibleStartIndex;
-      const rect = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      return Math.round(visibleStartIndex + ratio * (maxIndex - visibleStartIndex));
-    },
-    [maxIndex, visibleStartIndex]
-  );
-
-  const applyIndex = useCallback(
-    (index: number) => {
-      const newDate = dayIndexToDate(index, timelineMinDay);
-
-      // Coalesce map filter + React state into a single RAF so both happen
-      // in the same frame. This throttles 120Hz+ pointer events to ~60fps.
-      pendingDateRef.current = newDate;
-      if (!rafRef.current) {
-        rafRef.current = requestAnimationFrame(() => {
-          const date = pendingDateRef.current;
-          if (date) {
-            dispatchTick(date);
-            updateTimelineSettings({ currentDate: date });
-            pendingDateRef.current = null;
-          }
-          rafRef.current = 0;
-        });
-      }
-    },
-    [timelineMinDay, updateTimelineSettings, dispatchTick]
-  );
-
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      isDraggingRef.current = true;
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      applyIndex(indexFromPointer(e.clientX));
-      if (isPlaying) updateTimelineSettings({ isPlaying: false });
-    },
-    [applyIndex, indexFromPointer, isPlaying, updateTimelineSettings]
-  );
-
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!isDraggingRef.current) return;
-      applyIndex(indexFromPointer(e.clientX));
-    },
-    [applyIndex, indexFromPointer]
-  );
-
-  const onPointerUp = useCallback(() => {
-    isDraggingRef.current = false;
-    // Cancel any pending RAF and flush synchronously so final position is exact
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-    if (pendingDateRef.current) {
-      flushTick(pendingDateRef.current);
-      updateTimelineSettings({ currentDate: pendingDateRef.current });
-      pendingDateRef.current = null;
-    }
-  }, [updateTimelineSettings, flushTick]);
+  const scrubber = useTimelineScrubber({
+    trackRef,
+    timelineMinDay,
+    visibleStartIndex,
+    maxIndex,
+    currentIndex: clampedIndex,
+    ticker,
+  });
 
   // Play / pause
   const handlePlayPause = useCallback(() => {
@@ -231,11 +164,21 @@ export function TimelineBar() {
       {/* Sparkline + Scrubber */}
       <div
         ref={trackRef}
-        className="flex-1 h-8 lg:h-9 relative cursor-pointer"
+        role="slider"
+        tabIndex={0}
+        aria-label="Timeline date"
+        aria-valuemin={visibleStartIndex}
+        aria-valuemax={maxIndex}
+        aria-valuenow={clampedIndex}
+        aria-valuetext={dateLabel}
+        className="flex-1 h-8 lg:h-9 relative cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
         style={{ touchAction: 'none' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerDown={scrubber.onPointerDown}
+        onPointerMove={scrubber.onPointerMove}
+        onPointerUp={scrubber.onPointerUp}
+        onPointerCancel={scrubber.onPointerCancel}
+        onLostPointerCapture={scrubber.onLostPointerCapture}
+        onKeyDown={scrubber.onKeyDown}
       >
         <TimelineSparkline path={sparklinePath} progressPercent={progressPercent} />
 
@@ -244,7 +187,7 @@ export function TimelineBar() {
           className="absolute top-0 bottom-0 w-px bg-accent/80 pointer-events-none"
           style={{ left: `${progressPercent}%` }}
         >
-          <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-accent" />
+          <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-accent" />
         </div>
       </div>
 
