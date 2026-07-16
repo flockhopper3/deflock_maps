@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useCameraStore } from '../../store';
-import { useMapStore } from '../../store/mapStore';
 import { useAppModeStore } from '../../store/appModeStore';
 import { Play, Pause } from 'lucide-react';
 import {
@@ -13,6 +12,7 @@ import {
   totalDays,
 } from './timelineUtils';
 import { TimelineSparkline } from './TimelineSparkline';
+import { useTimelineTicker } from './useTimelineTicker';
 
 export function TimelineBar() {
   const {
@@ -24,62 +24,16 @@ export function TimelineBar() {
     timelineMinWeek,
     timelineMaxWeek,
   } = useCameraStore();
-  const tickCallback = useMapStore((s) => s._timelineTickCallback);
   const { timelineSettings, updateTimelineSettings } = useAppModeStore();
 
   const { currentDate, isPlaying, playSpeed } = timelineSettings;
 
-  // --- Throttle map filter updates to ~12fps while UI stays at 60fps ---
-  const TICK_THROTTLE_MS = 80;
-  const lastMapTickTimeRef = useRef(0);
-  const pendingMapDateRef = useRef<string | null>(null);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const throttledTickCallback = useCallback(
-    (date: string) => {
-      const now = performance.now();
-      const elapsed = now - lastMapTickTimeRef.current;
-
-      if (elapsed >= TICK_THROTTLE_MS) {
-        // Enough time has passed — fire immediately
-        lastMapTickTimeRef.current = now;
-        pendingMapDateRef.current = null;
-        if (flushTimerRef.current) {
-          clearTimeout(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-        tickCallback?.(date);
-      } else {
-        // Too soon — store pending and schedule flush
-        pendingMapDateRef.current = date;
-        if (!flushTimerRef.current) {
-          const remaining = TICK_THROTTLE_MS - elapsed;
-          flushTimerRef.current = setTimeout(() => {
-            flushTimerRef.current = null;
-            if (pendingMapDateRef.current) {
-              lastMapTickTimeRef.current = performance.now();
-              tickCallback?.(pendingMapDateRef.current);
-              pendingMapDateRef.current = null;
-            }
-          }, remaining);
-        }
-      }
-    },
-    [tickCallback]
-  );
-
-  /** Clear throttle state after a direct (non-throttled) tickCallback call */
-  const clearThrottleState = useCallback(() => {
-    pendingMapDateRef.current = null;
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-  }, []);
-
   const maxIndex = totalDays(timelineMinDay, timelineMaxDay);
   const currentIndex = dateToDayIndex(currentDate, timelineMinDay);
   const clampedIndex = Math.max(0, Math.min(currentIndex, maxIndex));
+
+  const ticker = useTimelineTicker({ timelineMinDay, maxIndex, isPlaying, playSpeed });
+  const { dispatchTick, flushTick } = ticker;
 
   // Visible range starts at Jan 2024 (or timelineMinDay if later)
   const visibleStartIndex = useMemo(
@@ -161,11 +115,10 @@ export function TimelineBar() {
   const pendingDateRef = useRef<string | null>(null);
   const rafRef = useRef<number>(0);
 
-  // Cleanup RAF + flush timer on unmount
+  // Cleanup RAF on unmount
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     };
   }, []);
 
@@ -191,7 +144,7 @@ export function TimelineBar() {
         rafRef.current = requestAnimationFrame(() => {
           const date = pendingDateRef.current;
           if (date) {
-            throttledTickCallback(date);
+            dispatchTick(date);
             updateTimelineSettings({ currentDate: date });
             pendingDateRef.current = null;
           }
@@ -199,7 +152,7 @@ export function TimelineBar() {
         });
       }
     },
-    [timelineMinDay, updateTimelineSettings, throttledTickCallback]
+    [timelineMinDay, updateTimelineSettings, dispatchTick]
   );
 
   const onPointerDown = useCallback(
@@ -228,12 +181,11 @@ export function TimelineBar() {
       rafRef.current = 0;
     }
     if (pendingDateRef.current) {
-      tickCallback?.(pendingDateRef.current);
+      flushTick(pendingDateRef.current);
       updateTimelineSettings({ currentDate: pendingDateRef.current });
       pendingDateRef.current = null;
     }
-    clearThrottleState();
-  }, [updateTimelineSettings, tickCallback, clearThrottleState]);
+  }, [updateTimelineSettings, flushTick]);
 
   // Play / pause
   const handlePlayPause = useCallback(() => {
@@ -244,13 +196,12 @@ export function TimelineBar() {
         // Reset to visible start
         const startDate = dayIndexToDate(visibleStartIndex, timelineMinDay);
         updateTimelineSettings({ isPlaying: true, currentDate: startDate });
-        tickCallback?.(startDate);
-        clearThrottleState();
+        flushTick(startDate);
       } else {
         updateTimelineSettings({ isPlaying: true });
       }
     }
-  }, [isPlaying, clampedIndex, maxIndex, visibleStartIndex, timelineMinDay, updateTimelineSettings, tickCallback, clearThrottleState]);
+  }, [isPlaying, clampedIndex, maxIndex, visibleStartIndex, timelineMinDay, updateTimelineSettings, flushTick]);
 
   // Speed cycle (desktop only)
   const handleSpeedCycle = useCallback(() => {
@@ -259,53 +210,6 @@ export function TimelineBar() {
     const next = speeds[(idx + 1) % speeds.length];
     updateTimelineSettings({ playSpeed: next });
   }, [playSpeed, updateTimelineSettings]);
-
-  // Playback loop
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const msPerTick = 1000 / playSpeed;
-    let lastTickTime = -1; // -1 = uninitialized, set on first frame
-    let rafId: number;
-
-    const tick = (timestamp: number) => {
-      // Initialize on first frame to avoid a giant elapsed delta
-      if (lastTickTime < 0) {
-        lastTickTime = timestamp;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-
-      const elapsed = timestamp - lastTickTime;
-      if (elapsed >= msPerTick) {
-        // Allow multi-day jumps when frames are slow (e.g. tab backgrounded)
-        const daysToAdvance = Math.floor(elapsed / msPerTick);
-        // Accumulate rather than assign — preserves fractional remainder
-        lastTickTime += daysToAdvance * msPerTick;
-
-        const state = useAppModeStore.getState();
-        const current = dateToDayIndex(state.timelineSettings.currentDate, timelineMinDay);
-        const nextIndex = Math.min(current + daysToAdvance, maxIndex);
-
-        if (nextIndex >= maxIndex) {
-          const finalDate = dayIndexToDate(maxIndex, timelineMinDay);
-          useAppModeStore.getState().updateTimelineSettings({ currentDate: finalDate, isPlaying: false });
-          tickCallback?.(finalDate);
-          clearThrottleState();
-          return;
-        }
-
-        const nextDate = dayIndexToDate(nextIndex, timelineMinDay);
-        useAppModeStore.getState().updateTimelineSettings({ currentDate: nextDate });
-        throttledTickCallback(nextDate);
-      }
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, playSpeed, timelineMinDay, maxIndex, tickCallback, throttledTickCallback, clearThrottleState]);
 
   const dateLabel = formatDateFixed(dayIndexToDate(clampedIndex, timelineMinDay));
 
