@@ -430,6 +430,14 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const map = mapRef.current?.getMap();
     if (!map) return;
 
+    // CameraMarkerLayers unmounts on a viz switch into/out of Timeline (dots),
+    // and its date filter is imperative-only (no layer spec carries one) — so
+    // remounting recreates unfiltered layers. isTimelineActive stays true across
+    // a heatmap<->dots switch and handleTimelineTick is stable, so without the
+    // reset below the same-date guard (`cutoffMs === lastCutoffRef.current`)
+    // would skip re-applying the filter and leave every camera/cone showing.
+    lastCutoffRef.current = 0;
+
     const { currentDate } = useAppModeStore.getState().timelineSettings;
     handleTimelineTick(currentDate);
 
@@ -444,7 +452,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     map.on('sourcedata', onDotsSourceReady);
 
     return () => { map.off('sourcedata', onDotsSourceReady); };
-  }, [mapLoaded, isTimelineActive, handleTimelineTick]);
+  }, [mapLoaded, isTimelineActive, handleTimelineTick, mapVisualization]);
 
   // Symbol layer visibility is controlled entirely by the labels toggle
   // (mapTileStyle nolabels variants filter them out in buildMapStyle).
