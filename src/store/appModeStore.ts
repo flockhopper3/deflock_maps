@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { TIMELINE_START } from '../modes/timeline/timelineUtils';
 
 export type AppMode = 'map' | 'route' | 'explore' | 'density' | 'network';
 export type ExploreFeature = 'heatmap'; // extend: | 'density-3d' | 'timeline' | 'score' | 'demographics'
@@ -67,8 +68,6 @@ const DEFAULT_DOT_DENSITY_SETTINGS: DotDensitySettings = {
   showMarkers: false,
 };
 
-const TIMELINE_START = '2024-07-01';
-
 const DEFAULT_TIMELINE_SETTINGS: TimelineSettings = {
   currentDate: TIMELINE_START,
   isPlaying: false,
@@ -106,7 +105,7 @@ export const useAppModeStore = create<AppModeState>((set) => ({
   setAppMode: (mode) => {
     if (mode === 'explore') {
       // Default to today so all cameras are visible (no timeline filtering).
-      // The /timeline route explicitly overrides this to '2024-07-01'.
+      // The /timeline route explicitly overrides this to TIMELINE_START.
       set({
         appMode: mode,
         timelineSettings: {

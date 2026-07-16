@@ -5,14 +5,12 @@ import { useAppModeStore } from '../../store/appModeStore';
 import { Play, Pause } from 'lucide-react';
 import {
   DAY_MS,
+  VISIBLE_START,
   dayIndexToDate,
   dateToDayIndex,
   formatDateFixed,
   totalDays,
 } from './timelineUtils';
-
-/** Only show the sparkline from this date forward */
-const VISIBLE_START = '2024-01-01';
 
 export function TimelineBar() {
   const {

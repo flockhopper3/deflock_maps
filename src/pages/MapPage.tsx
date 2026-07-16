@@ -19,6 +19,7 @@ import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
+import { TIMELINE_START } from '@/modes/timeline/timelineUtils';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
 import { Route, Compass, BarChart3, Menu, X, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
@@ -108,7 +109,7 @@ export function MapPage() {
         appMode: 'explore',
         mapVisualization: viz,
         timelineSettings: {
-          currentDate: isTimelinePath ? '2024-07-01' : new Date().toISOString().slice(0, 10),
+          currentDate: isTimelinePath ? TIMELINE_START : new Date().toISOString().slice(0, 10),
           isPlaying: false,
           playSpeed: 45,
         },
@@ -142,7 +143,7 @@ export function MapPage() {
         appMode: 'explore',
         mapVisualization: 'dots',
         timelineSettings: {
-          currentDate: '2024-07-01',
+          currentDate: TIMELINE_START,
           isPlaying: false,
           playSpeed: 45,
         },

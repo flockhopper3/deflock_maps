@@ -1,6 +1,12 @@
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** Date the timeline scrubber starts at, and the `/timeline` route resets to. */
+export const TIMELINE_START = '2024-07-01';
+
+/** Only render the sparkline from this date forward — earlier data is a flat tail. */
+export const VISIBLE_START = '2024-01-01';
+
 /** Convert day index (0-based from minDay) to YYYY-MM-DD string */
 export function dayIndexToDate(index: number, minDay: string): string {
   const d = new Date(minDay + 'T00:00:00Z');
