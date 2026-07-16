@@ -16,6 +16,7 @@ import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
@@ -93,16 +94,7 @@ export function MapPage() {
     return () => clearTimeout(t);
   }, [center, zoom, appMode, mapVisualization, country, setSearchParams]);
 
-  // Responsive breakpoint — single source of truth for timeline bar layout
-  // Never go mobile in embed mode — the iframe width should not affect layout
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (isEmbed) return;
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [isEmbed]);
+  const isMobile = useIsMobile();
 
   // Sync URL params with app mode on mount
   useEffect(() => {

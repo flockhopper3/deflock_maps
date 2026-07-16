@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useCameraStore, useAppModeStore } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
@@ -8,20 +9,13 @@ import { ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { MapTypeDropdown, VIZ_OPTIONS } from './MapTypeDropdown';
 
 export function ExplorePanel() {
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [snapPoint, setSnapPoint] = useState<SnapPoint>('minimized');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
 
   const cameraCount = useCameraStore(s => s.cameras.length);
   const mapVisualization = useAppModeStore(s => s.mapVisualization);
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setHasAnimated(true), 50);
