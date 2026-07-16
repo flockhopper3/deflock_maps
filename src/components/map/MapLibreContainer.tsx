@@ -452,6 +452,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     map.on('sourcedata', onDotsSourceReady);
 
     return () => { map.off('sourcedata', onDotsSourceReady); };
+    // mapVisualization is a trigger-only dep: it re-fires this effect on a
+    // heatmap<->dots switch so the filter is re-applied. It is intentionally
+    // unused in the body — do not remove it, or dots<->heatmap re-filtering breaks.
   }, [mapLoaded, isTimelineActive, handleTimelineTick, mapVisualization]);
 
   // Symbol layer visibility is controlled entirely by the labels toggle
