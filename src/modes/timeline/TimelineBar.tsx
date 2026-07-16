@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useCameraStore } from '../../store';
 import { useMapStore } from '../../store/mapStore';
 import { useAppModeStore } from '../../store/appModeStore';
@@ -6,11 +6,13 @@ import { Play, Pause } from 'lucide-react';
 import {
   DAY_MS,
   VISIBLE_START,
+  buildSparklinePath,
   dayIndexToDate,
   dateToDayIndex,
   formatDateFixed,
   totalDays,
 } from './timelineUtils';
+import { TimelineSparkline } from './TimelineSparkline';
 
 export function TimelineBar() {
   const {
@@ -118,34 +120,18 @@ export function TimelineBar() {
     return { bars, peak };
   }, [timelineMinWeek, timelineMaxWeek, timelineWeeklyCounts]);
 
-  // Sparkline position mapped to the visible (clipped) bar range
-  const sparklinePosition = useMemo(() => {
+  // Scrubber position as a percentage of the visible (clipped) range
+  const progressPercent = useMemo(() => {
     const visibleRange = maxIndex - visibleStartIndex;
     if (visibleRange <= 0) return 0;
-    const posInVisible = clampedIndex - visibleStartIndex;
-    const ratio = Math.max(0, Math.min(1, posInVisible / visibleRange));
-    return ratio * (sparklineData.bars.length - 1);
-  }, [clampedIndex, visibleStartIndex, maxIndex, sparklineData.bars.length]);
+    const ratio = (clampedIndex - visibleStartIndex) / visibleRange;
+    return Math.max(0, Math.min(1, ratio)) * 100;
+  }, [clampedIndex, visibleStartIndex, maxIndex]);
 
-  // --- Imperative sparkline color updates (avoids React diffing ~110 bars per tick) ---
-  const barsRef = useRef<HTMLDivElement>(null);
-  const prevBpRef = useRef(-1);
-
-  useLayoutEffect(() => {
-    const container = barsRef.current;
-    if (!container) return;
-    const newBp = Math.floor(sparklinePosition);
-    const oldBp = prevBpRef.current;
-    if (newBp === oldBp) return;
-    const bars = container.children;
-    const lo = Math.min(oldBp, newBp) + 1;
-    const hi = Math.max(oldBp, newBp);
-    for (let i = Math.max(0, lo); i <= Math.min(hi, bars.length - 1); i++) {
-      (bars[i] as HTMLElement).style.backgroundColor =
-        i <= newBp ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.1)';
-    }
-    prevBpRef.current = newBp;
-  }, [sparklinePosition]);
+  const sparklinePath = useMemo(
+    () => buildSparklinePath(sparklineData.bars, sparklineData.peak),
+    [sparklineData]
+  );
 
   // Precomputed prefix sum — O(1) lookup instead of O(n) loop per scrub
   const cumulativePrefixSum = useMemo(() => {
@@ -321,13 +307,6 @@ export function TimelineBar() {
     return () => cancelAnimationFrame(rafId);
   }, [isPlaying, playSpeed, timelineMinDay, maxIndex, tickCallback, throttledTickCallback, clearThrottleState]);
 
-  // Handle position as % of visible range
-  const visibleRange = maxIndex - visibleStartIndex;
-  const handlePercent =
-    visibleRange > 0
-      ? Math.max(0, Math.min(100, ((clampedIndex - visibleStartIndex) / visibleRange) * 100))
-      : 0;
-
   const dateLabel = formatDateFixed(dayIndexToDate(clampedIndex, timelineMinDay));
 
   return (
@@ -348,34 +327,18 @@ export function TimelineBar() {
       {/* Sparkline + Scrubber */}
       <div
         ref={trackRef}
-        className="flex-1 h-8 lg:h-9 flex items-end gap-px relative cursor-pointer"
+        className="flex-1 h-8 lg:h-9 relative cursor-pointer"
         style={{ touchAction: 'none' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
-        <div ref={barsRef} className="contents">
-          {sparklineData.bars.map((count, i) => {
-            const height =
-              sparklineData.peak > 0 ? (count / sparklineData.peak) * 100 : 0;
-            const isActive = i <= sparklinePosition;
-            return (
-              <div
-                key={i}
-                className="flex-1 min-w-0 rounded-t-[1px]"
-                style={{
-                  height: `${Math.max(height, 2)}%`,
-                  backgroundColor: isActive ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.1)',
-                }}
-              />
-            );
-          })}
-        </div>
+        <TimelineSparkline path={sparklinePath} progressPercent={progressPercent} />
 
         {/* Scrubber handle */}
         <div
           className="absolute top-0 bottom-0 w-px bg-accent/80 pointer-events-none"
-          style={{ left: `${handlePercent}%` }}
+          style={{ left: `${progressPercent}%` }}
         >
           <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-accent" />
         </div>

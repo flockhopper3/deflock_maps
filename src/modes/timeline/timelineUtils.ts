@@ -46,3 +46,23 @@ export function formatMonthYear(date: string): string {
 export function totalDays(minDay: string, maxDay: string): number {
   return dateToDayIndex(maxDay, minDay);
 }
+
+/**
+ * Build an SVG area path for a cumulative series, normalized to a 0 0 1000 100
+ * viewBox. The viewBox is what makes the chart resolution-independent: it renders
+ * identically at 320px and 2560px, so bars can never fall below a pixel.
+ *
+ * Returns '' for an empty or all-zero series (nothing to draw before the camera
+ * dataset hydrates).
+ */
+export function buildSparklinePath(bars: number[], peak: number): string {
+  if (bars.length === 0 || peak <= 0) return '';
+  const stepX = bars.length > 1 ? 1000 / (bars.length - 1) : 1000;
+  let d = 'M 0 100';
+  for (let i = 0; i < bars.length; i++) {
+    const x = (i * stepX).toFixed(2);
+    const y = (100 - (bars[i] / peak) * 100).toFixed(2);
+    d += ` L ${x} ${y}`;
+  }
+  return `${d} L 1000 100 Z`;
+}
