@@ -9,46 +9,9 @@ const DOT_COLORS = [
   { id: '#ffffff', name: 'White', preview: '#ffffff' },
 ];
 
-function SliderControl({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  formatValue,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (v: number) => void;
-  formatValue?: (v: number) => string;
-}) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-dark-300">{label}</span>
-        <span className="text-xs tabular-nums text-dark-400">
-          {formatValue ? formatValue(value) : value.toFixed(1)}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-dark-700 rounded-full appearance-none cursor-pointer accent-[#0080BC] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-sm"
-      />
-    </div>
-  );
-}
-
 export function DotDensityControls() {
-  const { dotDensitySettings, updateDotDensitySettings } = useAppModeStore();
+  const dotColor = useAppModeStore((s) => s.dotDensitySettings.color);
+  const updateDotDensitySettings = useAppModeStore((s) => s.updateDotDensitySettings);
 
   return (
     <div className="space-y-6">
@@ -59,7 +22,7 @@ export function DotDensityControls() {
         </span>
         <div className="grid grid-cols-3 gap-2">
           {DOT_COLORS.map((c) => {
-            const isActive = dotDensitySettings.color === c.id;
+            const isActive = dotColor === c.id;
             return (
               <button
                 key={c.id}
@@ -83,28 +46,6 @@ export function DotDensityControls() {
         </div>
       </div>
 
-      {/* Sliders */}
-      <div className="space-y-5">
-        <SliderControl
-          label="Dot Size"
-          value={dotDensitySettings.radius}
-          min={1}
-          max={6}
-          step={0.5}
-          onChange={(v) => updateDotDensitySettings({ radius: v })}
-          formatValue={(v) => `${v}px`}
-        />
-        <SliderControl
-          label="Dot Opacity"
-          value={dotDensitySettings.opacity}
-          min={0.05}
-          max={0.5}
-          step={0.01}
-          onChange={(v) => updateDotDensitySettings({ opacity: v })}
-          formatValue={(v) => `${Math.round(v * 100)}%`}
-        />
-      </div>
-
       {/* About */}
       <div className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
         <div className="flex items-start gap-3">
@@ -116,10 +57,10 @@ export function DotDensityControls() {
           <div>
             <p className="text-sm text-dark-300 font-medium mb-1">About Dot Density</p>
             <p className="text-xs text-dark-400 leading-relaxed">
-              Each camera is one semi-transparent dot. Where cameras cluster together,
-              overlapping dots stack to appear brighter and more opaque — revealing
-              density through visual accumulation. Lower the opacity for stronger contrast
-              between sparse and dense areas.
+              Each camera is one dot. Zoomed out, dots are small and translucent, so
+              where cameras cluster the overlaps stack into brighter, more solid areas —
+              density you can read at a glance. Zoom in and dots grow into individual
+              cameras.
             </p>
           </div>
         </div>

@@ -1,8 +1,42 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Source, Layer, useMap } from 'react-map-gl/maplibre';
+import { useMemo } from 'react';
+import { Source, Layer } from 'react-map-gl/maplibre';
 import type maplibregl from 'maplibre-gl';
 import { useCameraStore, useAppModeStore } from '../../../store';
 import type { ALPRCamera } from '../../../types';
+
+/**
+ * Dot size across zoom.
+ *
+ * Through z11 this holds the historical 2-3px, which is what makes overlapping
+ * dots stack into a readable density field. From z13 dots grow into individually
+ * legible marks — deliberately taking over the job the removed marker layer did.
+ * Linear between hand-tuned anchors: the anchors are the design.
+ */
+const DOT_RADIUS: maplibregl.DataDrivenPropertyValueSpecification<number> = [
+  'interpolate', ['linear'], ['zoom'],
+  0, 1.5,
+  4, 2,
+  10, 3,
+  13, 4.8,
+  14, 6,
+  16, 9,
+  18, 12,
+];
+
+/**
+ * Dot opacity across zoom.
+ *
+ * Stays at the historical 0.25 while stacking does the work. Once cameras
+ * separate past z13 nothing stacks, so a 25% dot would just read as faint —
+ * it solidifies to near-opaque by z15.
+ */
+const DOT_OPACITY: maplibregl.DataDrivenPropertyValueSpecification<number> = [
+  'interpolate', ['linear'], ['zoom'],
+  4, 0.25,
+  11, 0.25,
+  13, 0.55,
+  15, 0.9,
+];
 
 /**
  * Convert cameras to unclustered GeoJSON for dot density rendering.
@@ -33,12 +67,9 @@ function camerasToDotsGeoJSON(cameras: ALPRCamera[]): GeoJSON.FeatureCollection 
 export function DotDensityLayers() {
   const filteredCameras = useCameraStore(s => s.filteredCameras);
   const cameras = useCameraStore(s => s.cameras);
-  // Selective subscriptions: only re-render for settings/mode changes, NOT currentDate
-  const dotDensitySettings = useAppModeStore((s) => s.dotDensitySettings);
+  const dotColor = useAppModeStore((s) => s.dotDensitySettings.color);
   const appMode = useAppModeStore((s) => s.appMode);
   const isTimelineActive = appMode === 'explore';
-  const { current: map } = useMap();
-  const prevSettingsRef = useRef(dotDensitySettings);
 
   // Derive camera source outside memo so reference equality prevents recomputation on tab switches
   const cameraSource = isTimelineActive ? cameras : filteredCameras;
@@ -59,35 +90,11 @@ export function DotDensityLayers() {
     const cutoffMs = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999).getTime();
     // ts=0 (no-date cameras) is always <= cutoffMs, so single comparison suffices
     return ['<=', ['get', 'ts'], cutoffMs] as maplibregl.FilterSpecification;
-     
   }, [isTimelineActive]);
 
-  // Update paint properties imperatively when settings change
-  useEffect(() => {
-    if (!map) return;
-    const mapInstance = map.getMap();
-    if (!mapInstance.getLayer('dot-density-layer')) return;
-
-    const prev = prevSettingsRef.current;
-    const curr = dotDensitySettings;
-
-    try {
-      if (prev.radius !== curr.radius) {
-        mapInstance.setPaintProperty('dot-density-layer', 'circle-radius', curr.radius);
-      }
-      if (prev.opacity !== curr.opacity) {
-        mapInstance.setPaintProperty('dot-density-layer', 'circle-opacity', curr.opacity);
-      }
-      if (prev.color !== curr.color) {
-        mapInstance.setPaintProperty('dot-density-layer', 'circle-color', curr.color);
-      }
-    } catch {
-      // Layer may not be ready yet
-    }
-
-    prevSettingsRef.current = curr;
-  }, [dotDensitySettings, map]);
-
+  // Size and opacity are static curves, so color is the only paint property that
+  // can change — and only on a rare click. react-map-gl diffs paint props and
+  // calls setPaintProperty itself, so no imperative effect is needed here.
   return (
     <Source
       id="cameras-dots"
@@ -100,9 +107,9 @@ export function DotDensityLayers() {
         source="cameras-dots"
         filter={initialFilter}
         paint={{
-          'circle-color': dotDensitySettings.color,
-          'circle-radius': dotDensitySettings.radius,
-          'circle-opacity': dotDensitySettings.opacity,
+          'circle-color': dotColor,
+          'circle-radius': DOT_RADIUS,
+          'circle-opacity': DOT_OPACITY,
           'circle-stroke-width': 0,
         }}
       />
