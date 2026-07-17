@@ -18,6 +18,7 @@ import { DotDensityControls } from '../../modes/dots/DotDensityControls';
 import { DensityControls } from '../../modes/density/DensityControls';
 import { DensityLegend } from '../../modes/density/DensityLegend';
 import { MapPanelContent } from './MapPanel';
+import { DENSITY_COLOR_RAMPS } from '../map/layers/DensityLayers';
 
 /* ------------------------------------------------------------------ */
 /*  Tab definitions                                                    */
@@ -81,6 +82,24 @@ function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () =>
         <ChevronUp className="w-4 h-4 text-dark-500 flex-shrink-0" aria-hidden="true" />
       </button>
       {extra}
+    </div>
+  );
+}
+
+/** Slim gradient legend inside the Analysis peek (replaces the floating
+ *  legend bar on mobile). */
+function DensityPeekLegend() {
+  const { densitySettings } = useAppModeStore();
+  const label = densitySettings.metric === 'perCapita' ? 'Cameras per 10K residents' : 'Cameras per road mile';
+  const gradient = DENSITY_COLOR_RAMPS[densitySettings.colorScheme].gradient.replace('90deg', 'to right');
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2">
+        <span className="text-2xs text-dark-500 uppercase">Low</span>
+        <div className="h-2 rounded-full flex-1" style={{ background: gradient }} />
+        <span className="text-2xs text-dark-500 uppercase">High</span>
+      </div>
+      <p className="text-[10px] text-dark-500 mt-1">{label}</p>
     </div>
   );
 }
@@ -248,7 +267,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           <IdentityRow
             mode={appMode}
             onExpand={handleExpandSheet}
-            extra={appMode === 'route' ? <div className="mt-3"><FlockHopperCTA variant="row" /></div> : undefined}
+            extra={
+              appMode === 'route'
+                ? <div className="mt-3"><FlockHopperCTA variant="row" /></div>
+                : appMode === 'density'
+                  ? <DensityPeekLegend />
+                  : undefined
+            }
           />
         )
       )}
