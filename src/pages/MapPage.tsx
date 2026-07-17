@@ -33,7 +33,7 @@ const MODE_LABELS: Record<AppMode, { icon: typeof Route; label: string }> = {
   route: { icon: Route, label: 'Route' },
   explore: { icon: Compass, label: 'Timeline' },
   density: { icon: BarChart3, label: 'Analysis' },
-  network: { icon: Network, label: 'Network' },
+  network: { icon: Network, label: 'Flock' },
 };
 
 export function MapPage() {

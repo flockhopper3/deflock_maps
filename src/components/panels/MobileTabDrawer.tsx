@@ -36,7 +36,7 @@ const TABS: TabDef[] = [
   { mode: 'route', label: 'Route' },
   { mode: 'explore', label: 'Timeline' },
   { mode: 'density', label: 'Analysis' },
-  { mode: 'network', label: 'Network' },
+  { mode: 'network', label: 'Flock' },
 ];
 
 /** Shared drawer footer: legacy-map link (its mobile home now that the
@@ -73,7 +73,7 @@ const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof 
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
   explore: { title: 'Timeline', desc: 'Watch ALPR camera deployment grow over time.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
-  network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency node to trace its connections.', Icon: Share2 },
+  network: { title: 'Flock Sharing Network', desc: '6,400+ police agencies use Flock ALPR cameras — see which ones share plate data with each other. Tap an agency to trace its connections.', Icon: Share2 },
 };
 
 /** One resting height for every content-mode peek — the sheet never changes
