@@ -17,6 +17,7 @@ import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
 import { DotDensityControls } from '../../modes/dots/DotDensityControls';
 import { DensityControls } from '../../modes/density/DensityControls';
 import { DensityLegend } from '../../modes/density/DensityLegend';
+import { DensityFeatureStats } from '../../modes/density/DensityFeatureStats';
 import { MapPanelContent } from './MapPanel';
 import { DENSITY_COLOR_RAMPS } from '../map/layers/DensityLayers';
 
@@ -123,6 +124,8 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   // Density store
   const { loadPhase: densityLoadPhase, loadAllLevels: loadDensity, retryLoad: retryDensity, error: densityError } = useDensityStore();
+  const selectedDensityFeature = useDensityStore(s => s.selectedFeature);
+  const setSelectedDensityFeature = useDensityStore(s => s.setSelectedFeature);
 
   // Network store — preload data when tab is selected (before drawer expands)
   const loadNetworkData = useNetworkStore(s => s.loadNetworkData);
@@ -158,6 +161,15 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appMode]);
+
+  // Tapping a region on the map surfaces its stats at the detail peek.
+  // Clearing (✕, empty-map tap, Escape) shrinks back automatically via
+  // peekHeightForMode; we only force the snap up, never down.
+  useEffect(() => {
+    if (appMode === 'density' && selectedDensityFeature) {
+      setSnapPoint('peek');
+    }
+  }, [selectedDensityFeature, appMode]);
 
   const densityIsLoading = densityLoadPhase === 'fetching';
 
@@ -215,7 +227,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   // Resting height feeds --drawer-height so map controls/attribution ride
   // above the sheet. Parked at the peek height while 'full' (controls are
   // behind the sheet then anyway; jumping them to 85vh would look broken).
-  const peekHeightForMode = MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight;
+  // A selected Analysis region raises the peek to a detail height that fits
+  // the stats while keeping the map (and the tapped region) visible above.
+  const isDensityDetail = appMode === 'density' && !!selectedDensityFeature;
+  const densityDetailHeight = Math.min(430, Math.round(window.innerHeight * 0.62));
+  const peekHeightForMode = isDensityDetail
+    ? densityDetailHeight
+    : (MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight);
   const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
 
   useEffect(() => {
@@ -262,6 +280,14 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           <div className="mt-3 space-y-3 animate-fade-in">
             <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
             <FlockHopperCTA variant="row" />
+          </div>
+        ) : isDensityDetail ? (
+          <div className="mt-3 animate-fade-in">
+            <DensityFeatureStats
+              feature={selectedDensityFeature!}
+              onClose={() => setSelectedDensityFeature(null)}
+            />
+            <DensityPeekLegend />
           </div>
         ) : (
           <IdentityRow
@@ -337,6 +363,15 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       case 'density':
         return (
           <div className="pb-8">
+            {selectedDensityFeature && (
+              <div className="mb-5 pb-5 border-b border-hairline">
+                <DensityFeatureStats
+                  feature={selectedDensityFeature}
+                  onClose={() => setSelectedDensityFeature(null)}
+                />
+              </div>
+            )}
+
             <p className="text-xs text-dark-400 mb-3 leading-relaxed">
               Compare ALPR surveillance intensity by state or county. Data from{' '}
               <a href="https://deflock.me" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">DeFlock</a>
