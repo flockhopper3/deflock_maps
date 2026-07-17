@@ -111,13 +111,25 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- callbacks for BottomSheet ---- */
   const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
 
-  /* ---- tab switch ---- */
+  /* ---- tab switch ----
+   * The tapped tab highlights this frame (pendingMode); the actual mode
+   * switch (store update → layer swaps → panel mounts) is deferred one
+   * painted frame so the tap always feels instant. */
+  const [pendingMode, setPendingMode] = useState<AppMode | null>(null);
+
   const handleTabPress = useCallback((mode: AppMode) => {
-    if (mode !== appMode) {
-      onModeChange(mode);
-    }
-    // Keep the drawer at its current snap — do NOT auto-expand on tab tap
+    if (mode === appMode) return;
+    setPendingMode(mode);
+    requestAnimationFrame(() => requestAnimationFrame(() => onModeChange(mode)));
   }, [appMode, onModeChange]);
+
+  // Clear the optimistic highlight once the real mode lands (or is bounced,
+  // e.g. the Canada US-only guard switching back to 'map').
+  useEffect(() => {
+    setPendingMode(null);
+  }, [appMode]);
+
+  const activeMode = pendingMode ?? appMode;
 
   /* ---- render controls for explore mode ---- */
   const renderExploreControls = () => {
@@ -144,7 +156,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
     <div>
       <div className="grid grid-cols-5 gap-1">
         {TABS.map(({ mode, label }) => {
-          const isActive = appMode === mode;
+          const isActive = activeMode === mode;
           const available = isModeAvailable(mode, country);
           return (
             <button
