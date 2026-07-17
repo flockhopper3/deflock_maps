@@ -79,7 +79,7 @@ const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof 
 /** One resting height for every content-mode peek — the sheet never changes
  *  height switching among Route/Timeline/Analysis/Network. Tune spacing to
  *  fit content, never this number per-mode. */
-const UNIFORM_PEEK_HEIGHT = 172;
+const UNIFORM_PEEK_HEIGHT = 180;
 const PEEK_MODES: ReadonlySet<AppMode> = new Set(['route', 'explore', 'density', 'network']);
 
 /** Mode identity at peek. The whole row is the expand affordance — icon,
@@ -122,7 +122,7 @@ function DensityPeekLegend() {
         <div className="h-2 rounded-full flex-1" style={{ background: gradient }} />
         <span className="text-2xs text-dark-500 uppercase">High</span>
       </div>
-      <p className="text-[10px] text-dark-500 mt-1">{label}</p>
+      <p className="text-[10px] text-dark-500 mt-2">{label}</p>
     </div>
   );
 }
@@ -139,7 +139,7 @@ function NetworkPeekSearch({ onExpand }: { onExpand: () => void }) {
           document.getElementById('network-agency-search')?.focus();
         }));
       }}
-      className="mt-3 w-full h-10 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
+      className="mt-1 w-full h-7 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
       aria-label="Search agencies"
     >
       <Search className="w-3.5 h-3.5 text-dark-500" aria-hidden="true" />
@@ -157,7 +157,7 @@ function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onCle
   if (!node) return null;
   const connections = adjacency[node.id]?.length ?? node.connectionCount;
   return (
-    <div className="mt-3 animate-fade-in">
+    <div className="mt-11 animate-fade-in">
       <div className="flex items-start gap-3">
         <button onClick={onExpand} className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={`${node.name} — open details`}>
           <p className="text-[15px] font-display font-semibold text-white leading-snug truncate">{node.name}</p>
@@ -371,11 +371,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       {appMode === 'explore' && (
         <div className={`mt-3 animate-fade-in ${effectiveSnap === 'full' ? 'hidden' : ''}`}>
           {mapVisualization === 'heatmap' ? (
-            <IdentityRow mode="explore" onExpand={handleExpandSheet} />
+            <div className="mt-16">
+              <IdentityRow mode="explore" onExpand={handleExpandSheet} />
+            </div>
           ) : (
             <>
               <StopSheetDrag>
-                <div className="h-12"><TimelineBar bare showCount /></div>
+                <div className="h-20"><TimelineBar bare showCount /></div>
               </StopSheetDrag>
               <p className="text-2xs text-dark-500 uppercase mt-1">Cameras over time</p>
             </>
@@ -384,7 +386,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       )}
       {appMode !== 'explore' && effectiveSnap === 'peek' && (
         appMode === 'route' ? (
-          <div className="mt-3 space-y-2.5 animate-fade-in">
+          <div className="mt-3 space-y-2 animate-fade-in">
             {hasRoutes ? (
               <>
                 <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
