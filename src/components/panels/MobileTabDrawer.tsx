@@ -6,7 +6,7 @@ import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
-import { AlertTriangle, ChevronUp } from 'lucide-react';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2 } from 'lucide-react';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
 import { FlockHopperCTA } from './FlockHopperCTA';
@@ -46,6 +46,41 @@ function DrawerFooter() {
         Maps by{' '}
         <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
       </p>
+    </div>
+  );
+}
+
+const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
+  route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
+  density: { title: 'Surveillance Analysis', desc: 'Compare surveillance intensity by state or county. Tap any region to reveal its statistics.', Icon: BarChart3 },
+  network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency to trace its connections.', Icon: Share2 },
+};
+
+const MODE_PEEK_HEIGHT: Partial<Record<AppMode, number>> = { route: 196, density: 168, network: 140 };
+
+/** Mode identity at peek. The whole row is the expand affordance — icon,
+ *  real title, one-liner, chevron. */
+function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () => void; extra?: React.ReactNode }) {
+  const cfg = PEEK[mode];
+  if (!cfg) return null;
+  const Icon = cfg.Icon;
+  return (
+    <div className="mt-3 animate-fade-in">
+      <button
+        onClick={onExpand}
+        className="w-full flex items-center gap-3 text-left active:opacity-70 transition-opacity min-h-11"
+        aria-label={`${cfg.title} — open controls and details`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-accent-muted border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-[18px] h-[18px] text-accent" aria-hidden="true" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[15px] font-display font-semibold text-white leading-tight">{cfg.title}</h2>
+          <p className="text-xs text-dark-400 leading-snug mt-0.5">{cfg.desc}</p>
+        </div>
+        <ChevronUp className="w-4 h-4 text-dark-500 flex-shrink-0" aria-hidden="true" />
+      </button>
+      {extra}
     </div>
   );
 }
@@ -94,6 +129,16 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       setDidAutoExpand(false);
     }
   }, [hasRoutes, appMode, didAutoExpand]);
+
+  // Entering a mode that has an identity peek from the minimized state
+  // raises the sheet to peek — covers tab taps AND deep links, and never
+  // fights a user who deliberately expanded or is mid-gesture.
+  useEffect(() => {
+    if (PEEK[appMode] && snapPoint === 'minimized') {
+      setSnapPoint('peek');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appMode]);
 
   const densityIsLoading = densityLoadPhase === 'fetching';
 
@@ -145,15 +190,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /*  Header: single-row pill tabs                                     */
   /* ================================================================ */
 
-  const isRoutePeekable = appMode === 'route' && hasRoutes;
-
   // Map mode's minimized header carries an extra stats/hint row
   const minimizedHeight = appMode === 'map' ? 108 : 80;
 
   // Resting height feeds --drawer-height so map controls/attribution ride
   // above the sheet. Parked at the peek height while 'full' (controls are
   // behind the sheet then anyway; jumping them to 85vh would look broken).
-  const peekHeightForMode = isRoutePeekable ? 210 : minimizedHeight;
+  const peekHeightForMode = MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight;
   const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
 
   useEffect(() => {
@@ -195,11 +238,19 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           <span className="text-[11px] font-medium">Swipe up for details</span>
         </div>
       )}
-      {isRoutePeekable && snapPoint !== 'minimized' && (
-        <div className="mt-3 space-y-3 animate-fade-in">
-          <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-          {snapPoint === 'peek' && <FlockHopperCTA variant="row" />}
-        </div>
+      {snapPoint === 'peek' && (
+        appMode === 'route' && hasRoutes ? (
+          <div className="mt-3 space-y-3 animate-fade-in">
+            <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
+            <FlockHopperCTA variant="row" />
+          </div>
+        ) : (
+          <IdentityRow
+            mode={appMode}
+            onExpand={handleExpandSheet}
+            extra={appMode === 'route' ? <div className="mt-3"><FlockHopperCTA variant="row" /></div> : undefined}
+          />
+        )
       )}
     </div>
   );
