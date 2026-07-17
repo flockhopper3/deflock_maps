@@ -223,7 +223,7 @@ export function MapSearch() {
           placeholder="Search address, city, or zip..."
           autoComplete="off"
           aria-label="Search locations"
-          className="w-full pl-12 pr-24 py-3.5 bg-dark-800 border border-dark-600 rounded-md text-white placeholder-dark-500 text-base text-left focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 transition-all"
+          className="w-full pl-12 pr-24 py-3.5 bg-dark-900/90 backdrop-blur border border-hairline rounded-lg text-white placeholder-dark-500 text-base text-left focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 transition-all"
         />
 
         {/* Right side: Search button, Loading, Clear */}

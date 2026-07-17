@@ -213,7 +213,7 @@ export function BottomSheet({
 
       {/* Bottom Sheet */}
       <motion.div
-        className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden bg-dark-900 rounded-t-xl flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden bg-dark-900 rounded-t-lg border-t border-hairline flex flex-col"
         role="dialog"
         aria-label="Panel"
         style={{
@@ -236,7 +236,7 @@ export function BottomSheet({
         >
           {/* Visual drag indicator */}
           <div className="flex justify-center pt-3 pb-1">
-            <div className="w-8 h-[3px] rounded-full bg-dark-500" />
+            <div className="w-8 h-[3px] rounded-full bg-dark-600" />
           </div>
 
           {/* Header content area - shows preview when collapsed */}

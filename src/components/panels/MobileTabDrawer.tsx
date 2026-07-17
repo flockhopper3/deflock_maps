@@ -163,7 +163,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   const headerContent = (
     <div>
-      <div className="grid grid-cols-5 gap-1">
+      <div className="flex items-stretch -mx-4 px-2 border-b border-hairline">
         {TABS.map(({ mode, label }) => {
           const isActive = activeMode === mode;
           const available = isModeAvailable(mode, country);
@@ -173,15 +173,18 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               onClick={() => available && handleTabPress(mode)}
               disabled={!available}
               aria-disabled={!available}
-              className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              className={`relative flex-1 min-w-11 py-2.5 text-2xs font-semibold uppercase tracking-[0.14em] transition-colors ${
                 isActive
-                  ? 'bg-accent/10 text-accent border border-dark-600'
+                  ? 'text-white'
                   : available
-                    ? 'bg-zinc-800/60 text-zinc-400 border border-zinc-700 active:bg-zinc-700'
-                    : 'bg-zinc-900/40 text-zinc-600 border border-zinc-800'
+                    ? 'text-dark-500 active:text-dark-300'
+                    : 'text-dark-600'
               }`}
             >
               {label}
+              {isActive && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-[1.5px] bg-accent" />
+              )}
             </button>
           );
         })}

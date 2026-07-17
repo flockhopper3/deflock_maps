@@ -92,10 +92,10 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
         href={getPlatformStoreUrl()}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gradient-to-br from-blue-500/15 to-blue-500/5 border border-blue-500/40 active:bg-blue-500/10 transition-colors"
+        className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-accent-muted border border-accent/40 active:bg-accent/10 transition-colors"
       >
-        <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
-          <Navigation className="w-4 h-4 text-blue-400" />
+        <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <Navigation className="w-4 h-4 text-accent" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-white">Drive it live</p>

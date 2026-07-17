@@ -10,7 +10,7 @@ export function DensityLegendBar() {
 
   return (
     <div className="absolute bottom-4 left-4 z-20">
-      <div className="bg-dark-800/90 rounded-md px-3 py-2 border border-dark-600">
+      <div className="bg-dark-900/90 rounded-lg px-3 py-2 border border-hairline">
         <div className="flex items-center gap-3">
           <span className="text-dark-400 text-xs font-medium">Low</span>
           <div
