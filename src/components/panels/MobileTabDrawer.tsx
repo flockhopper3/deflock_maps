@@ -9,7 +9,7 @@ import { isModeAvailable } from '../../services/cameraDataService';
 import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2 } from 'lucide-react';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
-import { FlockHopperCTA } from './FlockHopperCTA';
+import { FlockHopperCTA, FlockHopperStoreButtons } from './FlockHopperCTA';
 import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
@@ -55,11 +55,15 @@ function DrawerFooter() {
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
   // route renders the FlockHopper line instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
-  density: { title: 'Surveillance Analysis', desc: 'Compare surveillance intensity by state or county. Tap any region to reveal its statistics.', Icon: BarChart3 },
+  density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
   network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency to trace its connections.', Icon: Share2 },
 };
 
-const MODE_PEEK_HEIGHT: Partial<Record<AppMode, number>> = { route: 122, density: 168, network: 140 };
+/** One resting height for every content-mode peek — the sheet never changes
+ *  height switching among Route/Timeline/Analysis/Network. Tune spacing to
+ *  fit content, never this number per-mode. */
+const UNIFORM_PEEK_HEIGHT = 172;
+const PEEK_MODES: ReadonlySet<AppMode> = new Set(['route', 'explore', 'density', 'network']);
 
 /** Mode identity at peek. The whole row is the expand affordance — icon,
  *  real title, one-liner, chevron. */
@@ -235,9 +239,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const densityDetailHeight = Math.min(430, Math.round(window.innerHeight * 0.62));
   const peekHeightForMode = isDensityDetail
     ? densityDetailHeight
-    : appMode === 'route' && hasRoutes
-      ? 186 // route preview + slim FlockHopper line, measured in-browser (390x844 viewport)
-      : (MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight);
+    : PEEK_MODES.has(appMode)
+      ? UNIFORM_PEEK_HEIGHT
+      : minimizedHeight;
   const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
 
   useEffect(() => {
@@ -281,9 +285,18 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       )}
       {snapPoint === 'peek' && (
         appMode === 'route' ? (
-          <div className="mt-3 space-y-3 animate-fade-in">
-            {hasRoutes && <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />}
-            <FlockHopperCTA variant="line" />
+          <div className="mt-3 space-y-2.5 animate-fade-in">
+            {hasRoutes ? (
+              <>
+                <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
+                <FlockHopperCTA variant="line" />
+              </>
+            ) : (
+              <>
+                <FlockHopperCTA variant="line" noAction />
+                <FlockHopperStoreButtons />
+              </>
+            )}
           </div>
         ) : isDensityDetail ? (
           <div className="mt-3 animate-fade-in">
