@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { MapLibreView, MapSearch, FloatingRouteCard, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
+import { HeaderCameraCount } from '@/components/map/HeaderCameraCount';
 import { RoutePanel } from '@/components/panels';
 import { ExplorePanel } from '@/components/panels/ExplorePanel';
 import { DensityPanel } from '@/components/panels/DensityPanel';
@@ -41,11 +42,9 @@ export function MapPage() {
     isInitialized,
     cameras,
     error,
-    getCamerasInBounds,
     loadPhase,
     country,
   } = useCameraStore();
-  const bounds = useMapStore(s => s.bounds);
   const center = useMapStore(s => s.center);
   const zoom = useMapStore(s => s.zoom);
   const appMode = useAppModeStore(s => s.appMode);
@@ -182,11 +181,6 @@ export function MapPage() {
   const [mapInitError, setMapInitError] = useState<string | null>(null);
   const mapRef = useRef<MapLibreViewHandle>(null);
   const mapInitDeadlineRef = useRef<ReturnType<typeof setTimeout>>();
-
-  // Get cameras in view for mobile header display
-  const viewCameraCount = bounds
-    ? getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west).length
-    : 0;
 
   // Reset UI state on mount (handles stale state from previous navigation)
   // and probe for WebGL before doing any work — without it the map cannot
@@ -384,9 +378,7 @@ export function MapPage() {
 
               {/* Mobile: Camera count + hamburger */}
               <div className="lg:hidden flex items-center gap-2">
-                <span className="text-xs text-dark-400">
-                  <span className="text-dark-200 font-semibold tabular-nums">{viewCameraCount.toLocaleString()}</span> in view
-                </span>
+                <HeaderCameraCount />
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                   className="inline-flex items-center justify-center w-10 h-10 text-dark-300 hover:text-dark-100 transition-colors duration-150"
