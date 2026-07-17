@@ -96,13 +96,15 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
     return (
       <div>
         <div className="flex items-center justify-between gap-3">
+          {/* Trimmed wordmark (FlockHopper-2.png carries ~20% transparent
+              padding); rendered larger since the box is all artwork now */}
           <img
-            src="/FlockHopper-2.png"
+            src="/flockhopper-wordmark.png"
             alt="FlockHopper"
-            width={500}
-            height={100}
+            width={441}
+            height={83}
             decoding="async"
-            className="h-8 w-auto"
+            className="h-10 w-auto"
           />
           <a
             href="https://dontgetflocked.com/app"
