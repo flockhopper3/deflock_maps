@@ -8,7 +8,7 @@ import type { NetworkNode, Direction } from '../../store/networkStore';
 /*  Shared constants & helpers                                         */
 /* ------------------------------------------------------------------ */
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   pd: 'Police Department',
   so: "Sheriff's Office",
   federal: 'Federal Agency',
@@ -196,6 +196,7 @@ export function NetworkPanelContent() {
           <div className="relative mb-5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
             <input
+              id="network-agency-search"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

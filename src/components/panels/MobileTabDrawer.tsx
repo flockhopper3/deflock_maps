@@ -6,12 +6,12 @@ import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
-import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History } from 'lucide-react';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, Search, X } from 'lucide-react';
 import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
 import { FlockHopperCTA, FlockHopperStoreButtons } from './FlockHopperCTA';
-import { NetworkPanelContent } from './NetworkPanelContent';
+import { NetworkPanelContent, TYPE_LABELS } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
 import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
@@ -73,7 +73,7 @@ const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof 
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
   explore: { title: 'Timeline', desc: 'Watch ALPR camera deployment grow over time.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
-  network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency to trace its connections.', Icon: Share2 },
+  network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency node to trace its connections.', Icon: Share2 },
 };
 
 /** One resting height for every content-mode peek — the sheet never changes
@@ -127,6 +127,58 @@ function DensityPeekLegend() {
   );
 }
 
+/** Peek search facade: looks like the input, but a tap expands the sheet and
+ *  focuses the real search (a 172px peek and the soft keyboard can't coexist). */
+function NetworkPeekSearch({ onExpand }: { onExpand: () => void }) {
+  return (
+    <button
+      onClick={() => {
+        onExpand();
+        // Focus after the expand animation has begun and the panel is mounted
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          document.getElementById('network-agency-search')?.focus();
+        }));
+      }}
+      className="mt-3 w-full h-10 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
+      aria-label="Search agencies"
+    >
+      <Search className="w-3.5 h-3.5 text-dark-500" aria-hidden="true" />
+      <span className="text-xs text-dark-500 flex-1">Search agencies…</span>
+      <span className="text-2xs text-dark-600 uppercase">Swipe up for details</span>
+    </button>
+  );
+}
+
+/** Selected agency at peek — name, type, key counts; ✕ clears (same pattern
+ *  as Analysis regions). */
+function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onClear: () => void }) {
+  const node = useNetworkStore(s => s.selectedNode);
+  const adjacency = useNetworkStore(s => s.adjacency);
+  if (!node) return null;
+  const connections = adjacency[node.id]?.length ?? node.connectionCount;
+  return (
+    <div className="mt-3 animate-fade-in">
+      <div className="flex items-start gap-3">
+        <button onClick={onExpand} className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={`${node.name} — open details`}>
+          <p className="text-[15px] font-display font-semibold text-white leading-snug truncate">{node.name}</p>
+          <p className="text-2xs text-dark-400 uppercase mt-0.5">{TYPE_LABELS[node.type]} · {node.state}</p>
+          <p className="text-xs text-dark-400 mt-1.5 tabular-nums">
+            {connections.toLocaleString()} connection{connections !== 1 ? 's' : ''}
+            {node.isPortal && node.cameras > 0 && <> · {node.cameras.toLocaleString()} cameras</>}
+          </p>
+        </button>
+        <button
+          onClick={onClear}
+          className="flex-shrink-0 w-11 h-8 -mr-2 rounded-lg flex items-center justify-center text-dark-400 active:text-dark-200 transition-colors"
+          aria-label="Clear selected agency"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  MobileTabDrawer                                                    */
 /* ------------------------------------------------------------------ */
@@ -153,6 +205,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const loadNetworkData = useNetworkStore(s => s.loadNetworkData);
   const selectedNode = useNetworkStore(s => s.selectedNode);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const setSelectedNodeId = useNetworkStore(s => s.setSelectedNodeId);
 
   /* ---- country (gates US-only tabs) ---- */
   const country = useCameraStore(s => s.country);
@@ -193,6 +246,15 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDensityFeature, appMode]);
+
+  // Tapping an agency node surfaces its summary at the peek. Only ever
+  // raises — same contract as the Analysis-region effect above.
+  useEffect(() => {
+    if (appMode === 'network' && selectedNode && snapPoint !== 'full') {
+      setSnapPoint('peek');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode, appMode]);
 
   const densityIsLoading = densityLoadPhase === 'fetching';
 
@@ -343,11 +405,22 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
             />
             <DensityPeekLegend />
           </div>
+        ) : appMode === 'network' && selectedNode ? (
+          <NetworkPeekSummary
+            onExpand={handleExpandSheet}
+            onClear={() => setSelectedNodeId(null)}
+          />
         ) : (
           <IdentityRow
             mode={appMode}
             onExpand={handleExpandSheet}
-            extra={appMode === 'density' ? <DensityPeekLegend /> : undefined}
+            extra={
+              appMode === 'density'
+                ? <DensityPeekLegend />
+                : appMode === 'network'
+                  ? <NetworkPeekSearch onExpand={handleExpandSheet} />
+                  : undefined
+            }
           />
         )
       )}
