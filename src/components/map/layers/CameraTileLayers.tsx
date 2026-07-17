@@ -202,8 +202,9 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
         <Layer {...pointLayer} layout={{ visibility }} />
       </Source>
       <Source id="camera-tile-cones" type="geojson" data={conesData}>
-        <Layer {...coneLayer} layout={{ visibility }} />
-        <Layer {...coneOutlineLayer} layout={{ visibility }} />
+        {/* Anchored beneath the glow so cones never cover the camera marks */}
+        <Layer {...coneLayer} beforeId="camera-tile-glow" layout={{ visibility }} />
+        <Layer {...coneOutlineLayer} beforeId="camera-tile-glow" layout={{ visibility }} />
       </Source>
     </>
   );
