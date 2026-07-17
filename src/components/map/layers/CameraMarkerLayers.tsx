@@ -38,6 +38,37 @@ function camerasToGeoJSON(cameras: ALPRCamera[]): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features };
 }
 
+// Zoom-scaled glow from z10 — matches camera-tile-glow so mode swaps are seamless.
+// Carries visual mass continuously through the z11–12 dot→point handoff and
+// restores the pre-tiles camera aura at z12+.
+const geojsonGlowLayer: maplibregl.LayerSpecification = {
+  id: 'cameras-glow',
+  type: 'circle',
+  source: 'cameras',
+  minzoom: 10,
+  paint: {
+    'circle-color': '#4DA6FF',
+    // Stays just behind the mark it sits under — at z11 it is barely wider than
+    // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
+    // have separated and the halo has room to read as presence, not as bulk.
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 2,
+      11, 5,
+      12, 10,
+      14, 16,
+    ],
+    'circle-opacity': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 0,
+      11, 0.25,
+      12, 0.4,
+    ],
+    'circle-blur': 0.5,
+    'circle-stroke-width': 0,
+  },
+};
+
 // Density dots below z12 — matches camera-tile-dots so mode swaps are seamless
 const geojsonDotLayer: maplibregl.LayerSpecification = {
   id: 'cameras-dots-lowzoom',
@@ -73,8 +104,12 @@ const unclusteredPointLayer: maplibregl.LayerSpecification = {
   minzoom: 11,
   paint: {
     'circle-color': '#0080BC',
-    'circle-radius': 6,
-    'circle-stroke-width': 2,
+    // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
+    // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
+    // at full width from the start it would bolt 2px of outer radius on the
+    // instant the point appears, which is a pop of its own.
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
+    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
     'circle-stroke-color': '#93CBFF',
     'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
     'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
@@ -161,6 +196,8 @@ export function CameraMarkerLayers({ cameras, visible }: CameraMarkerLayersProps
         <Layer {...directionConeOutlineLayer} layout={{ visibility: cameraLayerVisibility }} />
       </Source>
       <Source id="cameras" type="geojson" data={geojsonData}>
+        {/* Glow first — document order is paint order, and it must sit beneath both marks */}
+        <Layer {...geojsonGlowLayer} layout={{ visibility: cameraLayerVisibility }} />
         <Layer {...geojsonDotLayer} layout={{ visibility: cameraLayerVisibility }} />
         <Layer {...unclusteredPointLayer} layout={{ visibility: cameraLayerVisibility }} />
       </Source>

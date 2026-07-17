@@ -5,6 +5,7 @@ import {
   CAMERA_TILES_URL,
   CAMERA_TILES_SOURCE_LAYER,
   CAMERA_TILES_MAXZOOM,
+  CAMERA_POINTS_MINZOOM,
 } from '../../../services/cameraTilesService';
 import { createDirectionCone, parseDirections } from './cameraGeometry';
 
@@ -19,7 +20,42 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
  *  z0–11:  density dots (tiny, semi-transparent; overlaps read as density)
  *  z11–12: dots crossfade out, full camera points fade in
  *  z12+:   direction cones (built client-side from tile attributes)
+ *
+ * A zoom-scaled glow underlies both marks from z10 up. It carries the visual
+ * mass continuously through the z11–12 handoff, so the dot→point swap reads as
+ * a zoom rather than a pop, and it restores the pre-tiles camera aura at z12+.
+ * Starts at z10 (not z0): blurred circles are fill-rate bound, and glowing
+ * ~114k features at country zoom would blob dense metros into featureless mass.
  */
+const glowLayer: maplibregl.LayerSpecification = {
+  id: 'camera-tile-glow',
+  type: 'circle',
+  source: 'camera-tiles',
+  'source-layer': CAMERA_TILES_SOURCE_LAYER,
+  minzoom: 10,
+  paint: {
+    'circle-color': '#4DA6FF',
+    // Stays just behind the mark it sits under — at z11 it is barely wider than
+    // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
+    // have separated and the halo has room to read as presence, not as bulk.
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 2,
+      11, 5,
+      12, 10,
+      14, 16,
+    ],
+    'circle-opacity': [
+      'interpolate', ['linear'], ['zoom'],
+      10, 0,
+      11, 0.25,
+      12, 0.4,
+    ],
+    'circle-blur': 0.5,
+    'circle-stroke-width': 0,
+  },
+};
+
 const dotLayer: maplibregl.LayerSpecification = {
   id: 'camera-tile-dots',
   type: 'circle',
@@ -53,11 +89,17 @@ const pointLayer: maplibregl.LayerSpecification = {
   type: 'circle',
   source: 'camera-tiles',
   'source-layer': CAMERA_TILES_SOURCE_LAYER,
-  minzoom: 11,
+  // Shared with the viewport count, which queries dots below this zoom and
+  // points at/above it — the two layers overlap on [11, 12).
+  minzoom: CAMERA_POINTS_MINZOOM,
   paint: {
     'circle-color': '#0080BC',
-    'circle-radius': 6,
-    'circle-stroke-width': 2,
+    // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
+    // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
+    // at full width from the start it would bolt 2px of outer radius on the
+    // instant the point appears, which is a pop of its own.
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
+    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
     'circle-stroke-color': '#93CBFF',
     'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
     'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
@@ -154,6 +196,8 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
         url={CAMERA_TILES_URL}
         maxzoom={CAMERA_TILES_MAXZOOM}
       >
+        {/* Glow first — document order is paint order, and it must sit beneath both marks */}
+        <Layer {...glowLayer} layout={{ visibility }} />
         <Layer {...dotLayer} layout={{ visibility }} />
         <Layer {...pointLayer} layout={{ visibility }} />
       </Source>
