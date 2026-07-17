@@ -28,6 +28,8 @@ export default {
           200: '#e5e7eb',
           100: '#f3f4f6',
         },
+        // Instrument language: the one border treatment for chrome
+        hairline: 'rgba(255,255,255,0.12)',
         accent: {
           DEFAULT: '#0080BC',
           hover: '#0095d9',
@@ -57,6 +59,8 @@ export default {
         mono: ['JetBrains Mono', 'SF Mono', 'Fira Code', 'monospace'],
       },
       fontSize: {
+        // Uppercase micro-labels ("COUNTY", tab labels)
+        '2xs': ['0.625rem', { lineHeight: '0.875rem', letterSpacing: '0.06em' }],
         'xs': ['0.75rem', { lineHeight: '1.25rem' }],
         'sm': ['0.875rem', { lineHeight: '1.375rem' }],
         'base': ['0.9375rem', { lineHeight: '1.5rem' }],
