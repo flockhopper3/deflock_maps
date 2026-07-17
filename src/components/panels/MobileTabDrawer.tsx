@@ -233,7 +233,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const densityDetailHeight = Math.min(430, Math.round(window.innerHeight * 0.62));
   const peekHeightForMode = isDensityDetail
     ? densityDetailHeight
-    : (MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight);
+    : appMode === 'route' && hasRoutes
+      ? 210 // route preview + CTA need the pre-refresh height; 196 fits only the identity row
+      : (MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight);
   const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
 
   useEffect(() => {
