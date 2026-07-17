@@ -392,16 +392,17 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       )}
       {appMode !== 'explore' && snapPoint === 'peek' && (
         appMode === 'route' ? (
-          <div className="mt-3 space-y-2 animate-fade-in">
-            {hasRoutes ? (
-              <>
-                <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-                <FlockHopperCTA variant="line" />
-              </>
-            ) : (
+          hasRoutes ? (
+            <div className="mt-3 space-y-2 animate-fade-in">
+              <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
+              <FlockHopperCTA variant="line" />
+            </div>
+          ) : (
+            // Optically centered in the peek's content region (no floating gap)
+            <div className="mt-6 animate-fade-in">
               <FlockHopperCTA variant="banner" />
-            )}
-          </div>
+            </div>
+          )
         ) : isDensityDetail ? (
           <div className="mt-3 animate-fade-in">
             <DensityFeatureStats

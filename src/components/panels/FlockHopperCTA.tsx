@@ -91,29 +91,31 @@ interface FlockHopperCTAProps {
  */
 export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAProps) {
   if (variant === 'banner') {
+    // App-install-banner lockup: logo + caption as one left unit, brand-red
+    // button vertically centered against it. #d80018 is the logo's own red.
     return (
-      <div>
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
           <img
             src="/FlockHopper-2.png"
             alt="FlockHopper"
             width={500}
             height={100}
             decoding="async"
-            className="h-9 w-auto"
+            className="h-8 w-auto"
           />
-          <a
-            href="https://dontgetflocked.com/app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-3 rounded-lg bg-accent active:bg-accent-hover text-white text-xs font-bold flex-shrink-0 transition-colors"
-          >
-            Get the app
-          </a>
+          <p className="text-xs text-dark-400 leading-snug mt-2">
+            Real-time, turn-by-turn navigation that avoids ALPR cameras.
+          </p>
         </div>
-        <p className="text-xs text-dark-400 leading-snug mt-8">
-          Real-time, turn-by-turn navigation that avoids ALPR cameras.
-        </p>
+        <a
+          href="https://dontgetflocked.com/app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-4 py-3 rounded-lg bg-[#d80018] active:bg-[#a80013] text-white text-xs font-bold flex-shrink-0 transition-colors"
+        >
+          Get the app
+        </a>
       </div>
     );
   }
