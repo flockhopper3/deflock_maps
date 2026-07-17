@@ -7,35 +7,36 @@ import type { ALPRCamera } from '../../../types';
 /**
  * Dot size across zoom.
  *
- * Through z11 this holds the historical 2-3px, which is what makes overlapping
- * dots stack into a readable density field. From z13 dots grow into individually
- * legible marks — deliberately taking over the job the removed marker layer did.
- * Linear between hand-tuned anchors: the anchors are the design.
+ * Through z10 this holds the historical 2-3px, which is what makes overlapping
+ * dots stack into a readable density field at national/regional zoom. From z13
+ * dots ramp up steeply into individually legible marks — deliberately taking
+ * over the job the removed marker layer did — reaching ~50% larger at local zoom
+ * than the first pass. Linear between hand-tuned anchors: the anchors are the design.
  */
 const DOT_RADIUS: maplibregl.DataDrivenPropertyValueSpecification<number> = [
   'interpolate', ['linear'], ['zoom'],
   0, 1.5,
   4, 2,
   10, 3,
-  13, 4.8,
-  14, 6,
-  16, 9,
-  18, 12,
+  13, 7,
+  14, 9,
+  16, 13.5,
+  18, 18,
 ];
 
 /**
  * Dot opacity across zoom.
  *
- * Stays at the historical 0.25 while stacking does the work. Once cameras
- * separate past z13 nothing stacks, so a 25% dot would just read as faint —
- * it solidifies to near-opaque by z15.
+ * Stays at the historical 0.25 while stacking does the work at national zoom.
+ * Once cameras separate past z13 nothing stacks, so a 25% dot would just read as
+ * faint — it solidifies to fully opaque by z15 so a lone dot reads as a camera.
  */
 const DOT_OPACITY: maplibregl.DataDrivenPropertyValueSpecification<number> = [
   'interpolate', ['linear'], ['zoom'],
   4, 0.25,
   11, 0.25,
-  13, 0.55,
-  15, 0.9,
+  13, 0.65,
+  15, 1,
 ];
 
 /**
