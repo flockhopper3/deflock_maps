@@ -88,8 +88,10 @@ function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () =>
   const cfg = PEEK[mode];
   if (!cfg) return null;
   const Icon = cfg.Icon;
+  // Network trims its own top margin (vs. the shared mt-3) to make room for
+  // the search facade below without touching any other mode's spacing.
   return (
-    <div className="mt-3 animate-fade-in">
+    <div className={`animate-fade-in ${mode === 'network' ? 'mt-1.5' : 'mt-3'}`}>
       <button
         onClick={onExpand}
         className="w-full flex items-center gap-3 text-left active:opacity-70 transition-opacity min-h-11"
@@ -128,7 +130,7 @@ function DensityPeekLegend() {
 }
 
 /** Peek search facade: looks like the input, but a tap expands the sheet and
- *  focuses the real search (a 172px peek and the soft keyboard can't coexist). */
+ *  focuses the real search (the compact peek and the soft keyboard can't coexist). */
 function NetworkPeekSearch({ onExpand }: { onExpand: () => void }) {
   return (
     <button
@@ -139,7 +141,7 @@ function NetworkPeekSearch({ onExpand }: { onExpand: () => void }) {
           document.getElementById('network-agency-search')?.focus();
         }));
       }}
-      className="mt-1 w-full h-7 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
+      className="mt-0 w-full h-10 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
       aria-label="Search agencies"
     >
       <Search className="w-3.5 h-3.5 text-dark-500" aria-hidden="true" />
