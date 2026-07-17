@@ -321,7 +321,7 @@ export function MapPage() {
           camerasReady={camerasReady}
         />
       )}
-      <div className={`map-page h-screen w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''} ${appMode === 'map' ? 'map-mode-active' : ''}`}>
+      <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''} ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
         {!isEmbed && (
         <header className="h-12 bg-dark-900 border-b border-dark-600 flex items-center z-50 shrink-0">
