@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouteStore, useAppModeStore, useCameraStore, useMapStore } from '../../store';
 import { useDensityStore } from '../../store/densityStore';
 import { useNetworkStore } from '../../store/networkStore';
@@ -116,11 +116,20 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
    * switch (store update → layer swaps → panel mounts) is deferred one
    * painted frame so the tap always feels instant. */
   const [pendingMode, setPendingMode] = useState<AppMode | null>(null);
+  // Latest requested mode — dedupes same-tab re-taps and lets a newer tap
+  // supersede an older one's still-queued deferred switch.
+  const latestTabRequestRef = useRef<AppMode | null>(null);
 
   const handleTabPress = useCallback((mode: AppMode) => {
-    if (mode === appMode) return;
+    if (mode === (latestTabRequestRef.current ?? appMode)) return;
+    latestTabRequestRef.current = mode;
     setPendingMode(mode);
-    requestAnimationFrame(() => requestAnimationFrame(() => onModeChange(mode)));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (latestTabRequestRef.current !== mode) return; // superseded by a newer tap
+      latestTabRequestRef.current = null;
+      onModeChange(mode);
+    }));
+    // Keep the drawer at its current snap — do NOT auto-expand on tab tap
   }, [appMode, onModeChange]);
 
   // Clear the optimistic highlight once the real mode lands (or is bounced,
