@@ -150,6 +150,17 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   // Map mode's minimized header carries an extra stats/hint row
   const minimizedHeight = appMode === 'map' ? 108 : 80;
 
+  // Resting height feeds --drawer-height so map controls/attribution ride
+  // above the sheet. Parked at the peek height while 'full' (controls are
+  // behind the sheet then anyway; jumping them to 85vh would look broken).
+  const peekHeightForMode = isRoutePeekable ? 210 : minimizedHeight;
+  const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
+
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('.map-page');
+    el?.style.setProperty('--drawer-height', `${drawerRestHeight}px`);
+  }, [drawerRestHeight]);
+
   const headerContent = (
     <div>
       <div className="flex items-stretch -mx-4 px-2 border-b border-hairline">
@@ -319,7 +330,8 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       {showNetworkWarning && (
         <button
           onClick={handleExpandSheet}
-          className="fixed bottom-[96px] left-4 z-[52] flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 shadow-lg shadow-amber-500/30 active:bg-amber-600 transition-colors"
+          className="fixed left-4 z-[52] flex items-center justify-center w-11 h-11 rounded-full bg-amber-500 shadow-lg shadow-amber-500/30 active:bg-amber-600 transition-colors"
+          style={{ bottom: 'calc(var(--drawer-height, 80px) + 16px)' }}
           aria-label="View sharing disclaimer"
         >
           <AlertTriangle className="w-5 h-5 text-white" />
@@ -329,7 +341,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         snapPoint={snapPoint}
         onSnapPointChange={setSnapPoint}
         minimizedHeight={minimizedHeight}
-        peekHeight={isRoutePeekable ? 210 : minimizedHeight}
+        peekHeight={peekHeightForMode}
         fullHeight={85}
         headerContent={headerContent}
         disableHeaderTap

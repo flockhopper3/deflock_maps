@@ -424,9 +424,9 @@ input[type="range"]::-moz-range-thumb {
 /* Mobile-specific styles for main map page (with bottom sheet) */
 @media (max-width: 1023px) {
   /* Only apply bottom offset on the main map page, not landing page preview */
-  /* Bottom sheet minimized height is 64-80px; sit controls just above */
+  /* Offset tracks --drawer-height (the sheet's resting height), + 12px gap */
   .map-page .maplibregl-ctrl-bottom-right {
-    bottom: 92px !important;
+    bottom: calc(var(--drawer-height, 80px) + 12px) !important;
     right: 12px !important;
   }
 
@@ -435,11 +435,10 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 
-  /* Layers button sits flush on top of geolocate, styled as one group:
-     geolocate group = 36px button + 2px border, bottom edge at
-     92px (ctrl container) + 10px (maplibregl-ctrl margin) = 102px */
+  /* Layers button sits flush on top of geolocate, styled as one group.
+     Offset tracks --drawer-height: 12px gap + 48px geolocate group. */
   .map-page .map-style-control {
-    bottom: 140px; /* 102px + 38px geolocate group */
+    bottom: calc(var(--drawer-height, 80px) + 60px);
     right: 22px; /* 12px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
   }
 
@@ -466,36 +465,25 @@ input[type="range"]::-moz-range-thumb {
     border-top-right-radius: 0 !important;
   }
 
-  /* Ensure map controls don't overlap with bottom sheet */
+  /* Ensure map controls don't overlap with bottom sheet.
+     Offset tracks --drawer-height + 12px gap. */
   .map-page .maplibregl-ctrl-bottom-left {
-    bottom: 92px !important;
+    bottom: calc(var(--drawer-height, 80px) + 12px) !important;
     left: 12px !important;
   }
 
-  /* Timeline bar active — push controls up by 56px to clear the floating pill */
+  /* Timeline bar active — push controls up by 56px to clear the floating pill.
+     Offset tracks --drawer-height + 68px (12px gap + 56px timeline pill). */
   .map-page.timeline-active .maplibregl-ctrl-bottom-right {
-    bottom: 148px !important; /* 92px + 56px */
+    bottom: calc(var(--drawer-height, 80px) + 68px) !important;
   }
 
   .map-page.timeline-active .map-style-control {
-    bottom: 196px; /* 140px + 56px */
+    bottom: calc(var(--drawer-height, 80px) + 116px);
   }
 
   .map-page.timeline-active .maplibregl-ctrl-bottom-left {
-    bottom: 148px !important; /* 92px + 56px */
-  }
-
-  /* Map mode — drawer's minimized header is 108px (stats/hint row), not 80px */
-  .map-page.map-mode-active .maplibregl-ctrl-bottom-right {
-    bottom: 120px !important; /* 108px drawer + 22px gap - 10px ctrl margin */
-  }
-
-  .map-page.map-mode-active .map-style-control {
-    bottom: 168px; /* 120px + 10px ctrl margin + 38px geolocate group */
-  }
-
-  .map-page.map-mode-active .maplibregl-ctrl-bottom-left {
-    bottom: 120px !important;
+    bottom: calc(var(--drawer-height, 80px) + 68px) !important;
   }
 }
 
