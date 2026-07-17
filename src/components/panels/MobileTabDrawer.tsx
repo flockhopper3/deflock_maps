@@ -263,9 +263,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- callbacks for BottomSheet ---- */
   const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
 
-  // With minimized === peek (explore), a drag can land on the 'minimized'
-  // label at the same height — normalize so rendering treats it as peek.
-  const effectiveSnap: SnapPoint = appMode === 'explore' && snapPoint === 'minimized' ? 'peek' : snapPoint;
+  // Explore's floor IS the peek (minimized height === peek height). Keep the
+  // stored snap canonical by mapping the equal-height 'minimized' label to
+  // 'peek' at the state boundary, so mode switches never pass through a
+  // one-frame 80px 'minimized' render.
+  const handleSnapPointChange = useCallback((p: SnapPoint) => {
+    setSnapPoint(appMode === 'explore' && p === 'minimized' ? 'peek' : p);
+  }, [appMode]);
 
   /* ---- tab switch ----
    * The tapped tab highlights this frame (pendingMode); the actual mode
@@ -364,14 +368,14 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           );
         })}
       </div>
-      {appMode === 'map' && effectiveSnap === 'minimized' && (
+      {appMode === 'map' && snapPoint === 'minimized' && (
         <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
           <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
           <span className="text-[11px] font-medium">Swipe up for details</span>
         </div>
       )}
       {appMode === 'explore' && (
-        <div className={`mt-3 animate-fade-in ${effectiveSnap === 'full' ? 'hidden' : ''}`}>
+        <div className={`mt-3 animate-fade-in ${snapPoint === 'full' ? 'hidden' : ''}`}>
           {mapVisualization === 'heatmap' ? (
             <div className="mt-16">
               <IdentityRow mode="explore" onExpand={handleExpandSheet} />
@@ -386,7 +390,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           )}
         </div>
       )}
-      {appMode !== 'explore' && effectiveSnap === 'peek' && (
+      {appMode !== 'explore' && snapPoint === 'peek' && (
         appMode === 'route' ? (
           <div className="mt-3 space-y-2 animate-fade-in">
             {hasRoutes ? (
@@ -575,7 +579,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       )}
       <BottomSheet
         snapPoint={snapPoint}
-        onSnapPointChange={setSnapPoint}
+        onSnapPointChange={handleSnapPointChange}
         minimizedHeight={minimizedHeight}
         peekHeight={peekHeightForMode}
         fullHeight={85}
