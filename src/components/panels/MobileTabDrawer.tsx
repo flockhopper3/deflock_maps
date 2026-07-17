@@ -10,7 +10,7 @@ import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, Sear
 import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
-import { FlockHopperCTA, FlockHopperStoreButtons } from './FlockHopperCTA';
+import { FlockHopperCTA } from './FlockHopperCTA';
 import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
@@ -399,10 +399,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
                 <FlockHopperCTA variant="line" />
               </>
             ) : (
-              <>
-                <FlockHopperCTA variant="line" noAction />
-                <FlockHopperStoreButtons />
-              </>
+              <FlockHopperCTA variant="banner" />
             )}
           </div>
         ) : isDensityDetail ? (

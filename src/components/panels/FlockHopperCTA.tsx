@@ -72,10 +72,7 @@ export function FlockHopperLearnMore({ className = '' }: { className?: string })
 }
 
 interface FlockHopperCTAProps {
-  variant: 'card' | 'row' | 'line';
-  /** Line variant only: omit the trailing "Get the app" pill (used when
-   *  store buttons render directly beneath the line). */
-  noAction?: boolean;
+  variant: 'card' | 'row' | 'line' | 'banner';
   /** Card variant only */
   title?: string;
   /** Card variant only */
@@ -89,8 +86,38 @@ interface FlockHopperCTAProps {
  *   (used in the mobile peek sheet header).
  * - `line`: unboxed single-line ad — app mark, name, one-liner, "Get the app"
  *   pill (used in the mobile route peek, which no longer shows an identity row).
+ * - `banner`: logo wordmark + "Get the app" button row with a description
+ *   below (used in the mobile route peek's no-routes state).
  */
-export function FlockHopperCTA({ variant, noAction, title, description }: FlockHopperCTAProps) {
+export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAProps) {
+  if (variant === 'banner') {
+    return (
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <img
+            src="/FlockHopper-2.png"
+            alt="FlockHopper"
+            width={500}
+            height={100}
+            decoding="async"
+            className="h-9 w-auto"
+          />
+          <a
+            href="https://dontgetflocked.com/app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-3 rounded-lg bg-accent active:bg-accent-hover text-white text-xs font-bold flex-shrink-0 transition-colors"
+          >
+            Get the app
+          </a>
+        </div>
+        <p className="text-xs text-dark-400 leading-snug mt-8">
+          Real-time, turn-by-turn navigation that avoids ALPR cameras.
+        </p>
+      </div>
+    );
+  }
+
   if (variant === 'line') {
     return (
       <a
@@ -106,9 +133,7 @@ export function FlockHopperCTA({ variant, noAction, title, description }: FlockH
           <p className="text-xs font-bold text-white leading-tight">FlockHopper</p>
           <p className="text-[11px] text-dark-400 leading-snug">Turn-by-turn navigation that avoids cameras</p>
         </div>
-        {!noAction && (
-          <span className="px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold flex-shrink-0">Get the app</span>
-        )}
+        <span className="px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold flex-shrink-0">Get the app</span>
       </a>
     );
   }
