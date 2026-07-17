@@ -6,7 +6,7 @@ import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
-import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, Search, X } from 'lucide-react';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, X } from 'lucide-react';
 import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
@@ -91,7 +91,7 @@ function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () =>
   // Network trims its own top margin (vs. the shared mt-3) to make room for
   // the search facade below without touching any other mode's spacing.
   return (
-    <div className={`animate-fade-in ${mode === 'network' ? 'mt-1.5' : 'mt-3'}`}>
+    <div className="mt-3 animate-fade-in">
       <button
         onClick={onExpand}
         className="w-full flex items-center gap-3 text-left active:opacity-70 transition-opacity min-h-11"
@@ -126,28 +126,6 @@ function DensityPeekLegend() {
       </div>
       <p className="text-[10px] text-dark-500 mt-2">{label}</p>
     </div>
-  );
-}
-
-/** Peek search facade: looks like the input, but a tap expands the sheet and
- *  focuses the real search (the compact peek and the soft keyboard can't coexist). */
-function NetworkPeekSearch({ onExpand }: { onExpand: () => void }) {
-  return (
-    <button
-      onClick={() => {
-        onExpand();
-        // Focus after the expand animation has begun and the panel is mounted
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          document.getElementById('network-agency-search')?.focus();
-        }));
-      }}
-      className="mt-0 w-full h-10 px-3 flex items-center gap-2 rounded-lg border border-hairline text-left active:bg-dark-800 transition-colors"
-      aria-label="Search agencies"
-    >
-      <Search className="w-3.5 h-3.5 text-dark-500" aria-hidden="true" />
-      <span className="text-xs text-dark-500 flex-1">Search agencies…</span>
-      <span className="text-2xs text-dark-600 uppercase">Swipe up for details</span>
-    </button>
   );
 }
 
@@ -424,7 +402,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               appMode === 'density'
                 ? <DensityPeekLegend />
                 : appMode === 'network'
-                  ? <NetworkPeekSearch onExpand={handleExpandSheet} />
+                  ? <p className="mt-3 text-2xs text-dark-600 uppercase">Swipe up for details</p>
                   : undefined
             }
           />
