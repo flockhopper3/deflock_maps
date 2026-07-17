@@ -1,4 +1,4 @@
-import { Navigation } from 'lucide-react';
+import { Navigation, Smartphone } from 'lucide-react';
 
 export const APP_STORE_URL = 'https://apps.apple.com/us/app/flockhopper/id6762170253';
 // TODO: replace with the Google Play public beta URL when available
@@ -91,11 +91,11 @@ interface FlockHopperCTAProps {
  */
 export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAProps) {
   if (variant === 'banner') {
-    // App-install-banner lockup: logo + caption as one left unit, brand-red
-    // button vertically centered against it. #d80018 is the logo's own red.
+    // App-install banner: logo and button share one row (common baseline),
+    // caption runs beneath. #d80018 is the logo's own red.
     return (
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
+      <div>
+        <div className="flex items-center justify-between gap-3">
           <img
             src="/FlockHopper-2.png"
             alt="FlockHopper"
@@ -104,18 +104,19 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
             decoding="async"
             className="h-8 w-auto"
           />
-          <p className="text-xs text-dark-400 leading-snug mt-2">
-            Real-time, turn-by-turn navigation that avoids ALPR cameras.
-          </p>
+          <a
+            href="https://dontgetflocked.com/app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-[#d80018] active:bg-[#a80013] text-white text-xs font-bold flex-shrink-0 transition-colors"
+          >
+            <Smartphone className="w-4 h-4" aria-hidden="true" />
+            Get the app
+          </a>
         </div>
-        <a
-          href="https://dontgetflocked.com/app"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-4 py-3 rounded-lg bg-[#d80018] active:bg-[#a80013] text-white text-xs font-bold flex-shrink-0 transition-colors"
-        >
-          Get the app
-        </a>
+        <p className="text-xs text-dark-400 leading-snug mt-2.5">
+          Real-time, turn-by-turn navigation that avoids ALPR cameras.
+        </p>
       </div>
     );
   }
