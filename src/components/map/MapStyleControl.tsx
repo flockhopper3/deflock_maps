@@ -110,7 +110,10 @@ export function MapStyleControl() {
           aria-checked={!isDark}
           aria-label="Light map"
           title="Light map"
-          onClick={() => setMapTileStyle('light')}
+          onClick={() => {
+            setMapTileStyle('light');
+            setCountryOpen(false);
+          }}
           className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
             !isDark ? 'bg-accent text-dark-900' : 'text-dark-400 hover:text-white'
           }`}
@@ -122,7 +125,10 @@ export function MapStyleControl() {
           aria-checked={isDark}
           aria-label="Dark map"
           title="Dark map"
-          onClick={() => setMapTileStyle('dark')}
+          onClick={() => {
+            setMapTileStyle('dark');
+            setCountryOpen(false);
+          }}
           className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
             isDark ? 'bg-accent text-dark-900' : 'text-dark-400 hover:text-white'
           }`}
