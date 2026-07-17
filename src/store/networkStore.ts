@@ -24,6 +24,15 @@ export interface NetworkNode {
 export type Direction = 'mutual' | 'outgoing' | 'incoming';
 export type TabKey = 'all' | Direction;
 
+/** Human-readable labels for NetworkNode['type']. */
+export const TYPE_LABELS: Record<NetworkNode['type'], string> = {
+  pd: 'Police Department',
+  so: "Sheriff's Office",
+  federal: 'Federal Agency',
+  school: 'School District',
+  other: 'Other Agency',
+};
+
 export interface DirectionalArc {
   source: NetworkNode;
   target: NetworkNode;

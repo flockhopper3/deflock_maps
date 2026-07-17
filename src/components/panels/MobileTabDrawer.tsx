@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouteStore, useAppModeStore, useCameraStore } from '../../store';
 import { useDensityStore } from '../../store/densityStore';
-import { useNetworkStore } from '../../store/networkStore';
+import { TYPE_LABELS, useNetworkStore } from '../../store/networkStore';
 import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
@@ -11,7 +11,7 @@ import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
 import { FlockHopperCTA, FlockHopperStoreButtons } from './FlockHopperCTA';
-import { NetworkPanelContent, TYPE_LABELS } from './NetworkPanelContent';
+import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
 import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';

@@ -2,19 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNetworkStore } from '../../store/networkStore';
 import { useMapStore } from '../../store';
 import { Search, X, ChevronDown, ChevronUp, Camera, ScanSearch, Car, AlertTriangle, Link2, Users, ArrowUpRight, ArrowDownLeft, ExternalLink } from 'lucide-react';
-import type { NetworkNode, Direction } from '../../store/networkStore';
+import { TYPE_LABELS, type NetworkNode, type Direction } from '../../store/networkStore';
 
 /* ------------------------------------------------------------------ */
 /*  Shared constants & helpers                                         */
 /* ------------------------------------------------------------------ */
-
-export const TYPE_LABELS: Record<string, string> = {
-  pd: 'Police Department',
-  so: "Sheriff's Office",
-  federal: 'Federal Agency',
-  school: 'School District',
-  other: 'Other Agency',
-};
 
 const TYPE_COLORS: Record<string, string> = {
   pd: 'bg-accent',
