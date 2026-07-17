@@ -435,19 +435,11 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 
-  /* Layers button sits flush on top of geolocate, styled as one group.
-     Offset tracks --drawer-height: 12px gap + 48px geolocate group. */
+  /* Country button + theme pill float above geolocate with a small gap.
+     Offset tracks --drawer-height: 12px gap + 48px geolocate group + 8px gap. */
   .map-page .map-style-control {
-    bottom: calc(var(--drawer-height, 80px) + 60px);
+    bottom: calc(var(--drawer-height, 80px) + 68px);
     right: 22px; /* 12px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
-  }
-
-  .map-page .map-style-control .map-style-trigger {
-    width: 38px;
-    height: 38px;
-    border-bottom: none;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
   }
 
   .map-page .map-style-control .country-trigger {
@@ -455,14 +447,8 @@ input[type="range"]::-moz-range-thumb {
     height: 38px;
   }
 
-  .map-page .maplibregl-ctrl-geolocate {
-    border-top-left-radius: 0 !important;
-    border-top-right-radius: 0 !important;
-  }
-
-  .map-page .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group:has(.maplibregl-ctrl-geolocate) {
-    border-top-left-radius: 0 !important;
-    border-top-right-radius: 0 !important;
+  .map-page .map-style-control .theme-pill {
+    width: 38px;
   }
 
   /* Ensure map controls don't overlap with bottom sheet.
