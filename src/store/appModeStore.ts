@@ -21,7 +21,19 @@ export interface DensitySettings {
 
 export type ColorSchemeId = 'neon' | 'thermal' | 'inferno' | 'classic' | 'plasma' | 'viridis';
 export type MapVisualizationType = 'heatmap' | 'dots';
-export type MapTileStyleId = 'dark' | 'dark-nolabels' | 'light' | 'light-nolabels' | 'white' | 'white-nolabels' | 'black' | 'black-nolabels' | 'grayscale' | 'grayscale-nolabels';
+export type MapTileStyleId = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'deflock-map-theme';
+
+function loadStoredTheme(): MapTileStyleId {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    // storage unavailable (private mode / denied) — use default
+  }
+  return 'dark';
+}
 
 export interface HeatmapSettings {
   intensity: number;
@@ -145,6 +157,13 @@ export const useAppModeStore = create<AppModeState>((set) => ({
       densitySettings: { ...state.densitySettings, ...settings },
     })),
 
-  mapTileStyle: 'light',
-  setMapTileStyle: (style) => set({ mapTileStyle: style }),
+  mapTileStyle: loadStoredTheme(),
+  setMapTileStyle: (style) => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, style);
+    } catch {
+      // storage unavailable — theme applies for this session only
+    }
+    set({ mapTileStyle: style });
+  },
 }));

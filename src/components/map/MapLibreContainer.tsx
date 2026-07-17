@@ -79,29 +79,14 @@ ensurePMTilesProtocol();
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
 const FLAVOR_MAP: Record<MapTileStyleId, string> = {
-  'dark':               'dark',
-  'dark-nolabels':      'dark',
-  'light':              'light',
-  'light-nolabels':     'light',
-  'white':              'white',
-  'white-nolabels':     'white',
-  'black':              'black',
-  'black-nolabels':     'black',
-  'grayscale':          'grayscale',
-  'grayscale-nolabels': 'grayscale',
+  dark: 'dark',
+  light: 'light',
 };
 
 
 function buildMapStyle(tileStyleId: MapTileStyleId): maplibregl.StyleSpecification {
   const flavorName = FLAVOR_MAP[tileStyleId];
-  const isNoLabels = tileStyleId.endsWith('-nolabels');
-
-  let mapLayers = pmLayers('protomaps', namedFlavor(flavorName), { lang: 'en' });
-
-  if (isNoLabels) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mapLayers = mapLayers.filter((l: any) => l.type !== 'symbol');
-  }
+  const mapLayers = pmLayers('protomaps', namedFlavor(flavorName), { lang: 'en' });
 
   return {
     version: 8,
@@ -457,10 +442,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     // unused in the body — do not remove it, or dots<->heatmap re-filtering breaks.
   }, [mapLoaded, isTimelineActive, handleTimelineTick, mapVisualization]);
 
-  // Symbol layer visibility is controlled entirely by the labels toggle
-  // (mapTileStyle nolabels variants filter them out in buildMapStyle).
-  // No need to programmatically hide them per mode — the 13 symbol layers
-  // have negligible GPU cost and hiding them confused users entering via /timeline.
+  // Symbol (label) layers are always visible in both themes. No need to
+  // programmatically hide them per mode — the 13 symbol layers have
+  // negligible GPU cost and hiding them confused users entering via /timeline.
 
   // Update visible cameras when camera data changes
   useEffect(() => {
