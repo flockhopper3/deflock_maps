@@ -93,6 +93,12 @@ export function BottomSheet({
     return distances.sort((a, b) => a.distance - b.distance)[0].point;
   }, [getSnapPointHeight, activeSnapPoints]);
 
+  // Collapse lands on peek when the mode has a real peek, else minimized —
+  // dismissing content should never strand the user on the bare tab row.
+  const collapseTarget = useCallback((): SnapPoint => (
+    getSnapPointHeight('peek') > getSnapPointHeight('minimized') ? 'peek' : 'minimized'
+  ), [getSnapPointHeight]);
+
   // Get next snap point in a direction
   const getNextSnapPoint = useCallback((current: SnapPoint, direction: 'up' | 'down'): SnapPoint => {
     const order = activeSnapPoints();
@@ -196,11 +202,11 @@ export function BottomSheet({
   // Handle tap on header to toggle between collapsed and full
   const handleHeaderTap = useCallback(() => {
     if (snapPoint === 'full') {
-      onSnapPointChange?.('minimized');
+      onSnapPointChange?.(collapseTarget());
     } else {
       onSnapPointChange?.('full');
     }
-  }, [snapPoint, onSnapPointChange]);
+  }, [snapPoint, onSnapPointChange, collapseTarget]);
 
   return (
     <>
@@ -208,7 +214,7 @@ export function BottomSheet({
       <motion.div
         className="fixed inset-0 bg-black z-[55] lg:hidden"
         style={{ opacity: backdropOpacity, pointerEvents: snapPoint === 'full' ? 'auto' : 'none' }}
-        onClick={() => onSnapPointChange?.('minimized')}
+        onClick={() => onSnapPointChange?.(collapseTarget())}
       />
 
       {/* Bottom Sheet */}
