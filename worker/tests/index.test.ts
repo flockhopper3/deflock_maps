@@ -46,6 +46,11 @@ describe('HTTP handler', () => {
       etag: '"abc123"',
       metadata: { 'x-last-updated': '2026-03-20T08:00:00Z', 'x-feature-count': '62000' },
     },
+    'cameras-us-hourly.geojson.gz': {
+      body: 'hourly-data',
+      etag: '"hourly1"',
+      metadata: { 'x-last-updated': '2026-07-17T14:05:00Z', 'x-feature-count': '114000' },
+    },
   });
 
   const env = { DATA_BUCKET: mockBucket as unknown as R2Bucket, ENVIRONMENT: 'production' };
@@ -63,6 +68,17 @@ describe('HTTP handler', () => {
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600, s-maxage=86400');
     expect(res.headers.get('ETag')).toBe('"abc123"');
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://dontgetflocked.com');
+  });
+
+  it('serves hourly datasets with a short cache TTL', async () => {
+    const req = new Request('https://data.dontgetflocked.com/cameras-us-hourly.geojson.gz', {
+      headers: { Origin: 'https://dontgetflocked.com' },
+    });
+
+    const res = await handleFetchRequest(req, env);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=300, s-maxage=3600');
   });
 
   it('returns 404 for unknown paths', async () => {
@@ -89,8 +105,11 @@ describe('HTTP handler', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.datasets).toHaveLength(1);
-    expect(body.datasets[0].name).toBe('cameras');
+    expect(body.datasets).toHaveLength(2);
+    expect(body.datasets.map((d: { name: string }) => d.name).sort()).toEqual([
+      'cameras',
+      'cameras-us-hourly',
+    ]);
   });
 
   it('handles CORS preflight', async () => {

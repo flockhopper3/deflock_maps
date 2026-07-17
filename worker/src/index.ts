@@ -56,11 +56,16 @@ export async function handleFetchRequest(
     });
   }
 
+  // Hourly datasets are republished every hour by the Actions pipeline —
+  // don't let the edge hold them for the daily datasets' 24h.
+  const isHourly = key.includes('-hourly');
   return new Response(obj.body, {
     status: 200,
     headers: {
       'Content-Type': 'application/geo+json',
-      'Cache-Control': 'public, max-age=3600, s-maxage=86400',
+      'Cache-Control': isHourly
+        ? 'public, max-age=300, s-maxage=3600'
+        : 'public, max-age=3600, s-maxage=86400',
       ETag: obj.etag,
       ...cors,
     },
