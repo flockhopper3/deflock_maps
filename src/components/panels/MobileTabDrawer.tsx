@@ -163,12 +163,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   }, [appMode]);
 
   // Tapping a region on the map surfaces its stats at the detail peek.
-  // Clearing (✕, empty-map tap, Escape) shrinks back automatically via
-  // peekHeightForMode; we only force the snap up, never down.
+  // Only ever raises: never yanks a deliberately-expanded (full) sheet down,
+  // including when re-entering Analysis with a lingering selection.
   useEffect(() => {
-    if (appMode === 'density' && selectedDensityFeature) {
+    if (appMode === 'density' && selectedDensityFeature && snapPoint !== 'full') {
       setSnapPoint('peek');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDensityFeature, appMode]);
 
   const densityIsLoading = densityLoadPhase === 'fetching';
@@ -221,7 +222,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /*  Header: single-row pill tabs                                     */
   /* ================================================================ */
 
-  // Map mode's minimized header carries an extra stats/hint row
+  // Map mode's minimized header carries the swipe-up hint row
   const minimizedHeight = appMode === 'map' ? 108 : 80;
 
   // Resting height feeds --drawer-height so map controls/attribution ride

@@ -7,6 +7,7 @@ import { useCameraStore, useMapStore } from '../../store';
  */
 export function HeaderCameraCount({ className = '' }: { className?: string }) {
   const bounds = useMapStore(s => s.bounds);
+  const tileViewCameraCount = useMapStore(s => s.tileViewCameraCount);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const isLoading = useCameraStore(s => s.isLoading);
   const filteredCameras = useCameraStore(s => s.filteredCameras);
@@ -22,7 +23,7 @@ export function HeaderCameraCount({ className = '' }: { className?: string }) {
     [hasActiveFilters, filteredCameras]
   );
 
-  const count = useMemo(() => {
+  const geoJsonCount = useMemo(() => {
     if (!bounds) return 0;
     const inView = getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west);
     if (!filteredIdSet) return inView.length;
@@ -30,6 +31,12 @@ export function HeaderCameraCount({ className = '' }: { className?: string }) {
     for (const cam of inView) if (filteredIdSet.has(cam.osmId)) n++;
     return n;
   }, [bounds, getCamerasInBounds, filteredIdSet]);
+
+  // Default (tiles) path never loads the GeoJSON dataset, so prefer the
+  // live tile-query count when it's available. It's null whenever the
+  // GeoJSON path is active instead (filters, Explore/timeline, heatmap,
+  // Canada) — same preference CameraStats uses on desktop.
+  const count = tileViewCameraCount !== null ? tileViewCameraCount : geoJsonCount;
 
   if (isLoading) {
     return <span className={`text-xs text-dark-400 ${className}`}>Loading…</span>;
