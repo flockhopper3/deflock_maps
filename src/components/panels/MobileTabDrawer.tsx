@@ -6,7 +6,8 @@ import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
-import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2 } from 'lucide-react';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History } from 'lucide-react';
+import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { MobileRoutePreview } from './MobileRoutePreview';
 import { FlockHopperCTA, FlockHopperStoreButtons } from './FlockHopperCTA';
@@ -52,9 +53,25 @@ function DrawerFooter() {
   );
 }
 
+/** Native pointerdown isolation: children (the timeline scrubber) own their
+ *  pointer gestures; without this the BottomSheet's framer-motion drag
+ *  handler (native listener on the header) would also move the sheet. */
+function StopSheetDrag({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const stop = (e: PointerEvent) => e.stopPropagation();
+    el.addEventListener('pointerdown', stop);
+    return () => el.removeEventListener('pointerdown', stop);
+  }, []);
+  return <div ref={ref}>{children}</div>;
+}
+
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
   // route renders the FlockHopper line instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
+  explore: { title: 'Timeline', desc: 'Watch ALPR camera deployment grow over time.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
   network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency to trace its connections.', Icon: Share2 },
 };
@@ -182,6 +199,10 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- callbacks for BottomSheet ---- */
   const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
 
+  // With minimized === peek (explore), a drag can land on the 'minimized'
+  // label at the same height — normalize so rendering treats it as peek.
+  const effectiveSnap: SnapPoint = appMode === 'explore' && snapPoint === 'minimized' ? 'peek' : snapPoint;
+
   /* ---- tab switch ----
    * The tapped tab highlights this frame (pendingMode); the actual mode
    * switch (store update → layer swaps → panel mounts) is deferred one
@@ -227,8 +248,10 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /*  Header: single-row pill tabs                                     */
   /* ================================================================ */
 
-  // Map mode's minimized header carries the swipe-up hint row
-  const minimizedHeight = appMode === 'map' ? 108 : 80;
+  // Map mode's minimized header carries the swipe-up hint row. Explore's
+  // floor IS the peek (scrubber always visible), so its minimized height
+  // equals the peek height and the lower snap collapses out of the sheet.
+  const minimizedHeight = appMode === 'map' ? 108 : appMode === 'explore' ? UNIFORM_PEEK_HEIGHT : 80;
 
   // Resting height feeds --drawer-height so map controls/attribution ride
   // above the sheet. Parked at the peek height while 'full' (controls are
@@ -277,13 +300,27 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           );
         })}
       </div>
-      {appMode === 'map' && snapPoint === 'minimized' && (
+      {appMode === 'map' && effectiveSnap === 'minimized' && (
         <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
           <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
           <span className="text-[11px] font-medium">Swipe up for details</span>
         </div>
       )}
-      {snapPoint === 'peek' && (
+      {appMode === 'explore' && (
+        <div className={`mt-3 animate-fade-in ${effectiveSnap === 'full' ? 'hidden' : ''}`}>
+          {mapVisualization === 'heatmap' ? (
+            <IdentityRow mode="explore" onExpand={handleExpandSheet} />
+          ) : (
+            <>
+              <StopSheetDrag>
+                <div className="h-12"><TimelineBar bare showCount /></div>
+              </StopSheetDrag>
+              <p className="text-2xs text-dark-500 uppercase mt-1">Cameras over time</p>
+            </>
+          )}
+        </div>
+      )}
+      {appMode !== 'explore' && effectiveSnap === 'peek' && (
         appMode === 'route' ? (
           <div className="mt-3 space-y-2.5 animate-fade-in">
             {hasRoutes ? (

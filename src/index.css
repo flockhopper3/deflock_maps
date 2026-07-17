@@ -472,19 +472,6 @@ input[type="range"]::-moz-range-thumb {
     left: 12px !important;
   }
 
-  /* Timeline bar active — push controls up by 56px to clear the floating pill.
-     Offset tracks --drawer-height + 68px (12px gap + 56px timeline pill). */
-  .map-page.timeline-active .maplibregl-ctrl-bottom-right {
-    bottom: calc(var(--drawer-height, 80px) + 68px) !important;
-  }
-
-  .map-page.timeline-active .map-style-control {
-    bottom: calc(var(--drawer-height, 80px) + 116px);
-  }
-
-  .map-page.timeline-active .maplibregl-ctrl-bottom-left {
-    bottom: calc(var(--drawer-height, 80px) + 68px) !important;
-  }
 }
 
 /* Safe area padding for iOS devices */

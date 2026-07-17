@@ -318,7 +318,7 @@ export function MapPage() {
           camerasReady={camerasReady}
         />
       )}
-      <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''} ${appMode === 'map' ? 'map-mode-active' : ''}`}>
+      <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
         {!isEmbed && (
         <header className="h-[38px] lg:h-12 bg-dark-900 border-b border-hairline flex items-center z-50 shrink-0">
@@ -460,16 +460,9 @@ export function MapPage() {
               </div>
             )}
 
-            {/* Timeline Bar — single instance, wrapper switches on breakpoint */}
-            {isExploreMode && (
-              <div className={isMobile
-                ? "timeline-bar-mobile fixed left-3 right-3 z-[51] h-12 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
-                : "timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
-              }
-              // 84px clears the BottomSheet's minimized height; the inset keeps the
-              // bar off the iOS home indicator on notched phones.
-              style={isMobile ? { bottom: 'calc(84px + env(safe-area-inset-bottom))' } : undefined}
-              >
+            {/* Timeline Bar — desktop only; on mobile the scrubber lives in the drawer peek */}
+            {isExploreMode && !isMobile && (
+              <div className="timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30">
                 <TimelineBar />
               </div>
             )}

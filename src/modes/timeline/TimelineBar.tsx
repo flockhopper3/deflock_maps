@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useCameraStore } from '../../store';
 import { useAppModeStore } from '../../store/appModeStore';
 import { Play, Pause } from 'lucide-react';
@@ -15,7 +15,7 @@ import { TimelineSparkline } from './TimelineSparkline';
 import { useTimelineTicker } from './useTimelineTicker';
 import { useTimelineScrubber } from './useTimelineScrubber';
 
-export function TimelineBar() {
+export function TimelineBar({ bare = false, showCount = false }: { bare?: boolean; showCount?: boolean } = {}) {
   const cameraCount = useCameraStore((s) => s.cameras.length);
   const timelineMinDay = useCameraStore((s) => s.timelineMinDay);
   const timelineMaxDay = useCameraStore((s) => s.timelineMaxDay);
@@ -120,6 +120,38 @@ export function TimelineBar() {
     ticker,
   });
 
+  // Bind the scrubber's pointer handlers natively (ref + addEventListener)
+  // instead of as onPointer* JSX props. When TimelineBar renders `bare`
+  // inside the drawer peek, StopSheetDrag (an ancestor) calls native
+  // stopPropagation() on 'pointerdown' so the BottomSheet's own native drag
+  // listener (on the header, further out) never sees it. React's synthetic
+  // dispatch relies on that same event bubbling all the way to the app
+  // root — also further out than StopSheetDrag — so a plain onPointerDown
+  // prop here would silently stop firing too. A listener attached directly
+  // on the track fires at the target, before any ancestor's later
+  // stopPropagation call, so it keeps working regardless.
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const onDown = scrubber.onPointerDown as unknown as (e: PointerEvent) => void;
+    const onMove = scrubber.onPointerMove as unknown as (e: PointerEvent) => void;
+    const onUp = scrubber.onPointerUp as unknown as (e: PointerEvent) => void;
+    const onCancel = scrubber.onPointerCancel as unknown as (e: PointerEvent) => void;
+    const onLost = scrubber.onLostPointerCapture as unknown as (e: PointerEvent) => void;
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onCancel);
+    el.addEventListener('lostpointercapture', onLost);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onCancel);
+      el.removeEventListener('lostpointercapture', onLost);
+    };
+  }, [scrubber.onPointerDown, scrubber.onPointerMove, scrubber.onPointerUp, scrubber.onPointerCancel, scrubber.onLostPointerCapture]);
+
   // Play / pause
   const handlePlayPause = useCallback(() => {
     if (isPlaying) {
@@ -147,7 +179,7 @@ export function TimelineBar() {
   const dateLabel = formatDateFixed(dayIndexToDate(clampedIndex, timelineMinDay));
 
   return (
-    <div className="flex items-center gap-2 lg:gap-3 h-full px-3 lg:px-4 select-none">
+    <div className={`flex items-center gap-2 lg:gap-3 h-full select-none ${bare ? '' : 'px-3 lg:px-4'}`}>
       {/* Play / Pause */}
       <button
         onClick={handlePlayPause}
@@ -173,11 +205,6 @@ export function TimelineBar() {
         aria-valuetext={dateLabel}
         className="flex-1 h-8 lg:h-9 relative cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
         style={{ touchAction: 'none' }}
-        onPointerDown={scrubber.onPointerDown}
-        onPointerMove={scrubber.onPointerMove}
-        onPointerUp={scrubber.onPointerUp}
-        onPointerCancel={scrubber.onPointerCancel}
-        onLostPointerCapture={scrubber.onLostPointerCapture}
         onKeyDown={scrubber.onKeyDown}
       >
         <TimelineSparkline path={sparklinePath} progressPercent={progressPercent} />
@@ -192,9 +219,9 @@ export function TimelineBar() {
       </div>
 
       {/* Date · count — fixed width to prevent shifting as the date changes */}
-      <span className="flex-shrink-0 text-[11px] sm:text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap w-[84px] sm:w-[92px] lg:w-[180px] text-right">
+      <span className={`flex-shrink-0 text-[11px] sm:text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap text-right ${showCount ? 'w-[150px]' : 'w-[84px] sm:w-[92px]'} lg:w-[180px]`}>
         {dateLabel}
-        <span className="hidden lg:inline text-white/30"> · {cumulativeCount.toLocaleString()}</span>
+        <span className={`${showCount ? 'inline' : 'hidden lg:inline'} text-white/30`}> · {cumulativeCount.toLocaleString()}</span>
       </span>
 
       {/* Speed button — desktop only */}
