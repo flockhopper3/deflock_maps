@@ -53,12 +53,13 @@ function DrawerFooter() {
 }
 
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
+  // route renders the FlockHopper line instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
   density: { title: 'Surveillance Analysis', desc: 'Compare surveillance intensity by state or county. Tap any region to reveal its statistics.', Icon: BarChart3 },
   network: { title: 'Sharing Network', desc: 'See which agencies share ALPR data with each other. Tap an agency to trace its connections.', Icon: Share2 },
 };
 
-const MODE_PEEK_HEIGHT: Partial<Record<AppMode, number>> = { route: 196, density: 168, network: 140 };
+const MODE_PEEK_HEIGHT: Partial<Record<AppMode, number>> = { route: 122, density: 168, network: 140 };
 
 /** Mode identity at peek. The whole row is the expand affordance — icon,
  *  real title, one-liner, chevron. */
@@ -235,7 +236,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const peekHeightForMode = isDensityDetail
     ? densityDetailHeight
     : appMode === 'route' && hasRoutes
-      ? 210 // route preview + CTA need the pre-refresh height; 196 fits only the identity row
+      ? 186 // route preview + slim FlockHopper line, measured in-browser (390x844 viewport)
       : (MODE_PEEK_HEIGHT[appMode] ?? minimizedHeight);
   const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
 
@@ -279,10 +280,10 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         </div>
       )}
       {snapPoint === 'peek' && (
-        appMode === 'route' && hasRoutes ? (
+        appMode === 'route' ? (
           <div className="mt-3 space-y-3 animate-fade-in">
-            <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-            <FlockHopperCTA variant="row" />
+            {hasRoutes && <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />}
+            <FlockHopperCTA variant="line" />
           </div>
         ) : isDensityDetail ? (
           <div className="mt-3 animate-fade-in">
@@ -296,13 +297,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           <IdentityRow
             mode={appMode}
             onExpand={handleExpandSheet}
-            extra={
-              appMode === 'route'
-                ? <div className="mt-3"><FlockHopperCTA variant="row" /></div>
-                : appMode === 'density'
-                  ? <DensityPeekLegend />
-                  : undefined
-            }
+            extra={appMode === 'density' ? <DensityPeekLegend /> : undefined}
           />
         )
       )}
