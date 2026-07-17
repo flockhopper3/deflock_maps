@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouteStore, useAppModeStore, useCameraStore, useMapStore } from '../../store';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouteStore, useAppModeStore, useCameraStore } from '../../store';
 import { useDensityStore } from '../../store/densityStore';
 import { useNetworkStore } from '../../store/networkStore';
 import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
+import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
 import { AlertTriangle, ChevronUp } from 'lucide-react';
 import { RoutePanelContent } from './RoutePanelContent';
@@ -35,6 +36,20 @@ const TABS: TabDef[] = [
   { mode: 'network', label: 'Network' },
 ];
 
+/** Shared drawer footer: legacy-map link (its mobile home now that the
+ *  header menu is gone) + attribution. */
+function DrawerFooter() {
+  return (
+    <div className="mt-6 pt-4 border-t border-hairline flex flex-col items-center gap-2">
+      <LegacyMapLink variant="menu-item" className="justify-center !py-1 text-xs" />
+      <p className="text-[10px] text-dark-500 text-center">
+        Maps by{' '}
+        <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
+      </p>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  MobileTabDrawer                                                    */
 /* ------------------------------------------------------------------ */
@@ -62,32 +77,6 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   /* ---- country (gates US-only tabs) ---- */
   const country = useCameraStore(s => s.country);
-
-  /* ---- live viewport camera count (map mode header) ---- */
-  const bounds = useMapStore(s => s.bounds);
-  const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
-  const camerasLoading = useCameraStore(s => s.isLoading);
-  const filteredCameras = useCameraStore(s => s.filteredCameras);
-  const filters = useCameraStore(s => s.filters);
-
-  const hasActiveFilters =
-    filters.brands.length + filters.operators.length +
-    filters.surveillanceZones.length + filters.mountTypes.length > 0;
-
-  // Only built when filters are active, so the per-pan cost stays a grid lookup
-  const filteredIdSet = useMemo(
-    () => (hasActiveFilters ? new Set(filteredCameras.map(c => c.osmId)) : null),
-    [hasActiveFilters, filteredCameras]
-  );
-
-  const viewCameraCount = useMemo(() => {
-    if (!bounds) return 0;
-    const inView = getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west);
-    if (!filteredIdSet) return inView.length;
-    let count = 0;
-    for (const cam of inView) if (filteredIdSet.has(cam.osmId)) count++;
-    return count;
-  }, [bounds, getCamerasInBounds, filteredIdSet]);
 
   /* ---- load data on mode switch ---- */
   useEffect(() => {
@@ -190,26 +179,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         })}
       </div>
       {appMode === 'map' && snapPoint === 'minimized' && (
-        <div className="mt-2.5 flex items-center justify-between animate-fade-in">
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_rgba(56,189,248,0.5)] flex-shrink-0" />
-            <span className="text-xs text-dark-300">
-              {camerasLoading ? (
-                'Loading cameras…'
-              ) : (
-                <>
-                  <span className="font-semibold text-white tabular-nums">
-                    {viewCameraCount.toLocaleString()}
-                  </span>{' '}
-                  cameras in view
-                </>
-              )}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 text-dark-400">
-            <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
-            <span className="text-[11px] font-medium">Swipe up for details</span>
-          </div>
+        <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
+          <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
+          <span className="text-[11px] font-medium">Swipe up for details</span>
         </div>
       )}
       {isRoutePeekable && snapPoint !== 'minimized' && (
@@ -232,12 +204,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <MapPanelContent />
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -247,13 +214,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
           <div className="pb-8">
             <RoutePanelContent />
 
-            {/* Footer */}
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -281,13 +242,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               </div>
             )}
 
-            {/* Footer */}
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -332,12 +287,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               </>
             )}
 
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -346,12 +296,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <NetworkPanelContent />
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 

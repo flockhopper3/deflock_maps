@@ -22,7 +22,7 @@ import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { TIMELINE_START } from '@/modes/timeline/timelineUtils';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
-import { Route, Compass, BarChart3, Menu, X, Network, Map as MapIcon } from 'lucide-react';
+import { Route, Compass, BarChart3, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
 
 const WEBGL_REQUIRED_MESSAGE =
@@ -171,9 +171,6 @@ export function MapPage() {
       handleSetAppMode('map');
     }
   }, [appMode, country, handleSetAppMode]);
-
-  // Mobile menu state
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Track map markers ready state
   const [markersReady, setMarkersReady] = useState(false);
@@ -324,9 +321,9 @@ export function MapPage() {
       <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''} ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
         {!isEmbed && (
-        <header className="h-12 bg-dark-900 border-b border-dark-600 flex items-center z-50 shrink-0">
+        <header className="h-[38px] lg:h-12 bg-dark-900 border-b border-hairline flex items-center z-50 shrink-0">
           <div className="w-full px-4 lg:px-5">
-            <div className="flex items-center justify-between h-12">
+            <div className="flex items-center justify-between h-full">
               {/* Logo + Product Switcher */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <a
@@ -337,12 +334,12 @@ export function MapPage() {
                   <img
                     src="/deflock-icon.png"
                     alt="DeFlock Icon"
-                    className="h-7 lg:h-8 w-auto object-contain"
+                    className="h-5 lg:h-8 w-auto object-contain"
                   />
                   <img
                     src="/deflock-logo.svg"
                     alt="DeFlock Logo"
-                    className="h-7 lg:h-8 w-auto object-contain"
+                    className="h-5 lg:h-8 w-auto object-contain"
                   />
                   <span className="text-dark-400 text-[11px] font-medium tracking-[0.2em] uppercase hidden sm:inline self-end mb-[3px]">Maps</span>
                 </a>
@@ -376,17 +373,10 @@ export function MapPage() {
                 })}
               </nav>
 
-              {/* Mobile: Camera count + hamburger */}
-              <div className="lg:hidden flex items-center gap-2">
+              {/* Mobile: live count + share */}
+              <div className="lg:hidden flex items-center gap-2 h-full">
                 <HeaderCameraCount />
-                <button
-                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className="inline-flex items-center justify-center w-10 h-10 text-dark-300 hover:text-dark-100 transition-colors duration-150"
-                  aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                  aria-expanded={mobileMenuOpen}
-                >
-                  {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                </button>
+                <ShareButton variant="icon" className="-mr-2" />
               </div>
 
               <div className="hidden lg:flex items-center gap-4 flex-shrink-0">
@@ -398,51 +388,6 @@ export function MapPage() {
           </div>
         </header>
         )} {/* end !isEmbed header */}
-
-        {/* Mobile slide-down menu — only relevant outside embed mode */}
-        {!isEmbed && mobileMenuOpen && (
-          <nav
-            className="lg:hidden absolute top-12 left-0 right-0 z-[60] bg-dark-800 border-b border-dark-600"
-            aria-label="Mobile navigation"
-          >
-            <div className="px-4 py-2 space-y-0.5">
-              {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { icon: Icon, label }]) => {
-                const available = isModeAvailable(mode, country);
-                return (
-                  <button
-                    key={mode}
-                    onClick={() => {
-                      if (!available) return;
-                      handleSetAppMode(mode);
-                      setMobileMenuOpen(false);
-                    }}
-                    disabled={!available}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 ${
-                      appMode === mode
-                        ? 'text-accent'
-                        : available
-                          ? 'text-dark-300 hover:text-dark-100'
-                          : 'text-dark-600'
-                    }`}
-                    aria-current={appMode === mode ? 'page' : undefined}
-                  >
-                    <Icon className="w-4 h-4" aria-hidden="true" />
-                    <span>{label}</span>
-                    {!available && (
-                      <span className="ml-auto text-[10px] font-medium text-dark-500 border border-dark-600 rounded px-1.5 py-0.5">
-                        US only
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="border-t border-dark-600 mt-1 pt-1 px-4 pb-2 space-y-0.5">
-              <ShareButton variant="menu-item" />
-              <LegacyMapLink variant="menu-item" />
-            </div>
-          </nav>
-        )}
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden relative">
