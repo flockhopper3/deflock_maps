@@ -2,22 +2,15 @@ import { useEffect } from 'react';
 import { useCameraStore } from '../store/cameraStore';
 import { useAppModeStore } from '../store/appModeStore';
 import { useMapModeStore } from '../store/mapModeStore';
+import { resolveCameraRenderMode, type CameraRenderMode } from './cameraRenderModeLogic';
 
-export type CameraRenderMode = 'tiles' | 'geojson';
+export type { CameraRenderMode };
 
 /**
- * Decides which camera rendering path is active.
- *
- * geojson is needed when a feature depends on per-camera attributes at all
- * zooms (tiles only carry attributes at z11+):
- * - brand/operator/zone/mount filters active
- * - Explore mode (timeline playback / heatmap / dots)
- * - map-mode heatmap visualization
- * - Canada (not in the tileset yet)
- * - tile source failed (resilience fallback)
- *
- * renderMode stays 'tiles' until the JSON dataset is hydrated so the swap
- * never blanks the map mid-download.
+ * Decides which camera rendering path is active — see
+ * resolveCameraRenderMode for the decision table. This hook wires the
+ * stores in and lazily hydrates whichever dataset the decision needs
+ * (manifest for filter-tiles, full GeoJSON for the geojson path).
  */
 export function useCameraRenderMode(): {
   renderMode: CameraRenderMode;
@@ -27,26 +20,30 @@ export function useCameraRenderMode(): {
   const filters = useCameraStore(s => s.filters);
   const isInitialized = useCameraStore(s => s.isInitialized);
   const tilesFailed = useCameraStore(s => s.tilesFailed);
+  const filterTilesFailed = useCameraStore(s => s.filterTilesFailed);
+  const manifestPhase = useCameraStore(s => s.manifestPhase);
   const appMode = useAppModeStore(s => s.appMode);
   const mapModeViz = useMapModeStore(s => s.visualization);
 
-  const filtersActive = !filters.showAll || !!filters.timelineDate;
-  const needsGeojson =
-    tilesFailed ||
-    country === 'ca' ||
-    filtersActive ||
-    appMode === 'explore' ||
-    (appMode === 'map' && mapModeViz === 'heatmap');
+  const { renderMode, needsGeojson, needsManifest } = resolveCameraRenderMode({
+    tilesFailed,
+    filterTilesFailed,
+    country,
+    attributeFiltersActive: !filters.showAll,
+    timelineActive: !!filters.timelineDate,
+    appMode,
+    mapModeViz,
+    manifestPhase,
+    geojsonReady: isInitialized,
+  });
 
-  // Lazily hydrate the JSON dataset the moment anything needs it
   useEffect(() => {
-    if (needsGeojson) {
-      void useCameraStore.getState().ensureCamerasLoaded();
-    }
+    if (needsGeojson) void useCameraStore.getState().ensureCamerasLoaded();
   }, [needsGeojson]);
 
-  return {
-    renderMode: needsGeojson && isInitialized ? 'geojson' : 'tiles',
-    needsGeojson,
-  };
+  useEffect(() => {
+    if (needsManifest) void useCameraStore.getState().ensureManifestLoaded();
+  }, [needsManifest]);
+
+  return { renderMode, needsGeojson };
 }
