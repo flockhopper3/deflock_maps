@@ -96,7 +96,7 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
     return (
       <div>
         <div className="flex items-center justify-between gap-3">
-          {/* Trimmed wordmark (FlockHopper-2.png carries ~20% transparent
+          {/* Trimmed wordmark (FlockHopper-2.webp carries ~20% transparent
               padding); rendered larger since the box is all artwork now */}
           <img
             src="/flockhopper-wordmark.webp"
