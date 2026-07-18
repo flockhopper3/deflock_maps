@@ -25,8 +25,8 @@ npm run dev   # wants port 3000; falls back to 3001+ if taken
 - Desktop empty state (Route tab): FlockHopper header with App Store / Android Beta buttons.
 - Desktop results: "Drive this route with live navigation" card between the camera-reduction success banner and the "Start over" button. There is no GPX export button.
 - Mobile results: once routes calculate, the floating search inputs are replaced by the RouteScoreboard card (DIRECT / PRIVACY halves with camera counts, a green verdict line, the "maps.deflock.org" watermark, and an "Edit route" button that brings the inputs back); the user's addresses are hidden from view. A "Back to results" button appears while editing if routes still exist.
-- Mobile peek: sheet height ≈ 180px (`UNIFORM_PEEK_HEIGHT`). Shows the FlockHopper wordmark ad with a "Free · iOS & Android" label, one-liner, and full-width red "Start navigation" button linking to the platform store URL — there is no summary strip and no "Get FlockHopper" row, and nothing in the peek is tap-to-expand; expand by dragging the sheet header.
-- Mobile floating card: focusing an empty field opens a quick-actions dropdown — "Use my location" (origin field only) and "Choose on map" (either field).
+- Mobile peek: sheet height ≈ 180px (`UNIFORM_PEEK_HEIGHT`). Shows the FlockHopper wordmark ad with a "Free · iOS & Android" label, one-liner, and full-width red "Navigate this route in the app" button linking to the platform store URL — there is no summary strip and no "Get FlockHopper" row, and nothing in the peek is tap-to-expand; expand by dragging the sheet header.
+- Mobile floating card: focusing an empty field opens a quick-actions dropdown — "Use my location" (origin field only) and "Choose on map" (either field). A standalone "Choose on map" pill also sits under the card (guided two-tap sequence); it hides while picking, while a dropdown is open, and while the scoreboard is showing.
 
 Working script from 2026-07-11 session: see `verify-flockhopper.mjs` pattern (Playwright, chromium, CORS proxy routes).
 

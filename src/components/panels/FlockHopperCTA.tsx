@@ -124,8 +124,8 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
   }
 
   if (variant === 'start') {
-    // Honest ad styled like a nav app's Start action: the wordmark directly
-    // above the button makes the destination (the store) unmistakable.
+    // Honest ad styled like a nav app's primary action: the label promises
+    // navigation in the app, so the store/website redirect is expected.
     return (
       <div>
         <div className="flex items-center justify-between gap-3">
@@ -151,7 +151,7 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
           className="mt-2.5 flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-[#d80018] active:bg-[#a80013] text-white font-display font-bold text-base transition-colors"
         >
           <Navigation className="w-4 h-4" aria-hidden="true" />
-          Start navigation
+          Navigate this route in the app
         </a>
       </div>
     );
