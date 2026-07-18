@@ -64,7 +64,14 @@ export function RoutePanelContent() {
           {!hasRoutes && (
             <div className="space-y-4">
               <div>
-                <img src="/FlockHopper-2.png" alt="FlockHopper" className="h-14 w-auto" />
+                <img
+                  src="/FlockHopper-2.webp"
+                  alt="FlockHopper"
+                  width={500}
+                  height={100}
+                  decoding="async"
+                  className="h-14 w-auto"
+                />
                 <p className="text-sm text-gray-200 leading-relaxed mt-3">
                   Real-time, turn-by-turn navigation that avoids ALPR cameras — get the app that powers this map.
                 </p>

@@ -99,7 +99,7 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
           {/* Trimmed wordmark (FlockHopper-2.png carries ~20% transparent
               padding); rendered larger since the box is all artwork now */}
           <img
-            src="/flockhopper-wordmark.png"
+            src="/flockhopper-wordmark.webp"
             alt="FlockHopper"
             width={441}
             height={83}
