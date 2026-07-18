@@ -17,7 +17,7 @@ export function DensityLoadingPill() {
   const statesLoading = loadPhase === 'idle' || loadPhase === 'fetching';
   const countiesLoading = level === 'county' && !countiesData;
   const progress = statesLoading ? statesProgress : countiesProgress;
-  const progressText = progress && (progress.percent != null || progress.loadedBytes > 0)
+  const progressText = progress && ((progress.percent != null && progress.percent > 0) || (progress.percent == null && progress.loadedBytes > 0))
     ? progress.percent != null
       ? `${progress.percent}%`
       : formatBytes(progress.loadedBytes)

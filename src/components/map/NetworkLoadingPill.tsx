@@ -14,7 +14,7 @@ export function NetworkLoadingPill() {
 
   const nodesLoading = loadPhase === 'idle' || loadPhase === 'fetching';
   const progress = nodesLoading ? nodesProgress : adjacencyProgress;
-  const progressText = progress && (progress.percent != null || progress.loadedBytes > 0)
+  const progressText = progress && ((progress.percent != null && progress.percent > 0) || (progress.percent == null && progress.loadedBytes > 0))
     ? progress.percent != null
       ? `${progress.percent}%`
       : formatBytes(progress.loadedBytes)
