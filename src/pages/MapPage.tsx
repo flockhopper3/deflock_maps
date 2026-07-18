@@ -10,7 +10,7 @@ import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
-import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
+import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
 import { parseViewportFromURL, parseCountryFromURL, writeViewportParams } from '@/utils/urlParams';
 import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
@@ -283,6 +283,13 @@ export function MapPage() {
   const camerasReady = needsGeojson ? (isInitialized && cameras.length > 0) : true;
   const isFullyReady = camerasReady && markersReady;
 
+  // The pill covers GeoJSON loads with no visible panel to host a skeleton:
+  // mobile, and any non-explore desktop context (heatmap/filters/Canada).
+  // Desktop Timeline gets an in-panel skeleton instead (ExplorePanel).
+  const showCameraPill =
+    needsGeojson && !camerasReady && !mapInitError &&
+    (isMobile || appMode !== 'explore');
+
   // /timeline path: auto-play dot density animation once map is ready
   useEffect(() => {
     if (isTimelinePath && isFullyReady && !hasAutoPlayed.current) {
@@ -410,6 +417,7 @@ export function MapPage() {
             {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
             <MapStyleControl />
+            {showCameraPill && <LoadingPill />}
             <MapThemeControl />
             <CameraFilterControl />
 
