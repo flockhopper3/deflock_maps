@@ -21,6 +21,8 @@ import { DensityLegend } from '../../modes/density/DensityLegend';
 import { DensityFeatureStats } from '../../modes/density/DensityFeatureStats';
 import { MapPanelContent } from './MapPanel';
 import { DENSITY_COLOR_RAMPS } from '../map/layers/DensityLayers';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 
 /* ------------------------------------------------------------------ */
 /*  Tab definitions                                                    */
@@ -190,6 +192,12 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- country (gates US-only tabs) ---- */
   const country = useCameraStore(s => s.country);
 
+  // Camera GeoJSON (gates the explore tab's timeline/viz controls)
+  const cameraIsInitialized = useCameraStore(s => s.isInitialized);
+  const cameraLoadPhase = useCameraStore(s => s.loadPhase);
+  const cameraError = useCameraStore(s => s.error);
+  const retryCameraLoad = useCameraStore(s => s.retryCameraLoad);
+
   /* ---- load data on mode switch ---- */
   useEffect(() => {
     if (appMode === 'density') loadDensity();
@@ -237,6 +245,10 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   }, [selectedNode, appMode]);
 
   const densityIsLoading = densityLoadPhase === 'fetching';
+  const showDensitySkeleton = useDelayedFlag(densityIsLoading);
+
+  const exploresPending = !cameraIsInitialized && cameraLoadPhase !== 'error';
+  const showExploreSkeleton = useDelayedFlag(exploresPending);
 
   /* ---- callbacks for BottomSheet ---- */
   const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
@@ -452,7 +464,30 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               <MapTypeDropdown />
             </div>
 
-            {renderExploreControls()}
+            {cameraLoadPhase === 'error' && cameraError ? (
+              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
+                <p className="text-sm text-red-400 mb-2">Failed to load camera data</p>
+                <p className="text-xs text-dark-500 mb-3">{cameraError}</p>
+                <button
+                  onClick={() => { void retryCameraLoad(); }}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : exploresPending ? (
+              showExploreSkeleton && (
+                <div className="space-y-4" aria-busy="true">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-24 w-full" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+              )
+            ) : (
+              renderExploreControls()
+            )}
 
             {mapVisualization === 'heatmap' && (
               <div className="mt-6">
@@ -485,10 +520,16 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               {' '}contributors. Tap any region on the map to reveal its statistics.
             </p>
 
-            {densityIsLoading && (
-              <div className="flex items-center gap-3 py-4">
-                <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-                <span className="text-sm text-dark-300">Loading density data...</span>
+            {densityIsLoading && showDensitySkeleton && (
+              <div className="space-y-3 py-2" aria-busy="true">
+                <Skeleton className="h-4 w-2/5" />
+                {[0, 1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="w-4 h-4" />
+                    <Skeleton className="h-3 flex-1" />
+                    <Skeleton className="h-3 w-8" />
+                  </div>
+                ))}
               </div>
             )}
 

@@ -3,6 +3,8 @@ import { useNetworkStore } from '../../store/networkStore';
 import { useMapStore } from '../../store';
 import { Search, X, ChevronDown, ChevronUp, Camera, ScanSearch, Car, AlertTriangle, Link2, Users, ArrowUpRight, ArrowDownLeft, ExternalLink } from 'lucide-react';
 import { TYPE_LABELS, type NetworkNode, type Direction } from '../../store/networkStore';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 
 /* ------------------------------------------------------------------ */
 /*  Shared constants & helpers                                         */
@@ -138,6 +140,7 @@ export function NetworkPanelContent() {
   }, [setSelectedNodeId]);
 
   const isLoading = loadPhase === 'idle' || loadPhase === 'fetching';
+  const showSkeleton = useDelayedFlag(isLoading);
   const byDirection = useMemo(() => {
     const buckets: Record<Direction, NetworkNode[]> = { mutual: [], outgoing: [], incoming: [] };
     for (const arc of selectedArcs) buckets[arc.direction].push(arc.target);
@@ -162,10 +165,17 @@ export function NetworkPanelContent() {
 
   return (
     <>
-      {isLoading && (
-        <div className="flex items-center gap-3 py-4">
-          <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-          <span className="text-sm text-dark-300">Loading network data...</span>
+      {isLoading && showSkeleton && (
+        <div className="space-y-3 py-2" aria-busy="true">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="w-8 h-8 rounded-lg" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-2.5 w-1/2" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
