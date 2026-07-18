@@ -361,7 +361,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       {appMode === 'map' && snapPoint === 'minimized' && (
         <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
           <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
-          <span className="text-[11px] font-medium">Swipe up for details</span>
+          <span className="text-[11px] font-medium">Swipe up to learn about this map</span>
         </div>
       )}
       {appMode === 'explore' && (

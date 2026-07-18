@@ -1,263 +1,57 @@
 import { useState, useEffect } from 'react';
-import { useCameraStore, useMapStore } from '../../store';
-import { useMapModeStore } from '../../store/mapModeStore';
-import type { MapVisualization, ActiveView, OverlayState } from '../../store/mapModeStore';
-import type { BoundaryLevel } from '../../services/boundaryDataService';
+import { useCameraStore } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
-import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
-import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
-import { ChevronLeft, ChevronRight, ChevronDown, Map as MapIcon } from 'lucide-react';
-
-// ─── Constants ──────────────────────────────────────────────────────────────
-const CAMERA_VIEW_OPTIONS: { id: MapVisualization; label: string; description: string }[] = [
-  { id: 'auto', label: 'Auto', description: 'Dots that sharpen as you zoom' },
-  { id: 'heatmap', label: 'Heatmap', description: 'Density blobs' },
-];
+import { ChevronLeft, ChevronRight, Map as MapIcon } from 'lucide-react';
 
 // ─── About This Map ─────────────────────────────────────────────────────────
-const HOW_IT_WORKS_STEPS = [
-  'Someone spots or verifies a camera.',
-  'They add or update it using the DeFlock app.',
-  'The information is saved to OpenStreetMap.',
-  'DeFlock displays the community-contributed data on this map.',
-];
-
 const ABOUT_BUTTONS: { href: string; label: string; primary?: boolean }[] = [
   { href: 'https://deflock.org/app', label: 'Download the DeFlock App', primary: true },
   { href: 'https://deflock.me', label: 'Learn How to Contribute' },
   { href: 'https://www.openstreetmap.org/about', label: 'Learn About OpenStreetMap' },
 ];
 
-function AboutSection() {
+function AboutContent() {
   return (
-    <Section title="About This Map" defaultOpen>
-      <div className="space-y-4">
+    <div className="px-6 py-5 space-y-4">
+      <p className="text-xs text-dark-400 leading-relaxed">
+        DeFlock is an open-source, volunteer-powered project for identifying
+        and documenting automated license plate readers. The map is powered by
+        OpenStreetMap. Camera locations come from volunteers and the
+        OpenStreetMap community, not a private company or government agency.
+      </p>
+
+      <div className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
+        <p className="text-sm text-dark-300 font-medium mb-1">See something incorrect?</p>
         <p className="text-xs text-dark-400 leading-relaxed">
-          DeFlock is an open-source, volunteer-powered project that helps people
-          identify and document automated license plate readers in their
-          communities.
+          A camera may be missing, moved, or misidentified. Download the
+          DeFlock app, sign in with a free OpenStreetMap account, and fix it
+          right from your phone.
         </p>
-        <p className="text-xs text-dark-400 leading-relaxed">
-          The map is powered by OpenStreetMap, the free and editable map of the
-          world. Camera locations are added and maintained by DeFlock volunteers
-          and the wider OpenStreetMap community, not by a private company or
-          government agency.
-        </p>
-
-        <div className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
-          <p className="text-sm text-dark-300 font-medium mb-1">See something incorrect?</p>
-          <p className="text-xs text-dark-400 leading-relaxed">
-            A camera may be missing, moved, removed, or incorrectly identified.
-            You can help fix it.
-          </p>
-          <p className="text-xs text-dark-400 leading-relaxed mt-2">
-            Download the DeFlock app, sign in with a free OpenStreetMap account,
-            and add or update camera locations directly from your phone. Your
-            contribution becomes part of OpenStreetMap and helps improve the map
-            for everyone.
-          </p>
-        </div>
-
-        <div>
-          <p className="text-sm text-dark-300 font-medium mb-2">How it works</p>
-          <ol className="space-y-2">
-            {HOW_IT_WORKS_STEPS.map((step, i) => (
-              <li key={step} className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-accent/10 text-accent text-[11px] font-bold flex items-center justify-center flex-shrink-0 tabular-nums">
-                  {i + 1}
-                </span>
-                <span className="text-xs text-dark-400 leading-relaxed">{step}</span>
-              </li>
-            ))}
-          </ol>
-          <p className="text-xs text-dark-500 leading-relaxed mt-3">
-            Every accurate contribution helps make surveillance infrastructure
-            more visible while strengthening OpenStreetMap&rsquo;s open,
-            community-built database.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          {ABOUT_BUTTONS.map((btn) => (
-            <a
-              key={btn.label}
-              href={btn.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block w-full text-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-                btn.primary
-                  ? 'bg-accent text-white hover:bg-accent/90'
-                  : 'border border-dark-600 text-dark-200 hover:bg-dark-800'
-              }`}
-            >
-              {btn.label}
-            </a>
-          ))}
-        </div>
       </div>
-    </Section>
-  );
-}
 
-// ─── Collapsible Section (top-level) ────────────────────────────────────────
-function Section({
-  title,
-  badge,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  badge?: number;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-
-  return (
-    <div className="border-b border-dark-700/50">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-6 py-3.5 hover:bg-dark-800/30 transition-colors"
-        aria-expanded={isOpen}
-      >
-        <div className="flex items-center gap-2.5">
-          <span className="text-[13px] font-semibold text-white tracking-tight">{title}</span>
-          {badge !== undefined && badge > 0 && (
-            <span className="min-w-[20px] h-5 px-1.5 rounded-md bg-accent/15 text-accent text-[11px] font-bold flex items-center justify-center tabular-nums">
-              {badge}
-            </span>
-          )}
-        </div>
-        <ChevronDown
-          className={`w-3.5 h-3.5 text-dark-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {isOpen && <div className="px-6 pb-5">{children}</div>}
-    </div>
-  );
-}
-
-// ─── Sub-label (within a section) ───────────────────────────────────────────
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="block text-[10px] font-semibold text-dark-500 uppercase tracking-[0.08em] mb-2">
-      {children}
-    </span>
-  );
-}
-
-// ─── Camera View Radio Group ────────────────────────────────────────────────
-function CameraViewSelector({
-  visualization,
-  activeView,
-  onChange,
-}: {
-  visualization: MapVisualization;
-  activeView: ActiveView;
-  onChange: (viz: MapVisualization) => void;
-}) {
-  return (
-    <div>
-      <SubLabel>Camera View</SubLabel>
-      <div className="grid grid-cols-2 gap-1.5">
-        {CAMERA_VIEW_OPTIONS.map(({ id, label, description }) => {
-          const isSelected = visualization === id;
-          const autoSuffix = id === 'auto' && isSelected
-            ? ` (${activeView.charAt(0).toUpperCase() + activeView.slice(1)})`
-            : '';
-
-          return (
-            <button
-              key={id}
-              onClick={() => onChange(id)}
-              className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all duration-150 ${
-                isSelected
-                  ? 'bg-accent/10 ring-1 ring-accent/30'
-                  : 'hover:bg-dark-800/80'
-              }`}
-            >
-              <div
-                className={`w-3 h-3 rounded-full border-[1.5px] flex-shrink-0 flex items-center justify-center transition-colors ${
-                  isSelected ? 'border-accent' : 'border-dark-600'
-                }`}
-              >
-                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
-              </div>
-              <div className="min-w-0">
-                <span className={`text-xs font-medium leading-none ${isSelected ? 'text-white' : 'text-dark-300'}`}>
-                  {label}{autoSuffix}
-                </span>
-                <p className="text-[10px] text-dark-500 leading-tight mt-0.5">{description}</p>
-              </div>
-            </button>
-          );
-        })}
+      <div className="space-y-2">
+        {ABOUT_BUTTONS.map((btn) => (
+          <a
+            key={btn.label}
+            href={btn.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`block w-full text-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+              btn.primary
+                ? 'bg-accent text-white hover:bg-accent/90'
+                : 'border border-dark-600 text-dark-200 hover:bg-dark-800'
+            }`}
+          >
+            {btn.label}
+          </a>
+        ))}
       </div>
     </div>
-  );
-}
-
-// ─── Overlay Toggle ─────────────────────────────────────────────────────────
-function OverlayToggle({
-  label,
-  enabled,
-  onToggle,
-  loading,
-}: {
-  label: string;
-  enabled: boolean;
-  onToggle: () => void;
-  loading?: boolean;
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      role="switch"
-      aria-checked={enabled}
-      aria-label={`Toggle ${label}`}
-      className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors hover:bg-dark-800/60"
-    >
-      <div className="flex items-center gap-2">
-        <span className={`text-xs ${enabled ? 'text-dark-200' : 'text-dark-400'}`}>
-          {label}
-        </span>
-        {loading && (
-          <div className="w-3 h-3 border border-dark-400 border-t-transparent rounded-full animate-spin" />
-        )}
-      </div>
-      <div
-        className={`w-8 h-[18px] rounded-full relative transition-colors duration-200 ${
-          enabled ? 'bg-accent' : 'bg-dark-700'
-        }`}
-      >
-        <div
-          className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform duration-200 ${
-            enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'
-          }`}
-        />
-      </div>
-    </button>
   );
 }
 
 // ─── MapPanelContent ────────────────────────────────────────────────────────
 export function MapPanelContent() {
-  const visualization = useMapModeStore((s) => s.visualization);
-  const activeView = useMapModeStore((s) => s.activeView);
-  const setVisualization = useMapModeStore((s) => s.setVisualization);
-  const overlays = useMapModeStore((s) => s.overlays);
-  const toggleOverlay = useMapModeStore((s) => s.toggleOverlay);
-  const boundaryLoading = useMapModeStore((s) => s.boundaryLoading);
-  const fetchBoundary = useMapModeStore((s) => s.fetchBoundary);
-  const currentZoom = useMapStore(s => s.zoom);
-
-  const handleBoundaryToggle = (overlayKey: keyof OverlayState, level: BoundaryLevel) => {
-    toggleOverlay(overlayKey);
-    if (!overlays[overlayKey]) {
-      fetchBoundary(level);
-    }
-  };
-
   const country = useCameraStore((s) => s.country);
   const ensureManifestLoaded = useCameraStore((s) => s.ensureManifestLoaded);
 
@@ -268,56 +62,7 @@ export function MapPanelContent() {
     void ensureManifestLoaded();
   }, [country, ensureManifestLoaded]);
 
-  return (
-    <div className="flex flex-col">
-      {/* Section: About */}
-      <AboutSection />
-
-      {/* Section: Layers */}
-      <Section title="Layers">
-        <CameraViewSelector
-          visualization={visualization}
-          activeView={activeView}
-          onChange={(viz) => setVisualization(viz, currentZoom)}
-        />
-
-        <div className="mt-4 pt-4 border-t border-dark-700/30">
-          <SubLabel>Overlays</SubLabel>
-          <div className="space-y-0.5">
-            <OverlayToggle
-              label="State Boundaries"
-              enabled={overlays.stateBoundaries}
-              onToggle={() => handleBoundaryToggle('stateBoundaries', 'state')}
-              loading={boundaryLoading.state === 'loading'}
-            />
-            <OverlayToggle
-              label="County Boundaries"
-              enabled={overlays.countyBoundaries}
-              onToggle={() => handleBoundaryToggle('countyBoundaries', 'county')}
-              loading={boundaryLoading.county === 'loading'}
-            />
-            <OverlayToggle
-              label="Municipal Boundaries"
-              enabled={overlays.municipalBoundaries}
-              onToggle={() => handleBoundaryToggle('municipalBoundaries', 'municipal')}
-              loading={boundaryLoading.municipal === 'loading'}
-            />
-          </div>
-        </div>
-      </Section>
-
-      {/* Section: Heatmap Settings */}
-      {activeView === 'heatmap' && (
-        <Section title="Heatmap Settings">
-          <HeatmapControls />
-          <div className="mt-4">
-            <HeatmapLegend />
-          </div>
-        </Section>
-      )}
-
-    </div>
-  );
+  return <AboutContent />;
 }
 
 // ─── MapPanel (exported) ────────────────────────────────────────────────────
