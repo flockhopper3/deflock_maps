@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Map as MapIcon } from 'lucide-react';
 // ─── About This Map ─────────────────────────────────────────────────────────
 const ABOUT_BUTTONS: { href: string; label: string; primary?: boolean }[] = [
   { href: 'https://deflock.org/app', label: 'Download the DeFlock App', primary: true },
-  { href: 'https://deflock.me', label: 'Learn How to Contribute' },
+  { href: 'https://deflock.org/what-is-an-alpr', label: 'Learn More About ALPRs' },
   { href: 'https://www.openstreetmap.org/about', label: 'Learn About OpenStreetMap' },
 ];
 
