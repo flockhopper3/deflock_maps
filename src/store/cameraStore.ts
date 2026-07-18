@@ -125,6 +125,8 @@ interface CameraState {
 
   // Explicit loading phase for UI progress
   loadPhase: CameraLoadPhase;
+  /** GeoJSON download percent (0–100) while fetching; null when indeterminate or idle. */
+  downloadProgress: number | null;
 
   // Data version - increments on every filter/data change for map sync
   dataVersion: number;
@@ -213,6 +215,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   timelineMaxDay: '2026-02-15',
   timelineDailyCounts: new Map(),
   loadPhase: 'idle',
+  downloadProgress: null,
   dataVersion: 0,
   _initPromise: null,
   pendingFilters: {
@@ -247,7 +250,9 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         if (import.meta.env.DEV) {
           console.log(`[CameraStore] Fetching ${country} cameras...`);
         }
-        const cameras = await loadBundledCameras(country);
+        const cameras = await loadBundledCameras(country, (percent) => {
+          set({ downloadProgress: percent });
+        });
 
         if (import.meta.env.DEV) {
           console.log(`[CameraStore] Fetch complete: ${cameras.length} cameras. Now hydrating...`);
@@ -267,6 +272,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           isLoading: false,
           isInitialized: true,
           loadPhase: 'ready',
+          downloadProgress: null,
           dataVersion: state.dataVersion + 1,
         }));
       } catch (error) {
@@ -275,6 +281,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
           loadPhase: 'error',
+          downloadProgress: null,
           _initPromise: null, // Clear promise on error so retry can work
         });
         throw error; // Re-throw so callers know it failed
@@ -323,7 +330,9 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     const retryPromise = (async () => {
       try {
-        const cameras = await retryLoadCameras(get().country);
+        const cameras = await retryLoadCameras(get().country, (percent) => {
+          set({ downloadProgress: percent });
+        });
 
         set({ loadPhase: 'hydrating' });
 
@@ -338,6 +347,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           isLoading: false,
           isInitialized: true,
           loadPhase: 'ready',
+          downloadProgress: null,
           dataVersion: state.dataVersion + 1,
         }));
       } catch (error) {
@@ -346,6 +356,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
           loadPhase: 'error',
+          downloadProgress: null,
           _initPromise: null,
         });
         throw error;

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useCameraStore } from './cameraStore';
 import { _resetManifestCacheForTests } from '../services/cameraManifestService';
+import { clearCameraCache } from '../services/cameraDataService';
 import type { ALPRCamera } from '../types';
 
 const validManifest = {
@@ -104,5 +105,44 @@ describe('normalized filter matching (GeoJSON fallback path)', () => {
     });
     const ids = useCameraStore.getState().filteredCameras.map((c) => c.osmId);
     expect(ids).toEqual([1]);
+  });
+});
+
+describe('downloadProgress', () => {
+  it('tracks percent during a determinate fetch and resets to null on ready', async () => {
+    clearCameraCache();
+    useCameraStore.setState({
+      isInitialized: false, isLoading: false, _initPromise: null,
+      loadPhase: 'idle', error: null, cameras: [], country: 'us',
+    });
+
+    const body = JSON.stringify({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [-84.4, 33.7] },
+        properties: { osmId: 1, osmType: 'node' },
+      }],
+    });
+    const bytes = new TextEncoder().encode(body);
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(bytes); c.close(); },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Length': String(bytes.byteLength) }),
+      body: stream,
+      text: async () => body,
+    } as unknown as Response));
+
+    const seen: Array<number | null> = [];
+    const unsub = useCameraStore.subscribe((s) => { seen.push(s.downloadProgress); });
+
+    await useCameraStore.getState().initializeCameras();
+    unsub();
+
+    expect(seen.some(v => typeof v === 'number')).toBe(true); // saw determinate progress
+    expect(useCameraStore.getState().downloadProgress).toBeNull(); // reset when settled
+    expect(useCameraStore.getState().loadPhase).toBe('ready');
   });
 });
