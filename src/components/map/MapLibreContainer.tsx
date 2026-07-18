@@ -74,6 +74,11 @@ import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
 const TILES_URL = 'https://tiles.dontgetflocked.com';
 
+// Both tile paths (default + filtered) render the same points layer shape;
+// accept either id so click handling doesn't need to know which instance is
+// currently mounted/interactive.
+const CAMERA_POINT_LAYER_IDS = ['camera-tile-points', 'camera-tile-points-filtered'];
+
 // Camera tiles still use the pmtiles:// protocol (raw archive + Range); only the
 // basemap moved back to the per-tile TileJSON route.
 ensurePMTilesProtocol();
@@ -268,7 +273,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
 
-    if (renderMode === 'tiles') {
+    if (renderMode === 'tiles' || renderMode === 'filter-tiles') {
       // Exact viewport count, straight from the rendered tiles — no dedup.
       //
       // Dedup used to be the whole game here, and it was the bug. The old key
@@ -290,9 +295,10 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // small excess is real — a camera whose dot overlaps the viewport edge is
       // in view — and grows with dot radius at high zoom.
       try {
+        const suffix = renderMode === 'filter-tiles' ? '-filtered' : '';
         const layerForZoom = map.getZoom() >= CAMERA_POINTS_MINZOOM
-          ? 'camera-tile-points'
-          : 'camera-tile-dots';
+          ? `camera-tile-points${suffix}`
+          : `camera-tile-dots${suffix}`;
         const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
         useMapStore.getState().setTileViewCameraCount(feats.length);
       } catch {
@@ -310,6 +316,16 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       bounds.getWest()
     );
   }, [getCamerasInBounds, renderMode]);
+
+  // Filter changes re-render tiles without a camera move — refresh the
+  // viewport count once the map has settled on the new filter.
+  useEffect(() => {
+    if (!isFilterTilesMode || !mapRef.current) return;
+    const map = mapRef.current.getMap();
+    const onIdle = () => updateVisibleCameras();
+    map.once('idle', onIdle);
+    return () => { map.off('idle', onIdle); };
+  }, [isFilterTilesMode, tileFilterExpr, updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -697,10 +713,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       );
     }
 
-    // Tile mode's viewport count is derived from queryRenderedFeatures, which
-    // is too hot to run on every onMove tick — it runs once per gesture via
-    // onMoveEnd instead.
-    if (renderMode !== 'tiles') {
+    // Both tile modes' viewport count is derived from queryRenderedFeatures,
+    // which is too hot to run on every onMove tick — it runs once per gesture
+    // via onMoveEnd instead (filter-tiles also gets an idle-triggered refresh
+    // on filter change, see the effect above).
+    if (renderMode === 'geojson') {
       updateVisibleCameras();
     }
   }, [setViewState, updateVisibleCameras, renderMode]);
@@ -809,6 +826,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const feature = event.features?.[0];
     if (!feature) return;
 
+    // Tile paths (default + filtered) share this handler — guard so a stray
+    // feature from a non-camera interactive layer is never parsed as one.
+    if ((isTilesMode || isFilterTilesMode) && !CAMERA_POINT_LAYER_IDS.includes(feature.layer.id)) {
+      return;
+    }
+
     const props = feature.properties;
     if (!props || props.osmId == null) return;
 
@@ -834,7 +857,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       latitude: camera.lat,
       camera,
     });
-  }, [pickingLocation, setPickedLocation, isDensityMode, isNetworkMode]);
+  }, [pickingLocation, setPickedLocation, isDensityMode, isNetworkMode, isTilesMode, isFilterTilesMode]);
 
   // Cursor handling - crosshair when adding waypoints or picking location
   const onMouseEnter = useCallback((e: MapLayerMouseEvent) => {
@@ -1073,7 +1096,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         : isDensityMode
           ? ['density-states-fill', 'density-counties-fill', 'density-states-extrusion', 'density-counties-extrusion']
           : showCameraMarkers
-            ? (isTilesMode ? ['camera-tile-points'] : ['unclustered-point'])
+            ? (isTilesMode
+                ? ['camera-tile-points']
+                : isFilterTilesMode
+                  ? ['camera-tile-points-filtered']
+                  : ['unclustered-point'])
             : []}
       attributionControl={false}
       // Removed reuseMaps to avoid stale reused instances
