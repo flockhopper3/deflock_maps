@@ -12,7 +12,13 @@ import type { ALPRCamera } from '../types';
 export type CameraCountry = 'us' | 'ca';
 
 /** Progress for a streamed dataset download. `null` = indeterminate (unknown total). */
-export type DownloadProgressCallback = (percent: number | null) => void;
+export type DownloadProgressCallback = (percent: number | null, loadedBytes: number) => void;
+
+/** Snapshot of a streamed download, stored by consumers for UI display. */
+export interface DownloadProgress {
+  percent: number | null;
+  loadedBytes: number;
+}
 
 /**
  * Read a response body as text, reporting download progress. Percent is only
@@ -28,13 +34,13 @@ export async function readBodyWithProgress(
   const determinate = total > 0 && !response.headers.get('Content-Encoding');
 
   if (!response.body) {
-    onProgress?.(null);
+    onProgress?.(null, 0);
     const text = await response.text();
-    onProgress?.(100);
+    onProgress?.(100, text.length);
     return text;
   }
 
-  onProgress?.(determinate ? 0 : null);
+  onProgress?.(determinate ? 0 : null, 0);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let loaded = 0;
@@ -43,9 +49,10 @@ export async function readBodyWithProgress(
     if (done) break;
     chunks.push(value);
     loaded += value.byteLength;
-    if (determinate) {
-      onProgress?.(Math.min(99, Math.round((loaded / total) * 100)));
-    }
+    onProgress?.(
+      determinate ? Math.min(99, Math.round((loaded / total) * 100)) : null,
+      loaded
+    );
   }
 
   const merged = new Uint8Array(loaded);
@@ -54,7 +61,7 @@ export async function readBodyWithProgress(
     merged.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  onProgress?.(100);
+  onProgress?.(100, loaded);
   return new TextDecoder().decode(merged);
 }
 
