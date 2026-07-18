@@ -52,10 +52,10 @@ export function MapStyleControl() {
   );
 
   return (
-    <div ref={panelRef} className="map-style-control absolute z-20 flex flex-col items-end gap-2">
+    <div ref={panelRef} className="map-style-control absolute z-20 flex flex-col items-start gap-2">
       {/* Country popover */}
       {countryOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-48 bg-dark-800 rounded-md border border-dark-600 overflow-hidden">
+        <div className="absolute bottom-full left-0 mb-2 w-48 bg-dark-800 rounded-md border border-dark-600 overflow-hidden">
           <div className="p-1.5 space-y-0.5">
             {Object.values(COUNTRIES).map((c) => (
               <button

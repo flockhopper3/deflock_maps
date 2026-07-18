@@ -19,6 +19,7 @@ import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
+import { CameraFilterControl } from '@/components/map/CameraFilterControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { TIMELINE_START } from '@/modes/timeline/timelineUtils';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
@@ -414,6 +415,7 @@ export function MapPage() {
             {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
             <MapStyleControl />
+            <CameraFilterControl />
 
             {/* Density feature popup — floating stats card */}
             {appMode === 'density' && <DensityFeaturePopup />}
@@ -424,7 +426,7 @@ export function MapPage() {
 
             {/* Map Legend - route mode only (explore/density legends live in side panel) */}
             {appMode === 'route' && (
-              <div className="absolute bottom-6 left-4 z-20 hidden lg:flex flex-col gap-2">
+              <div className="absolute bottom-6 left-[68px] z-20 hidden lg:flex flex-col gap-2">
                 <div className="bg-dark-800/90 rounded-md px-3 py-2 border border-dark-600">
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
@@ -448,7 +450,7 @@ export function MapPage() {
 
             {/* Map mode legend */}
             {appMode === 'map' && (
-              <div className="absolute bottom-6 left-4 z-20 hidden lg:flex flex-col gap-2">
+              <div className="absolute bottom-6 left-[68px] z-20 hidden lg:flex flex-col gap-2">
                 <div className="bg-dark-800/90 rounded-md px-3 py-2 border border-dark-600">
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
