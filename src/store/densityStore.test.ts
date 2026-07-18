@@ -102,4 +102,21 @@ describe('loadAllLevels progressive commits', () => {
     expect(useDensityStore.getState().loadPhase).toBe('error');
     expect(useDensityStore.getState().error).not.toBeNull();
   });
+
+  it('dedupes re-entrant loadAllLevels calls while counties are still streaming', async () => {
+    const { fetchMock, releaseCounties } = stubFetch({ countiesDelayed: true });
+    const v0 = useDensityStore.getState().dataVersion;
+
+    const first = useDensityStore.getState().loadAllLevels();
+    await waitFor(() => useDensityStore.getState().loadPhase === 'ready');
+
+    const second = useDensityStore.getState().loadAllLevels();
+
+    releaseCounties();
+    await Promise.all([first, second]);
+
+    const countyCalls = fetchMock.mock.calls.filter(c => c[0] === COUNTIES_URL);
+    expect(countyCalls).toHaveLength(1);
+    expect(useDensityStore.getState().dataVersion).toBe(v0 + 2);
+  });
 });

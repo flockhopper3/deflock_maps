@@ -5,6 +5,8 @@ import type { DensityFeatureProperties } from '../types';
 
 export type DensityLoadPhase = 'idle' | 'fetching' | 'ready' | 'error';
 
+let _loadPromise: Promise<void> | null = null;
+
 interface DensityState {
   /** States lifecycle. 'ready' means the states choropleth can render; counties may still be streaming (countiesData null until committed). */
   loadPhase: DensityLoadPhase;
@@ -36,56 +38,64 @@ export const useDensityStore = create<DensityState>((set, get) => ({
   error: null,
 
   loadAllLevels: async () => {
-    const { loadPhase, statesData, countiesData } = get();
-    if (loadPhase === 'fetching') return;
+    if (_loadPromise) return _loadPromise;
 
+    const { statesData, countiesData } = get();
     const needStates = !statesData;
     const needCounties = !countiesData;
     if (!needStates && !needCounties) return;
 
-    set({ error: null, ...(needStates ? { loadPhase: 'fetching' as const } : {}) });
+    _loadPromise = (async () => {
+      set({ error: null, ...(needStates ? { loadPhase: 'fetching' as const } : {}) });
 
-    // Each level commits as it lands: states (260 KB) unlock the panel and
-    // the choropleth fast; counties (2.7 MB) stream in behind.
-    const statesTask = needStates
-      ? loadDensityData('state', (percent, loadedBytes) => {
-          set({ statesProgress: { percent, loadedBytes } });
-        }).then((states) => {
-          set((state) => ({
-            statesData: states,
-            loadPhase: 'ready',
-            statesProgress: null,
-            dataVersion: state.dataVersion + 1,
-          }));
-        })
-      : Promise.resolve();
+      // Each level commits as it lands: states (260 KB) unlock the panel and
+      // the choropleth fast; counties (2.7 MB) stream in behind.
+      const statesTask = needStates
+        ? loadDensityData('state', (percent, loadedBytes) => {
+            set({ statesProgress: { percent, loadedBytes } });
+          }).then((states) => {
+            set((state) => ({
+              statesData: states,
+              loadPhase: 'ready',
+              statesProgress: null,
+              dataVersion: state.dataVersion + 1,
+            }));
+          })
+        : Promise.resolve();
 
-    const countiesTask = needCounties
-      ? loadDensityData('county', (percent, loadedBytes) => {
-          set({ countiesProgress: { percent, loadedBytes } });
-        }).then((counties) => {
-          set((state) => ({
-            countiesData: counties,
-            countiesProgress: null,
-            dataVersion: state.dataVersion + 1,
-          }));
-        })
-      : Promise.resolve();
+      const countiesTask = needCounties
+        ? loadDensityData('county', (percent, loadedBytes) => {
+            set({ countiesProgress: { percent, loadedBytes } });
+          }).then((counties) => {
+            set((state) => ({
+              countiesData: counties,
+              countiesProgress: null,
+              dataVersion: state.dataVersion + 1,
+            }));
+          })
+        : Promise.resolve();
 
-    const [statesResult, countiesResult] = await Promise.allSettled([statesTask, countiesTask]);
+      const [statesResult, countiesResult] = await Promise.allSettled([statesTask, countiesTask]);
 
-    const failure = [statesResult, countiesResult].find(
-      (r): r is PromiseRejectedResult => r.status === 'rejected'
-    );
-    if (failure) {
-      console.error('[DensityStore] Failed to load density data:', failure.reason);
-      set((state) => ({
-        error: failure.reason instanceof Error ? failure.reason.message : 'Failed to load density data',
-        // Failed counties after committed states leave the states layer usable
-        loadPhase: statesResult.status === 'rejected' ? 'error' : state.loadPhase,
-        statesProgress: null,
-        countiesProgress: null,
-      }));
+      const failure = [statesResult, countiesResult].find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+      if (failure) {
+        console.error('[DensityStore] Failed to load density data:', failure.reason);
+        set((state) => ({
+          error: failure.reason instanceof Error ? failure.reason.message : 'Failed to load density data',
+          // Failed counties after committed states leave the states layer usable
+          loadPhase: statesResult.status === 'rejected' ? 'error' : state.loadPhase,
+          statesProgress: null,
+          countiesProgress: null,
+        }));
+      }
+    })();
+
+    try {
+      return await _loadPromise;
+    } finally {
+      _loadPromise = null;
     }
   },
 
