@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ALPRCamera, CameraFilters } from '../types';
+import type { ALPRCamera, CameraFilters, CameraManifest } from '../types';
 import {
   loadBundledCameras,
   retryLoadCameras,
@@ -7,11 +7,13 @@ import {
   getUniqueBrands,
   type CameraCountry,
 } from '../services/cameraDataService';
-import { 
-  buildSpatialGrid, 
-  getCamerasInBoundsFromGrid, 
-  type SpatialGrid 
+import {
+  buildSpatialGrid,
+  getCamerasInBoundsFromGrid,
+  type SpatialGrid
 } from '../utils/geo';
+import { loadCameraManifest } from '../services/cameraManifestService';
+import { brandMatchesSelection, operatorMatchesSelection } from '../lib/brandNormalization';
 
 /** Get the Monday (YYYY-MM-DD) of the ISO week containing the given ISO timestamp */
 function getWeekMonday(isoTimestamp: string): string {
@@ -96,6 +98,16 @@ interface CameraState {
    *  forces the legacy GeoJSON rendering path as a fallback. */
   tilesFailed: boolean;
   setTilesFailed: (failed: boolean) => void;
+  /** Set when the FILTER tile source fails repeatedly before ever loading —
+   *  active filters then fall back to the GeoJSON path. */
+  filterTilesFailed: boolean;
+  setFilterTilesFailed: (failed: boolean) => void;
+
+  /** Filter dictionary (labels ↔ build-scoped ids). Loaded lazily when the
+   *  Filters panel opens or a filter activates. */
+  manifest: CameraManifest | null;
+  manifestPhase: 'idle' | 'loading' | 'ready' | 'error';
+  ensureManifestLoaded: () => Promise<void>;
   filters: CameraFilters;
   availableOperators: string[];
   availableBrands: string[];
@@ -154,6 +166,25 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   isCountrySwitching: false,
   tilesFailed: false,
   setTilesFailed: (failed: boolean) => set({ tilesFailed: failed }),
+  filterTilesFailed: false,
+  setFilterTilesFailed: (failed: boolean) => set({ filterTilesFailed: failed }),
+  manifest: null,
+  manifestPhase: 'idle',
+
+  // Never rejects — failure is a state ('error'), consumed by the render-mode
+  // fallback. Re-invoking after an error retries (service clears in-flight).
+  ensureManifestLoaded: async () => {
+    const { manifest, manifestPhase } = get();
+    if (manifest || manifestPhase === 'loading') return;
+    set({ manifestPhase: 'loading' });
+    try {
+      const loaded = await loadCameraManifest();
+      set({ manifest: loaded, manifestPhase: 'ready' });
+    } catch (error) {
+      console.warn('[CameraStore] Manifest load failed — filters will use the GeoJSON path', error);
+      set({ manifestPhase: 'error' });
+    }
+  },
   filters: {
     operators: [],
     brands: [],
@@ -380,14 +411,14 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     if (!updatedFilters.showAll) {
       if (updatedFilters.operators.length > 0) {
-        filtered = filtered.filter(
-          (c) => c.operator && updatedFilters.operators.includes(c.operator)
+        filtered = filtered.filter((c) =>
+          operatorMatchesSelection(c.operator, updatedFilters.operators)
         );
       }
 
       if (updatedFilters.brands.length > 0) {
-        filtered = filtered.filter(
-          (c) => c.brand && updatedFilters.brands.includes(c.brand)
+        filtered = filtered.filter((c) =>
+          brandMatchesSelection(c.brand, updatedFilters.brands)
         );
       }
 
@@ -464,10 +495,10 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     if (!updatedFilters.showAll) {
       if (updatedFilters.brands.length > 0) {
-        filtered = filtered.filter((c) => c.brand && updatedFilters.brands.includes(c.brand));
+        filtered = filtered.filter((c) => brandMatchesSelection(c.brand, updatedFilters.brands));
       }
       if (updatedFilters.operators.length > 0) {
-        filtered = filtered.filter((c) => c.operator && updatedFilters.operators.includes(c.operator));
+        filtered = filtered.filter((c) => operatorMatchesSelection(c.operator, updatedFilters.operators));
       }
       if (updatedFilters.surveillanceZones.length > 0) {
         filtered = filtered.filter((c) => c.surveillanceZone && updatedFilters.surveillanceZones.includes(c.surveillanceZone));
