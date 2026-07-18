@@ -43,8 +43,6 @@ export function MapPage() {
     retryCameraLoad,
     isInitialized,
     cameras,
-    error,
-    loadPhase,
     country,
   } = useCameraStore();
   const center = useMapStore(s => s.center);
@@ -282,7 +280,6 @@ export function MapPage() {
   // Tiles mode: the map is "ready" when the tile source has rendered
   // (markersReady). The JSON dataset only gates readiness when a feature
   // actually needs it (filters/timeline/heatmap/Canada).
-  const cameraProgress = needsGeojson ? (error ? 'error' : loadPhase) : 'ready';
   const camerasReady = needsGeojson ? (isInitialized && cameras.length > 0) : true;
   const isFullyReady = camerasReady && markersReady;
 
@@ -309,16 +306,10 @@ export function MapPage() {
   return (
     <>
       {seo}
-      {/* Unified loading overlay — map renders underneath so tiles load in parallel */}
-      {(!isFullyReady || error || mapInitError) && (
-        <MapLoadingScreen
-          cameraProgress={cameraProgress}
-          cameraCount={cameras.length}
-          error={error ?? mapInitError}
-          onRetry={handleRetryWithRemount}
-          markersReady={markersReady}
-          camerasReady={camerasReady}
-        />
+      {/* Full-screen overlay is error-only: WebGL missing, watchdog timeout,
+          or tile-source stall. GeoJSON loads surface in-panel / as a pill. */}
+      {mapInitError && (
+        <MapLoadingScreen error={mapInitError} onRetry={handleRetryWithRemount} />
       )}
       <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
@@ -406,11 +397,14 @@ export function MapPage() {
           {/* Map */}
           <main className="flex-1 relative w-full lg:w-auto">
             <h1 className="sr-only">DeFlock ALPR Camera Map</h1>
-            <MapLibreView
-              ref={mapRef}
-              mapKey={mapKey}
-              onMarkersReady={handleMarkersReady}
-            />
+            {/* Map fades in on first render instead of popping */}
+            <div className={`absolute inset-0 transition-opacity duration-300 ${markersReady ? 'opacity-100' : 'opacity-0'}`}>
+              <MapLibreView
+                ref={mapRef}
+                mapKey={mapKey}
+                onMarkersReady={handleMarkersReady}
+              />
+            </div>
 
             {/* Map Overlays */}
             {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
