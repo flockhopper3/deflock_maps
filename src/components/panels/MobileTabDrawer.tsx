@@ -9,7 +9,6 @@ import { isModeAvailable } from '../../services/cameraDataService';
 import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, X } from 'lucide-react';
 import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
-import { MobileRoutePreview } from './MobileRoutePreview';
 import { FlockHopperCTA } from './FlockHopperCTA';
 import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
@@ -71,7 +70,7 @@ function StopSheetDrag({ children }: { children: React.ReactNode }) {
 }
 
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
-  // route renders the FlockHopper line instead of IdentityRow; entry kept so the peek effects treat route as peekable
+  // route renders the FlockHopper start ad instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
   explore: { title: 'Timeline', desc: 'Timeline of when ALPR cameras were mapped on OpenStreetMap, not when they were installed.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
@@ -395,9 +394,8 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       {appMode !== 'explore' && snapPoint === 'peek' && (
         appMode === 'route' ? (
           hasRoutes ? (
-            <div className="mt-3 space-y-2 animate-fade-in">
-              <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-              <FlockHopperCTA variant="line" />
+            <div className="mt-3 animate-fade-in">
+              <FlockHopperCTA variant="start" />
             </div>
           ) : (
             // Optically centered in the peek's content region (no floating gap)

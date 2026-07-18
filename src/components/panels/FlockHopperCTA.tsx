@@ -72,7 +72,7 @@ export function FlockHopperLearnMore({ className = '' }: { className?: string })
 }
 
 interface FlockHopperCTAProps {
-  variant: 'card' | 'row' | 'line' | 'banner';
+  variant: 'card' | 'row' | 'start' | 'banner';
   /** Card variant only */
   title?: string;
   /** Card variant only */
@@ -84,8 +84,8 @@ interface FlockHopperCTAProps {
  * - `card`: branded card with title, copy, both store buttons, learn-more link.
  * - `row`: slim one-row banner with a platform-aware "Get FlockHopper" link
  *   (used in the mobile peek sheet header).
- * - `line`: unboxed single-line ad — app mark, name, one-liner, "Get the app"
- *   pill (used in the mobile route peek, which no longer shows an identity row).
+ * - `start`: wordmark + availability + red Start-navigation button
+ *   (the route peek's whole content once routes exist).
  * - `banner`: logo wordmark + "Get the app" button row with a description
  *   below (used in the mobile route peek's no-routes state).
  */
@@ -123,23 +123,37 @@ export function FlockHopperCTA({ variant, title, description }: FlockHopperCTAPr
     );
   }
 
-  if (variant === 'line') {
+  if (variant === 'start') {
+    // Honest ad styled like a nav app's Start action: the wordmark directly
+    // above the button makes the destination (the store) unmistakable.
     return (
-      <a
-        href={getPlatformStoreUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2.5 min-h-11 active:opacity-70 transition-opacity"
-      >
-        <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-accent to-[#00537a] flex items-center justify-center flex-shrink-0">
-          <Navigation className="w-4 h-4 text-white" aria-hidden="true" />
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <img
+            src="/flockhopper-wordmark.webp"
+            alt="FlockHopper"
+            width={441}
+            height={83}
+            decoding="async"
+            className="h-6 w-auto"
+          />
+          <span className="text-2xs text-dark-500 uppercase flex-shrink-0">
+            Free · iOS &amp; Android
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-white leading-tight">FlockHopper</p>
-          <p className="text-[11px] text-dark-400 leading-snug">Turn-by-turn navigation that avoids cameras</p>
-        </div>
-        <span className="px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold flex-shrink-0">Get the app</span>
-      </a>
+        <p className="text-xs text-dark-400 leading-snug mt-1.5">
+          Real-time, turn-by-turn navigation that avoids ALPR cameras.
+        </p>
+        <a
+          href={getPlatformStoreUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2.5 flex items-center justify-center gap-2 w-full py-3 rounded-lg bg-[#d80018] active:bg-[#a80013] text-white font-display font-bold text-base transition-colors"
+        >
+          <Navigation className="w-4 h-4" aria-hidden="true" />
+          Start navigation
+        </a>
+      </div>
     );
   }
 
