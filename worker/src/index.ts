@@ -38,7 +38,8 @@ export async function handleFetchRequest(
 
   // Dataset endpoint — strip leading slash
   const key = url.pathname.slice(1);
-  if (!key.endsWith('.geojson.gz') && !key.endsWith('.geojson')) {
+  const isManifest = key === 'cameras-manifest.json';
+  if (!key.endsWith('.geojson.gz') && !key.endsWith('.geojson') && !isManifest) {
     return new Response('Not found', { status: 404, headers: cors });
   }
 
@@ -62,10 +63,12 @@ export async function handleFetchRequest(
   return new Response(obj.body, {
     status: 200,
     headers: {
-      'Content-Type': 'application/geo+json',
-      'Cache-Control': isHourly
+      'Content-Type': isManifest ? 'application/json' : 'application/geo+json',
+      'Cache-Control': isManifest
         ? 'public, max-age=300, s-maxage=3600'
-        : 'public, max-age=3600, s-maxage=86400',
+        : isHourly
+          ? 'public, max-age=300, s-maxage=3600'
+          : 'public, max-age=3600, s-maxage=86400',
       ETag: obj.etag,
       ...cors,
     },

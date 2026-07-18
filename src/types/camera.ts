@@ -63,3 +63,23 @@ export interface OverpassElement {
   };
 }
 
+/** One selectable value in the filter manifest. Ids are build-scoped —
+ *  they match the codes baked into cameras-filter.pmtiles from the same
+ *  pipeline run and may change between builds. Never persist ids. */
+export interface ManifestFacetEntry {
+  id: number;
+  label: string;
+  count: number;
+}
+
+/** Filter dictionary generated alongside cameras-filter.pmtiles. */
+export interface CameraManifest {
+  version: string;
+  generatedAt: string;
+  total: number;
+  brands: ManifestFacetEntry[];
+  operators: ManifestFacetEntry[];
+  zones: ManifestFacetEntry[];
+  mounts: ManifestFacetEntry[];
+}
+
