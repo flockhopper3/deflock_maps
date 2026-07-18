@@ -30,6 +30,8 @@ export interface CameraFilters {
   brands: string[];
   surveillanceZones: string[];
   mountTypes: string[];
+  /** Two-letter US state postal code (URL-linkable via ?state=XX). */
+  state?: string;
   showAll: boolean;
   timelineDate?: string;  // YYYY-MM format, filters cameras by osmTimestamp
 }

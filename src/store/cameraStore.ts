@@ -13,6 +13,7 @@ import {
   type SpatialGrid
 } from '../utils/geo';
 import { loadCameraManifest, verifyFilterTilesetVersion } from '../services/cameraManifestService';
+import { getCachedStateGeometry, isPointInState } from '../services/stateFilterService';
 import { brandMatchesSelection, operatorMatchesSelection } from '../lib/brandNormalization';
 
 /** Get the Monday (YYYY-MM-DD) of the ISO week containing the given ISO timestamp */
@@ -150,8 +151,11 @@ interface CameraState {
     operators: string[];
     surveillanceZones: string[];
     mountTypes: string[];
+    /** US state postal code, or null for all states. */
+    state: string | null;
   };
   togglePendingFilter: (key: 'brands' | 'operators' | 'surveillanceZones' | 'mountTypes', value: string) => void;
+  setPendingState: (state: string | null) => void;
   applyPendingFilters: () => void;
   resetAllFilters: () => void;
   getPendingChangeCount: () => number;
@@ -223,6 +227,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     operators: [],
     surveillanceZones: [],
     mountTypes: [],
+    state: null,
   },
 
   // Load camera data from bundled JSON (fast!)
@@ -399,6 +404,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           operators: [],
           surveillanceZones: [],
           mountTypes: [],
+          state: null,
         },
         isCountrySwitching: false,
         isLoading: false,
@@ -453,6 +459,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           (c) => c.mountType && updatedFilters.mountTypes.includes(c.mountType)
         );
       }
+
+      if (updatedFilters.state) {
+        const stateGeom = getCachedStateGeometry(updatedFilters.state);
+        if (stateGeom) {
+          filtered = filtered.filter((c) => isPointInState(c.lon, c.lat, stateGeom));
+        }
+      }
     }
 
     // Increment dataVersion so map source updates even if React diffing skips it
@@ -473,6 +486,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         brands: [],
         surveillanceZones: [],
         mountTypes: [],
+        state: undefined,
         showAll: true,
         timelineDate: undefined,
       },
@@ -489,13 +503,18 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     set({ pendingFilters: { ...pendingFilters, [key]: next } });
   },
 
+  setPendingState: (state) => {
+    set((s) => ({ pendingFilters: { ...s.pendingFilters, state } }));
+  },
+
   applyPendingFilters: () => {
     const { pendingFilters, cameras, filters, dataVersion } = get();
     const hasAnyFilter =
       pendingFilters.brands.length > 0 ||
       pendingFilters.operators.length > 0 ||
       pendingFilters.surveillanceZones.length > 0 ||
-      pendingFilters.mountTypes.length > 0;
+      pendingFilters.mountTypes.length > 0 ||
+      pendingFilters.state !== null;
 
     const updatedFilters: CameraFilters = {
       ...filters,
@@ -503,6 +522,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       operators: pendingFilters.operators,
       surveillanceZones: pendingFilters.surveillanceZones,
       mountTypes: pendingFilters.mountTypes,
+      state: pendingFilters.state ?? undefined,
       showAll: !hasAnyFilter,
     };
 
@@ -526,6 +546,12 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       if (updatedFilters.mountTypes.length > 0) {
         filtered = filtered.filter((c) => c.mountType && updatedFilters.mountTypes.includes(c.mountType));
       }
+      if (updatedFilters.state) {
+        const stateGeom = getCachedStateGeometry(updatedFilters.state);
+        if (stateGeom) {
+          filtered = filtered.filter((c) => isPointInState(c.lon, c.lat, stateGeom));
+        }
+      }
     }
 
     set({
@@ -539,12 +565,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   resetAllFilters: () => {
     const { cameras } = get();
     set({
-      pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [] },
+      pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [], state: null },
       filters: {
         operators: [],
         brands: [],
         surveillanceZones: [],
         mountTypes: [],
+        state: undefined,
         showAll: true,
         timelineDate: undefined,
       },
@@ -561,6 +588,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       for (const v of pending) if (!applied.has(v)) count++;
       for (const v of applied) if (!pending.has(v)) count++;
     }
+    if ((pendingFilters.state ?? null) !== (filters.state ?? null)) count++;
     return count;
   },
 

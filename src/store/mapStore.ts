@@ -52,6 +52,12 @@ interface MapStoreState extends MapState {
   setTimelineTickCallback: (cb: ((dateStr: string) => void) | null) => void;
   setTileViewCameraCount: (count: number | null) => void;
   setTileViewBrandStats: (stats: TileViewBrandStats | null) => void;
+
+  /** One-shot command consumed by MapLibreContainer — frames the given
+   *  bounds with the map's real projection/aspect (unlike flyTo's guess). */
+  fitBoundsCommand: MapBounds | null;
+  requestFitBounds: (bounds: MapBounds) => void;
+  clearFitBoundsCommand: () => void;
 }
 
 // Default center: Geographic center of the contiguous US
@@ -71,6 +77,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   _timelineTickCallback: null,
   tileViewCameraCount: null,
   tileViewBrandStats: null,
+  fitBoundsCommand: null,
 
   setCenter: (center: [number, number]) => {
     set({ center });
@@ -119,6 +126,9 @@ export const useMapStore = create<MapStoreState>((set) => ({
   fitBounds: (bounds: MapBounds) => {
     set({ bounds });
   },
+
+  requestFitBounds: (bounds) => set({ fitBoundsCommand: bounds }),
+  clearFitBoundsCommand: () => set({ fitBoundsCommand: null }),
 
   setTimelineTickCallback: (cb) => set({ _timelineTickCallback: cb }),
 

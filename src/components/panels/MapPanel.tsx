@@ -419,7 +419,8 @@ export function MapPanel() {
     filters.brands.length +
     filters.operators.length +
     filters.surveillanceZones.length +
-    filters.mountTypes.length;
+    filters.mountTypes.length +
+    (filters.state ? 1 : 0);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);

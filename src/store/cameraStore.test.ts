@@ -30,7 +30,7 @@ beforeEach(() => {
     filters: {
       operators: [], brands: [], surveillanceZones: [], mountTypes: [], showAll: true,
     },
-    pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [] },
+    pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [], state: null },
   });
 });
 
@@ -88,7 +88,7 @@ describe('normalized filter matching (GeoJSON fallback path)', () => {
     useCameraStore.setState({
       cameras: [cam(1, 'Flock Saftey'), cam(2, 'Genetec'), cam(3, undefined)],
       pendingFilters: {
-        brands: ['Flock Safety'], operators: [], surveillanceZones: [], mountTypes: [],
+        brands: ['Flock Safety'], operators: [], surveillanceZones: [], mountTypes: [], state: null,
       },
     });
     useCameraStore.getState().applyPendingFilters();

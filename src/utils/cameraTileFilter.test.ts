@@ -77,3 +77,31 @@ describe('buildCameraTileFilter', () => {
     );
   });
 });
+
+describe('state filter clause', () => {
+  const square: GeoJSON.Polygon = {
+    type: 'Polygon',
+    coordinates: [[[-90, 30], [-80, 30], [-80, 40], [-90, 40], [-90, 30]]],
+  };
+
+  it('emits a within clause when the state geometry is available', () => {
+    const f = { ...baseFilters, showAll: false, state: 'TX' };
+    expect(buildCameraTileFilter(f, manifest, square)).toEqual(['within', square]);
+  });
+
+  it('matches nothing while the state geometry is still loading', () => {
+    const f = { ...baseFilters, showAll: false, state: 'TX' };
+    expect(buildCameraTileFilter(f, manifest, null)).toEqual(
+      ['match', ['get', 'b'], [-1], true, false]
+    );
+  });
+
+  it('ANDs the state clause with attribute facets', () => {
+    const f = { ...baseFilters, showAll: false, state: 'TX', brands: ['Flock Safety'] };
+    expect(buildCameraTileFilter(f, manifest, square)).toEqual([
+      'all',
+      ['match', ['get', 'b'], [1], true, false],
+      ['within', square],
+    ]);
+  });
+});

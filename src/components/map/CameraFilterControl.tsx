@@ -1,9 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCameraStore } from '../../store';
+import { useCameraStore, useMapStore } from '../../store';
 import { useAppModeStore } from '../../store/appModeStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import {
+  US_STATES,
+  getStateName,
+  loadStateGeometry,
+  getCachedStateGeometry,
+  getStateBounds,
+  loadStateCameraCounts,
+} from '../../services/stateFilterService';
 import { Filter, X, ChevronDown, Search } from 'lucide-react';
 
 // ─── Constants (moved from MapPanel) ────────────────────────────────────────
@@ -118,6 +126,121 @@ function SearchableMultiSelect({
                       )}
                     </div>
                     <span className={`${rowText} truncate`}>{item}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── State Single-Select (Staged) ───────────────────────────────────────────
+function StateSelect({
+  selected,
+  onSelect,
+  roomy = false,
+}: {
+  selected: string | null;
+  onSelect: (postal: string | null) => void;
+  roomy?: boolean;
+}) {
+  const [search, setSearch] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [counts, setCounts] = useState<Map<string, number> | null>(null);
+
+  // Per-state camera counts from the bundled metrics — cosmetic, lazy
+  useEffect(() => {
+    if (!isExpanded || counts) return;
+    void loadStateCameraCounts().then(setCounts).catch(() => {});
+  }, [isExpanded, counts]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return US_STATES.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.postal.toLowerCase() === q
+    );
+  }, [search]);
+
+  const rowText = roomy ? 'text-sm' : 'text-xs';
+  const rowPad = roomy ? 'px-3 py-2.5' : 'px-2.5 py-1.5';
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        className={`w-full flex items-center justify-between ${roomy ? 'py-3' : 'py-2'}`}
+      >
+        <span className={`${roomy ? 'text-[13px]' : 'text-xs'} font-medium text-dark-300 uppercase tracking-wider`}>
+          State
+          {selected && (
+            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-semibold normal-case tracking-normal">
+              {getStateName(selected)}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-dark-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {isExpanded && (
+        <div className="mt-1 mb-3">
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search states..."
+              className={`w-full pl-8 pr-3 ${roomy ? 'py-2.5 text-sm' : 'py-1.5 text-xs'} bg-dark-800 border border-dark-600 rounded-lg text-white placeholder:text-dark-500 focus:outline-none focus:border-accent/50`}
+            />
+          </div>
+
+          <div className={`${roomy ? 'max-h-72' : 'max-h-60'} overflow-y-auto space-y-0.5 scrollbar-thin`}>
+            {selected && (
+              <button
+                onClick={() => onSelect(null)}
+                className={`w-full flex items-center gap-2.5 ${rowPad} rounded-lg text-left text-dark-400 hover:bg-dark-800 hover:text-dark-200 transition-colors`}
+              >
+                <X className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className={rowText}>All states</span>
+              </button>
+            )}
+            {filtered.length === 0 ? (
+              <p className="text-xs text-dark-500 py-2 text-center">No results</p>
+            ) : (
+              filtered.map((s) => {
+                const isChecked = selected === s.postal;
+                const count = counts?.get(s.postal);
+                return (
+                  <button
+                    key={s.postal}
+                    onClick={() => onSelect(isChecked ? null : s.postal)}
+                    className={`w-full flex items-center gap-2.5 ${rowPad} rounded-lg text-left transition-colors ${
+                      isChecked
+                        ? 'bg-accent/10 text-white'
+                        : 'text-dark-300 hover:bg-dark-800'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${
+                        isChecked
+                          ? 'border-accent'
+                          : 'border-dark-500'
+                      }`}
+                    >
+                      {isChecked && <div className="w-2 h-2 rounded-full bg-accent" />}
+                    </div>
+                    <span className={`${rowText} flex-1 truncate`}>{s.name}</span>
+                    {count !== undefined && (
+                      <span className="text-[11px] text-dark-500 tabular-nums">
+                        {count.toLocaleString()}
+                      </span>
+                    )}
                   </button>
                 );
               })
@@ -271,6 +394,7 @@ export function CameraFilterControl() {
   const availableOperators = useCameraStore((s) => s.availableOperators);
   const pendingFilters = useCameraStore((s) => s.pendingFilters);
   const togglePendingFilter = useCameraStore((s) => s.togglePendingFilter);
+  const setPendingState = useCameraStore((s) => s.setPendingState);
   const applyPendingFilters = useCameraStore((s) => s.applyPendingFilters);
   const resetAllFilters = useCameraStore((s) => s.resetAllFilters);
   const manifest = useCameraStore((s) => s.manifest);
@@ -301,6 +425,7 @@ export function CameraFilterControl() {
         operators: [...applied.operators],
         surveillanceZones: [...applied.surveillanceZones],
         mountTypes: [...applied.mountTypes],
+        state: applied.state ?? null,
       },
     });
   }, [open]);
@@ -325,6 +450,7 @@ export function CameraFilterControl() {
       for (const v of pending) if (!applied.has(v)) count++;
       for (const v of applied) if (!pending.has(v)) count++;
     }
+    if ((pendingFilters.state ?? null) !== (filters.state ?? null)) count++;
     return count;
   }, [pendingFilters, filters]);
 
@@ -332,13 +458,35 @@ export function CameraFilterControl() {
     filters.brands.length +
     filters.operators.length +
     filters.surveillanceZones.length +
-    filters.mountTypes.length;
+    filters.mountTypes.length +
+    (filters.state ? 1 : 0);
+
+  // Apply, and when the state selection changed, frame the state on the map.
+  // The boundary polygon loads before apply so both render paths (tile
+  // `within` expression + geojson point-in-polygon scan) have it cached.
+  const handleApply = async () => {
+    const pendingState = useCameraStore.getState().pendingFilters.state;
+    const prevState = useCameraStore.getState().filters.state ?? null;
+    if (pendingState) await loadStateGeometry(pendingState).catch(() => {});
+    applyPendingFilters();
+    if (pendingState && pendingState !== prevState) {
+      const feature = getCachedStateGeometry(pendingState);
+      if (feature) {
+        useMapStore.getState().requestFitBounds(getStateBounds(feature));
+      }
+    }
+  };
 
   if (appMode !== 'map') return null;
 
   const filterGroups = (roomy: boolean) => (
     <FilterDataGate>
       <div className={roomy ? 'divide-y divide-dark-700/40' : 'space-y-1'}>
+        <StateSelect
+          selected={pendingFilters.state}
+          onSelect={setPendingState}
+          roomy={roomy}
+        />
         <SearchableMultiSelect
           label="Brand"
           items={brandOptions}
@@ -407,7 +555,7 @@ export function CameraFilterControl() {
               Reset
             </button>
             <button
-              onClick={applyPendingFilters}
+              onClick={() => void handleApply()}
               disabled={pendingChangeCount === 0}
               className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all duration-150 ${
                 pendingChangeCount > 0
@@ -486,7 +634,7 @@ export function CameraFilterControl() {
                     </button>
                     <button
                       onClick={() => {
-                        applyPendingFilters();
+                        void handleApply();
                         setOpen(false);
                       }}
                       disabled={pendingChangeCount === 0}

@@ -11,7 +11,8 @@ import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
 import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
-import { parseViewportFromURL, parseCountryFromURL, writeViewportParams } from '@/utils/urlParams';
+import { parseViewportFromURL, parseCountryFromURL, parseStateFromURL, writeViewportParams } from '@/utils/urlParams';
+import { loadStateGeometry, getStateBounds } from '@/services/stateFilterService';
 import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
@@ -85,14 +86,34 @@ export function MapPage() {
     }
   });
 
+  // Deep link: ?state=TX applies the state filter and frames the state
+  // (unless the URL also pins an explicit viewport). Runs once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const state = parseStateFromURL(params);
+    if (!state) return;
+    const hasExplicitViewport = parseViewportFromURL(params) !== null;
+    let cancelled = false;
+    void loadStateGeometry(state).then((feature) => {
+      if (cancelled || !feature) return;
+      useCameraStore.getState().setFilters({ state, showAll: false });
+      if (!hasExplicitViewport) {
+        useMapStore.getState().requestFitBounds(getStateBounds(feature));
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Debounced live URL sync: mirrors whatever buildShareURL would produce,
   // so copying the address bar equals clicking Share.
+  const stateFilter = useCameraStore(s => s.filters.state);
   useEffect(() => {
     const t = setTimeout(() => {
       setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
     }, 500);
     return () => clearTimeout(t);
-  }, [center, zoom, appMode, mapVisualization, country, setSearchParams]);
+  }, [center, zoom, appMode, mapVisualization, country, stateFilter, setSearchParams]);
 
   const isMobile = useIsMobile();
 

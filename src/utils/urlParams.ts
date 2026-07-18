@@ -3,6 +3,7 @@ import { useAppModeStore } from '@/store/appModeStore';
 import { useCameraStore } from '@/store/cameraStore';
 import type { AppMode } from '@/store/appModeStore';
 import type { CameraCountry } from '@/services/cameraDataService';
+import { normalizeStateCode } from '@/services/stateFilterService';
 
 interface ViewportParams {
   lat: number;
@@ -55,14 +56,29 @@ export function writeViewportParams(params: URLSearchParams): URLSearchParams {
     params.delete('viz');
   }
 
-  const { country } = useCameraStore.getState();
+  const { country, filters } = useCameraStore.getState();
   if (country !== 'us') {
     params.set('country', country);
   } else {
     params.delete('country');
   }
 
+  // State filter (map mode) — makes filtered views shareable: ?state=TX
+  if (filters.state && appMode === 'map') {
+    params.set('state', filters.state);
+  } else {
+    params.delete('state');
+  }
+
   return params;
+}
+
+/**
+ * Parse the state filter param from URL search params. Returns the validated
+ * two-letter postal code, or null when absent/unknown.
+ */
+export function parseStateFromURL(searchParams: URLSearchParams): string | null {
+  return normalizeStateCode(searchParams.get('state'));
 }
 
 /**

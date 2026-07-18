@@ -53,10 +53,17 @@ function resolveCodes(selected: string[], table: Record<string, number>): number
  * CameraFilters. Returns undefined when no attribute filters are active
  * (layers then render unfiltered). Selected values are canonical labels;
  * ids are build-scoped and resolved here through the manifest.
+ *
+ * `stateGeometry` is the boundary polygon for `filters.state`, resolved by
+ * the caller (async load). A geometry-based `within` clause needs no tile
+ * attributes, so it works at every zoom. When a state filter is set but its
+ * geometry hasn't loaded yet, the expression matches NOTHING — a brief blank
+ * beats flashing the unfiltered nation.
  */
 export function buildCameraTileFilter(
   filters: CameraFilters,
-  manifest: CameraManifest
+  manifest: CameraManifest,
+  stateGeometry?: GeoJSON.Polygon | GeoJSON.MultiPolygon | null
 ): FilterSpecification | undefined {
   if (filters.showAll) return undefined;
 
@@ -72,6 +79,13 @@ export function buildCameraTileFilter(
   }
   if (filters.mountTypes.length > 0) {
     clauses.push(facetClause('m', resolveCodes(filters.mountTypes, MOUNT_CODES)));
+  }
+  if (filters.state) {
+    clauses.push(
+      stateGeometry
+        ? (['within', stateGeometry] as unknown as FilterSpecification)
+        : facetClause('b', [])
+    );
   }
 
   if (clauses.length === 0) return undefined;

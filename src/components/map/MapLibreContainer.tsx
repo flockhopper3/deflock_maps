@@ -71,6 +71,7 @@ export interface MapLibreViewHandle {
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
 import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_METADATA_MINZOOM, CAMERA_FILTER_TILES_URL } from '../../services/cameraTilesService';
 import { normalizeBrand } from '../../lib/brandNormalization';
+import { loadStateGeometry } from '../../services/stateFilterService';
 import type { TileViewBrandStats } from '../../store/mapStore';
 import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
@@ -224,9 +225,25 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
   const manifest = useCameraStore((s) => s.manifest);
   const cameraFilters = useCameraStore((s) => s.filters);
+  // State-filter boundary polygon — loaded lazily; the filter expression
+  // matches nothing until it arrives (usually a one-time local fetch).
+  const [stateGeom, setStateGeom] = useState<GeoJSON.Polygon | GeoJSON.MultiPolygon | null>(null);
+  const stateCode = cameraFilters.state ?? null;
+  useEffect(() => {
+    if (!stateCode) {
+      setStateGeom(null);
+      return;
+    }
+    let cancelled = false;
+    void loadStateGeometry(stateCode).then((f) => {
+      if (!cancelled) setStateGeom(f ? f.geometry : null);
+    });
+    return () => { cancelled = true; };
+  }, [stateCode]);
+
   const tileFilterExpr = useMemo(
-    () => (manifest ? buildCameraTileFilter(cameraFilters, manifest) : undefined),
-    [cameraFilters, manifest]
+    () => (manifest ? buildCameraTileFilter(cameraFilters, manifest, stateGeom) : undefined),
+    [cameraFilters, manifest, stateGeom]
   );
   // Only render camera markers + direction cones when needed.
   // Map-mode auto no longer crossfades heatmap→markers; heatmap is only shown
@@ -984,6 +1001,22 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       map.off('zoomend', handleZoomEnd);
     };
   }, [mapLoaded, isMapMode, mapModeViz, setActiveView]);
+
+  // One-shot fitBounds command (e.g. framing a state filter). Also keyed on
+  // mapLoaded: a deep link can issue the command before the map instance
+  // exists — the command stays queued until the map is ready to consume it.
+  const fitBoundsCommand = useMapStore(s => s.fitBoundsCommand);
+  useEffect(() => {
+    if (!fitBoundsCommand || !mapRef.current || !mapLoaded) return;
+    mapRef.current.fitBounds(
+      [
+        [fitBoundsCommand.west, fitBoundsCommand.south],
+        [fitBoundsCommand.east, fitBoundsCommand.north],
+      ],
+      { padding: 60, duration: 1200 }
+    );
+    useMapStore.getState().clearFitBoundsCommand();
+  }, [fitBoundsCommand, mapLoaded]);
 
   // Fit to route bounds when routes change
   useEffect(() => {
