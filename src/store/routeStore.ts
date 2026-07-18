@@ -44,6 +44,7 @@ interface RouteState {
 
   // Location picking actions
   startPickingLocation: (mode: 'origin' | 'destination') => void;
+  startPickingSequence: () => void;
   cancelPickingLocation: () => void;
   setPickedLocation: (location: Location) => void;
 }
@@ -217,6 +218,30 @@ export const useRouteStore = create<RouteState>((set, get) => ({
   startPickingLocation: (mode: 'origin' | 'destination') => {
     // Manual single-target pick takes over from any running guided sequence
     set({ pickingLocation: mode, pickingSequence: null });
+  },
+
+  startPickingSequence: () => {
+    const { origin, destination } = get();
+    if (origin && !destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'destination' });
+    } else if (!origin && destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'origin' });
+    } else {
+      // Both empty, or both set (redo): start fresh so the first pick
+      // can't auto-calculate against a leftover endpoint mid-sequence.
+      // Note: re-invoking mid-sequence intentionally re-evaluates from the
+      // current endpoint state (manual mutations cancel the sequence anyway).
+      set({
+        origin: null,
+        destination: null,
+        normalRoute: null,
+        avoidanceRoute: null,
+        comparison: null,
+        error: null,
+        pickingSequence: 'full',
+        pickingLocation: 'origin',
+      });
+    }
   },
 
   cancelPickingLocation: () => {

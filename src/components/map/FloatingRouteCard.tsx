@@ -11,7 +11,8 @@ type GeoState = 'idle' | 'loading' | 'error';
  * Floating route inputs and results card rendered over the map on the Route tab.
  * Two connected rows (start / destination) with swap on the divider.
  * Enter-to-search dropdown below the card shows use-my-location (origin) and
- * choose-on-map actions when the focused field is empty.
+ * choose-on-map actions when the focused field is empty; a guided
+ * "Choose on map" sequence button sits under the card as well.
  * Auto-calculates when both endpoints are set.
  * On mobile with results present, shows a results scoreboard instead of the inputs
  * (Edit route brings them back); desktop always shows the input card.
@@ -28,7 +29,9 @@ export function FloatingRouteCard() {
     error: routeError,
     normalRoute,
     avoidanceRoute,
+    pickingLocation,
     startPickingLocation,
+    startPickingSequence,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
 
@@ -364,6 +367,26 @@ export function FloatingRouteCard() {
             Retry
           </button>
         </div>
+      )}
+
+      {/* Guided pick-on-map entry (hidden while the scoreboard owns the card) */}
+      {!showScoreboard && !pickingLocation && !isCalculating && !dropdownOpen && (
+        <button
+          onClick={() => {
+            revertQueries();
+            setActiveField(null);
+            setResults([]);
+            setSearchError(null);
+            startPickingSequence();
+          }}
+          type="button"
+          className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-900/95 border border-dark-600 text-xs text-dark-300 hover:text-white hover:border-dark-500 transition-colors backdrop-blur-sm"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+          </svg>
+          Choose on map
+        </button>
       )}
 
       {/* Dropdown: search action + results */}
