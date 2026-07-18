@@ -82,8 +82,8 @@ interface FlockHopperCTAProps {
 /**
  * FlockHopper promotion.
  * - `card`: branded card with title, copy, both store buttons, learn-more link.
- * - `row`: slim one-row banner with a platform-aware "Get FlockHopper" link
- *   (used in the mobile peek sheet header).
+ * - `row`: slim one-row banner with a platform-aware "Get FlockHopper" link.
+ *   Currently unused in src (kept dormant).
  * - `start`: wordmark + availability + red Start-navigation button
  *   (the route peek's whole content once routes exist).
  * - `banner`: logo wordmark + "Get the app" button row with a description

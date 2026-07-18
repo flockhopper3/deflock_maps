@@ -18,13 +18,15 @@ npm run dev   # wants port 3000; falls back to 3001+ if taken
 - Default app mode is **Map**. Desktop: click the `ROUTE` header tab. Mobile: tap the `Route` pill inside `[role="dialog"]` (the bottom sheet).
 - `AddressSearch` inputs only geocode on **Enter** or the search button — typing alone shows no suggestions. Flow: fill → press Enter → click suggestion in the dropdown (`button/li` filtered by place name). Give geocoding up to 20s (primary geocoder may be CORS-blocked locally; Nominatim/Photon fallback kicks in).
 - Good fast test route: "Denton, TX" → "Frisco, TX" (~30s calculation).
-- Mobile viewport: 390x844, `hasTouch: true`, iPhone UA. The bottom sheet is `[role="dialog"]`; expand by mouse-dragging the header area upward (header tap is disabled). After route calculation the sheet should snap to ~210px (peek) with the route visible on the map.
+- Mobile viewport: 390x844, `hasTouch: true`, iPhone UA. The bottom sheet is `[role="dialog"]`; expand by mouse-dragging the header area upward (header/strip tap is disabled — dragging is the only way to expand). After route calculation the sheet should snap to ~180px (peek, `UNIFORM_PEEK_HEIGHT`) with the route visible on the map.
 
 ## Verify checkpoints
 
 - Desktop empty state (Route tab): FlockHopper header with App Store / Android Beta buttons.
-- Desktop results: "Drive this route with live navigation" card between comparison cards and GPX export.
-- Mobile peek: sheet height ≈ 210px, summary strip + "Get FlockHopper" row visible, map not covered; strip tap expands to full (~85vh).
+- Desktop results: "Drive this route with live navigation" card between the camera-reduction success banner and the "Start over" button. There is no GPX export button.
+- Mobile results: once routes calculate, the floating search inputs are replaced by the RouteScoreboard card (DIRECT / PRIVACY halves with camera counts, a green verdict line, the "maps.deflock.org" watermark, and an "Edit route" button that brings the inputs back); the user's addresses are hidden from view. A "Back to results" button appears while editing if routes still exist.
+- Mobile peek: sheet height ≈ 180px (`UNIFORM_PEEK_HEIGHT`). Shows the FlockHopper wordmark ad with a "Free · iOS & Android" label, one-liner, and full-width red "Start navigation" button linking to the platform store URL — there is no summary strip and no "Get FlockHopper" row, and nothing in the peek is tap-to-expand; expand by dragging the sheet header.
+- Mobile floating card: focusing an empty field opens a quick-actions dropdown — "Use my location" (origin field only) and "Choose on map" (either field).
 
 Working script from 2026-07-11 session: see `verify-flockhopper.mjs` pattern (Playwright, chromium, CORS proxy routes).
 

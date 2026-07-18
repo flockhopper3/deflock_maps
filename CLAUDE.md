@@ -97,7 +97,7 @@ src/
 │   │               # NetworkLayers, BoundaryOverlayLayers
 │   ├── panels/     # MapPanel, TabbedPanel, RoutePanel, ExplorePanel,
 │   │               # DensityPanel, NetworkPanel, CustomRoutePanel,
-│   │               # MobileTabDrawer, MobileRoutePreview, RouteComparison
+│   │               # MobileTabDrawer, RouteComparison
 │   └── ui/         # Shadcn components (button, input)
 ├── hooks/          # useCameraRenderMode, useEmbedMode
 ├── lib/            # Utility helpers (cn)

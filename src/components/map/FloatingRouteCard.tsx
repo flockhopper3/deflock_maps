@@ -316,8 +316,9 @@ export function FloatingRouteCard() {
         </div>
           </div>
 
-          {/* Back to results while editing with results still present */}
-          {isEditing && hasRoutes && (
+          {/* Back to results while editing with results still present (mobile only:
+              desktop always shows the input card, so this button has no role there) */}
+          {isMobile && isEditing && hasRoutes && (
             <button
               onClick={() => {
                 revertQueries();
