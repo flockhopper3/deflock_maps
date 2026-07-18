@@ -242,7 +242,61 @@ export function MapPanelContent() {
   // tile-rendered viewport count when available — same pattern as CameraStats.tsx.
   const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportStats.count;
 
-  const totalInView = viewportStats.count || 1;
+  const tileViewBrandStats = useMapStore((s) => s.tileViewBrandStats);
+  const manifest = useCameraStore((s) => s.manifest);
+  const country = useCameraStore((s) => s.country);
+  const ensureManifestLoaded = useCameraStore((s) => s.ensureManifestLoaded);
+
+  // Warm the few-KB manifest so the nationwide brand breakdown (and the
+  // filter button's option lists) are ready without any dataset download.
+  useEffect(() => {
+    if (country === 'us') void ensureManifestLoaded();
+  }, [country, ensureManifestLoaded]);
+
+  // Brand rows, best available source:
+  // 1. Rendered tile attributes (filter tiles: every zoom; main tiles: z11+)
+  // 2. GeoJSON-path scan (when that dataset is the active render path)
+  // 3. Manifest nationwide breakdown (unfiltered tile view below z11)
+  const brandDisplay = useMemo(() => {
+    const shape = (named: { name: string; count: number }[], unknownCount: number) => {
+      const rows: { name: string; count: number }[] = [];
+      let otherCount = 0;
+      for (let i = 0; i < named.length; i++) {
+        if (i < 3) rows.push(named[i]);
+        else otherCount += named[i].count;
+      }
+      if (otherCount > 0) rows.push({ name: 'Other', count: otherCount });
+      if (unknownCount > 0) rows.push({ name: 'Unknown', count: unknownCount });
+      const total = named.reduce((s, b) => s + b.count, 0) + unknownCount;
+      return { rows: rows.slice(0, 5), total: total || 1 };
+    };
+
+    if (tileViewBrandStats) {
+      return {
+        label: 'Brands in View',
+        unique: tileViewBrandStats.brands.length,
+        ...shape(tileViewBrandStats.brands, tileViewBrandStats.unknownCount),
+      };
+    }
+    if (viewportStats.brands.length > 0) {
+      return {
+        label: 'Brands in View',
+        unique: viewportStats.uniqueBrands,
+        rows: viewportStats.brands,
+        total: viewportStats.count || 1,
+      };
+    }
+    if (country === 'us' && manifest) {
+      const named = manifest.brands.map((b) => ({ name: b.label, count: b.count }));
+      const namedTotal = named.reduce((s, b) => s + b.count, 0);
+      return {
+        label: 'Brands Nationwide',
+        unique: named.length,
+        ...shape(named, Math.max(manifest.total - namedTotal, 0)),
+      };
+    }
+    return null;
+  }, [tileViewBrandStats, viewportStats, country, manifest]);
 
   return (
     <div className="flex flex-col">
@@ -261,21 +315,21 @@ export function MapPanelContent() {
         </div>
       </div>
 
-      {/* Brands in View */}
-      {viewportStats.brands.length > 0 && (
+      {/* Brand breakdown */}
+      {brandDisplay && (
         <div className="px-6 pb-4">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-[10px] font-semibold text-dark-500 uppercase tracking-[0.08em]">
-              Brands in View
+              {brandDisplay.label}
             </span>
             <span className="text-[10px] text-dark-500">
-              {viewportStats.uniqueBrands} brand{viewportStats.uniqueBrands !== 1 ? 's' : ''}
+              {brandDisplay.unique} brand{brandDisplay.unique !== 1 ? 's' : ''}
             </span>
           </div>
           <div className="space-y-2">
-            {viewportStats.brands.map((brand, i) => {
+            {brandDisplay.rows.map((brand, i) => {
               const color = BRAND_COLORS[Math.min(i, BRAND_COLORS.length - 1)];
-              const widthPct = Math.max((brand.count / totalInView) * 100, 2);
+              const widthPct = Math.max((brand.count / brandDisplay.total) * 100, 2);
               return (
                 <div key={brand.name}>
                   <div className="flex items-center justify-between mb-1">

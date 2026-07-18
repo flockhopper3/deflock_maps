@@ -69,7 +69,9 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_FILTER_TILES_URL } from '../../services/cameraTilesService';
+import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_METADATA_MINZOOM, CAMERA_FILTER_TILES_URL } from '../../services/cameraTilesService';
+import { normalizeBrand } from '../../lib/brandNormalization';
+import type { TileViewBrandStats } from '../../store/mapStore';
 import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
 const TILES_URL = 'https://tiles.dontgetflocked.com';
@@ -298,6 +300,48 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
           : `camera-tile-dots${suffix}`;
         const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
         useMapStore.getState().setTileViewCameraCount(feats.length);
+
+        // Brand breakdown from the same rendered features: the filter tileset
+        // carries integer brand codes (`b`) at every zoom; the main tileset
+        // carries `brand` strings at z11+ only. Below z11 unfiltered → null
+        // (the panel falls back to the manifest's nationwide breakdown).
+        // (`Map` is shadowed by react-map-gl's component in this module —
+        // plain records instead of a Map keep the aggregation unambiguous.)
+        const toStats = (counts: Record<string, number>, unknownCount: number): TileViewBrandStats => ({
+          brands: Object.entries(counts)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count),
+          unknownCount,
+        });
+
+        let brandStats: TileViewBrandStats | null = null;
+        if (renderMode === 'filter-tiles') {
+          const manifest = useCameraStore.getState().manifest;
+          if (manifest) {
+            const labelById: Record<number, string> = {};
+            for (const b of manifest.brands) labelById[b.id] = b.label;
+            const counts: Record<string, number> = {};
+            let unknownCount = 0;
+            for (const f of feats) {
+              const code = f.properties?.b;
+              const label = typeof code === 'number' && code > 0 ? labelById[code] : undefined;
+              if (label) counts[label] = (counts[label] ?? 0) + 1;
+              else unknownCount++;
+            }
+            brandStats = toStats(counts, unknownCount);
+          }
+        } else if (map.getZoom() >= CAMERA_METADATA_MINZOOM) {
+          const counts: Record<string, number> = {};
+          let unknownCount = 0;
+          for (const f of feats) {
+            const raw = f.properties?.brand;
+            const label = typeof raw === 'string' && raw ? normalizeBrand(raw) : null;
+            if (label) counts[label] = (counts[label] ?? 0) + 1;
+            else unknownCount++;
+          }
+          brandStats = toStats(counts, unknownCount);
+        }
+        useMapStore.getState().setTileViewBrandStats(brandStats);
       } catch {
         // layers not ready yet
       }
@@ -305,6 +349,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
 
     useMapStore.getState().setTileViewCameraCount(null);
+    useMapStore.getState().setTileViewBrandStats(null);
     const bounds = map.getBounds();
     getCamerasInBounds(
       bounds.getNorth(),
