@@ -1,4 +1,8 @@
 import type { Location } from '../types';
+import { lookupZipCode } from './zipCodeService';
+
+// US zip shape — resolved from the local bundled dataset (no geocoding cost)
+const ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
 
 // ============================================================================
 // TYPES
@@ -366,6 +370,27 @@ export async function smartSearch(query: string, source: string, signal?: AbortS
       description: 'GPS Coordinates',
       type: 'coordinates',
     }];
+  }
+
+  // ZIP codes: local bundled data first — instant and free. Only a miss
+  // (or a failed dataset fetch) falls through to the paid proxy chain.
+  if (ZIP_PATTERN.test(trimmed)) {
+    try {
+      const zipData = await lookupZipCode(trimmed);
+      if (zipData) {
+        return [{
+          id: `zip-${trimmed}`,
+          lat: zipData.lat,
+          lon: zipData.lon,
+          name: trimmed,
+          description: `${zipData.city}, ${zipData.state}`,
+          type: 'zip',
+        }];
+      }
+    } catch {
+      console.warn('Local ZIP lookup failed, falling back to API');
+    }
+    return searchWithFallback(`${trimmed}, USA`, source, signal);
   }
 
   // Search with 2-tier fallback: Proxy → Photon
