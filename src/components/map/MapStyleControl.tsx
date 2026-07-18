@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAppModeStore, useCameraStore, useMapStore } from '../../store';
+import { useCameraStore, useMapStore } from '../../store';
 import { COUNTRIES, countryZoomForViewport, type CameraCountry } from '../../services/cameraDataService';
-import { Sun, Moon, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 export function MapStyleControl() {
-  const { mapTileStyle, setMapTileStyle } = useAppModeStore();
   const [countryOpen, setCountryOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -14,8 +13,6 @@ export function MapStyleControl() {
   const flyTo = useMapStore(s => s.flyTo);
   const [pendingCountry, setPendingCountry] = useState<CameraCountry | null>(null);
   const [countryError, setCountryError] = useState<string | null>(null);
-
-  const isDark = mapTileStyle === 'dark';
 
   // Close on outside click
   useEffect(() => {
@@ -99,43 +96,6 @@ export function MapStyleControl() {
         )}
       </button>
 
-      {/* Theme pill — Light (sun) on top, Dark (moon) below */}
-      <div
-        role="radiogroup"
-        aria-label="Map theme"
-        className="theme-pill w-[40px] flex flex-col items-center gap-0.5 py-1 rounded-full bg-dark-800 border border-dark-600"
-      >
-        <button
-          role="radio"
-          aria-checked={!isDark}
-          aria-label="Light map"
-          title="Light map"
-          onClick={() => {
-            setMapTileStyle('light');
-            setCountryOpen(false);
-          }}
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-            !isDark ? 'bg-accent text-dark-900' : 'text-dark-400 hover:text-white'
-          }`}
-        >
-          <Sun className="w-4 h-4" />
-        </button>
-        <button
-          role="radio"
-          aria-checked={isDark}
-          aria-label="Dark map"
-          title="Dark map"
-          onClick={() => {
-            setMapTileStyle('dark');
-            setCountryOpen(false);
-          }}
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-            isDark ? 'bg-accent text-dark-900' : 'text-dark-400 hover:text-white'
-          }`}
-        >
-          <Moon className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   );
 }

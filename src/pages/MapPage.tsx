@@ -20,6 +20,7 @@ import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { CameraFilterControl } from '@/components/map/CameraFilterControl';
+import { MapThemeControl } from '@/components/map/MapThemeControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { TIMELINE_START } from '@/modes/timeline/timelineUtils';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
@@ -415,6 +416,7 @@ export function MapPage() {
             {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
             <MapStyleControl />
+            <MapThemeControl />
             <CameraFilterControl />
 
             {/* Density feature popup — floating stats card */}

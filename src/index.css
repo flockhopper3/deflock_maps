@@ -392,16 +392,21 @@ input[type="range"]::-moz-range-thumb {
   left: 16px !important;
 }
 
-/* Map style control (country + light/dark) — bottom-left corner, above the
-   attribution line, beside the legend chip */
+/* Left column: country button on top, filter button below it, both above
+   the attribution line and beside the legend chip */
 .map-page .map-style-control {
+  bottom: 72px; /* 24px (filter slot) + 40px (filter button) + 8px gap */
+  left: 16px;
+}
+
+.map-page .map-filter-control {
   bottom: 24px;
   left: 16px;
 }
 
-/* Filter button — bottom-right, above geolocate + zoom.
+/* Theme (light/dark) pill — right column, above geolocate + zoom.
    24px (ctrl offset) + 76px (zoom group) + 10px margin + 40px (geolocate) + 12px gap */
-.map-page .map-filter-control {
+.map-page .map-theme-control {
   bottom: 162px;
   right: 26px; /* 16px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
 }
@@ -440,10 +445,10 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 
-  /* Country button + theme pill sit in the bottom-LEFT corner, above the
-     attribution line. Offset tracks --drawer-height. */
+  /* Left column: country above filter, above the attribution line.
+     Offsets track --drawer-height. */
   .map-page .map-style-control {
-    bottom: calc(var(--drawer-height, 80px) + 30px);
+    bottom: calc(var(--drawer-height, 80px) + 76px); /* 30px (filter slot) + 38px button + 8px gap */
     left: 12px;
   }
 
@@ -452,15 +457,25 @@ input[type="range"]::-moz-range-thumb {
     height: 38px;
   }
 
-  .map-page .map-style-control .theme-pill {
-    width: 38px;
+  .map-page .map-filter-control {
+    bottom: calc(var(--drawer-height, 80px) + 30px);
+    left: 12px;
   }
 
-  /* Filter button floats above geolocate with a small gap.
+  .map-page .map-filter-control .filter-trigger {
+    width: 38px;
+    height: 38px;
+  }
+
+  /* Theme pill floats above geolocate with a small gap.
      Offset tracks --drawer-height: 12px gap + 40px geolocate + 8px gap. */
-  .map-page .map-filter-control {
+  .map-page .map-theme-control {
     bottom: calc(var(--drawer-height, 80px) + 72px);
     right: 22px; /* 12px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
+  }
+
+  .map-page .map-theme-control .theme-pill {
+    width: 38px;
   }
 
   /* Attribution line hugs the corner just above the bottom sheet. */

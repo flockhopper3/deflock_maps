@@ -373,10 +373,10 @@ export function CameraFilterControl() {
   );
 
   return (
-    <div ref={rootRef} className="map-filter-control absolute z-20 flex flex-col items-end">
+    <div ref={rootRef} className="map-filter-control absolute z-20 flex flex-col items-start">
       {/* Desktop popover */}
       {open && !isMobile && (
-        <div className="absolute bottom-full right-0 mb-2 w-[320px] bg-dark-900/95 backdrop-blur-md rounded-xl border border-dark-600 shadow-xl shadow-black/40 overflow-hidden">
+        <div className="absolute bottom-full left-0 mb-2 w-[320px] bg-dark-900/95 backdrop-blur-md rounded-xl border border-dark-600 shadow-xl shadow-black/40 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700/50">
             <div className="flex items-center gap-2.5">
               <span className="text-[13px] font-semibold text-white tracking-tight">Filters</span>
