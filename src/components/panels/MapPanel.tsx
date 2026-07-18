@@ -7,7 +7,6 @@ import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
 import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
 import { ChevronLeft, ChevronRight, ChevronDown, Map as MapIcon } from 'lucide-react';
-import { normalizeBrand } from '@/lib/brandNormalization';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const CAMERA_VIEW_OPTIONS: { id: MapVisualization; label: string; description: string }[] = [
@@ -15,14 +14,52 @@ const CAMERA_VIEW_OPTIONS: { id: MapVisualization; label: string; description: s
   { id: 'heatmap', label: 'Heatmap', description: 'Density blobs' },
 ];
 
-const BRAND_COLORS = [
-  { from: '#38bdf8', to: '#0ea5e9' },
-  { from: '#a78bfa', to: '#8b5cf6' },
-  { from: '#f472b6', to: '#ec4899' },
-  { from: '#fbbf24', to: '#f59e0b' },
-  { from: '#94a3b8', to: '#64748b' },
-  { from: '#6b7280', to: '#4b5563' },
+// ─── About This Map ─────────────────────────────────────────────────────────
+const ABOUT_ITEMS: { title: string; body: string; link?: { href: string; label: string } }[] = [
+  {
+    title: 'How it works',
+    body: 'Every marker is an automated license plate reader (ALPR) documented by DeFlock and OpenStreetMap contributors. The map refreshes hourly. Zoom in to see individual cameras and the direction they face.',
+  },
+  {
+    title: 'Contribute',
+    body: 'Anyone can add cameras. Spot an ALPR that is not on the map? Add it to OpenStreetMap and it will show up here.',
+    link: { href: 'https://deflock.me', label: 'Learn how to contribute' },
+  },
+  {
+    title: 'Fix a camera',
+    body: 'See a camera that is wrong or has been removed? Open its popup and use the View OSM link to correct it.',
+  },
+  {
+    title: 'About DeFlock',
+    body: 'DeFlock is a volunteer project that maps ALPR surveillance so everyone can see who is watching.',
+    link: { href: 'https://deflock.org', label: 'Visit deflock.org' },
+  },
 ];
+
+function AboutSection() {
+  return (
+    <Section title="About This Map" defaultOpen>
+      <div className="space-y-3">
+        {ABOUT_ITEMS.map((item) => (
+          <div key={item.title} className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
+            <p className="text-sm text-dark-300 font-medium mb-1">{item.title}</p>
+            <p className="text-xs text-dark-400 leading-relaxed">{item.body}</p>
+            {item.link && (
+              <a
+                href={item.link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 text-xs font-medium text-accent hover:underline"
+              >
+                {item.link.label} →
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
 
 // ─── Collapsible Section (top-level) ────────────────────────────────────────
 function Section({
@@ -190,115 +227,27 @@ export function MapPanelContent() {
   // GeoJSON dataset exists — prefer it so the hero stat isn't stuck at 0.
   const tileViewCameraCount = useMapStore(s => s.tileViewCameraCount);
 
-  const viewportStats = useMemo(() => {
-    if (!bounds) return { count: 0, uniqueBrands: 0, brands: [] as { name: string; count: number }[] };
-
-    const inView = filteredCameras.filter(
+  const viewportCount = useMemo(() => {
+    if (!bounds) return 0;
+    return filteredCameras.filter(
       (c) => c.lat >= bounds.south && c.lat <= bounds.north && c.lon >= bounds.west && c.lon <= bounds.east
-    );
-
-    // Aggregate brands (null from normalization = unknown)
-    const brandCounts = new Map<string, number>();
-    let unbrandedCount = 0;
-    for (const cam of inView) {
-      if (cam.brand) {
-        const normalized = normalizeBrand(cam.brand);
-        if (normalized) {
-          brandCounts.set(normalized, (brandCounts.get(normalized) ?? 0) + 1);
-        } else {
-          unbrandedCount++;
-        }
-      } else {
-        unbrandedCount++;
-      }
-    }
-
-    const uniqueBrands = brandCounts.size;
-
-    // Sort descending, top 3 named brands + Other + Unknown = max 5 rows
-    const sorted = Array.from(brandCounts.entries()).sort((a, b) => b[1] - a[1]);
-    const brands: { name: string; count: number }[] = [];
-    let otherCount = 0;
-
-    for (let i = 0; i < sorted.length; i++) {
-      if (i < 3) {
-        brands.push({ name: sorted[i][0], count: sorted[i][1] });
-      } else {
-        otherCount += sorted[i][1];
-      }
-    }
-    if (otherCount > 0) {
-      brands.push({ name: 'Other', count: otherCount });
-    }
-    if (unbrandedCount > 0) {
-      brands.push({ name: 'Unknown', count: unbrandedCount });
-    }
-
-    return { count: inView.length, uniqueBrands, brands: brands.slice(0, 5) };
+    ).length;
   }, [bounds, filteredCameras]);
 
   // In tiles mode (default render path), filteredCameras is empty until the
   // GeoJSON dataset lazy-loads, so viewportStats.count reads 0. Prefer the
   // tile-rendered viewport count when available — same pattern as CameraStats.tsx.
-  const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportStats.count;
+  const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportCount;
 
-  const tileViewBrandStats = useMapStore((s) => s.tileViewBrandStats);
-  const manifest = useCameraStore((s) => s.manifest);
   const country = useCameraStore((s) => s.country);
   const ensureManifestLoaded = useCameraStore((s) => s.ensureManifestLoaded);
 
-  // Warm the few-KB manifest so the nationwide brand breakdown (and the
-  // filter button's option lists) are ready without any dataset download.
-  // Country switches reset manifestPhase, so the country dep re-warms with
-  // the new country's dictionary.
+  // Warm the few-KB manifest so the filter button's option lists are ready
+  // without any dataset download. Country switches reset manifestPhase, so
+  // the country dep re-warms with the new country's dictionary.
   useEffect(() => {
     void ensureManifestLoaded();
   }, [country, ensureManifestLoaded]);
-
-  // Brand rows, best available source:
-  // 1. Rendered tile attributes (filter tiles: every zoom; main tiles: z11+)
-  // 2. GeoJSON-path scan (when that dataset is the active render path)
-  // 3. Manifest nationwide breakdown (unfiltered tile view below z11)
-  const brandDisplay = useMemo(() => {
-    const shape = (named: { name: string; count: number }[], unknownCount: number) => {
-      const rows: { name: string; count: number }[] = [];
-      let otherCount = 0;
-      for (let i = 0; i < named.length; i++) {
-        if (i < 3) rows.push(named[i]);
-        else otherCount += named[i].count;
-      }
-      if (otherCount > 0) rows.push({ name: 'Other', count: otherCount });
-      if (unknownCount > 0) rows.push({ name: 'Unknown', count: unknownCount });
-      const total = named.reduce((s, b) => s + b.count, 0) + unknownCount;
-      return { rows: rows.slice(0, 5), total: total || 1 };
-    };
-
-    if (tileViewBrandStats) {
-      return {
-        label: 'Brands in View',
-        unique: tileViewBrandStats.brands.length,
-        ...shape(tileViewBrandStats.brands, tileViewBrandStats.unknownCount),
-      };
-    }
-    if (viewportStats.brands.length > 0) {
-      return {
-        label: 'Brands in View',
-        unique: viewportStats.uniqueBrands,
-        rows: viewportStats.brands,
-        total: viewportStats.count || 1,
-      };
-    }
-    if (manifest) {
-      const named = manifest.brands.map((b) => ({ name: b.label, count: b.count }));
-      const namedTotal = named.reduce((s, b) => s + b.count, 0);
-      return {
-        label: 'Brands Nationwide',
-        unique: named.length,
-        ...shape(named, Math.max(manifest.total - namedTotal, 0)),
-      };
-    }
-    return null;
-  }, [tileViewBrandStats, viewportStats, country, manifest]);
 
   return (
     <div className="flex flex-col">
@@ -317,47 +266,11 @@ export function MapPanelContent() {
         </div>
       </div>
 
-      {/* Brand breakdown */}
-      {brandDisplay && (
-        <div className="px-6 pb-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-semibold text-dark-500 uppercase tracking-[0.08em]">
-              {brandDisplay.label}
-            </span>
-            <span className="text-[10px] text-dark-500">
-              {brandDisplay.unique} brand{brandDisplay.unique !== 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {brandDisplay.rows.map((brand, i) => {
-              const color = BRAND_COLORS[Math.min(i, BRAND_COLORS.length - 1)];
-              const widthPct = Math.max((brand.count / brandDisplay.total) * 100, 2);
-              return (
-                <div key={brand.name}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-dark-200">{brand.name}</span>
-                    <span className="text-sm font-medium text-white tabular-nums">
-                      {brand.count.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-dark-800 rounded-full">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${widthPct}%`,
-                        background: `linear-gradient(90deg, ${color.from}, ${color.to})`,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Divider before sections */}
       <div className="h-px bg-dark-700/50 mx-6" />
+
+      {/* Section: About */}
+      <AboutSection />
 
       {/* Section: Layers */}
       <Section title="Layers">
