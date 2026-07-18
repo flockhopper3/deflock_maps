@@ -438,9 +438,11 @@ export function MapPage() {
                 })}
               </nav>
 
-              {/* Mobile: live count + share */}
+              {/* Mobile: live count + share. No count on Timeline/Analysis —
+                  "in view" ignores the timeline date and Analysis shows
+                  choropleths, not cameras. */}
               <div className="lg:hidden flex items-center gap-2 h-full">
-                <HeaderCameraCount />
+                {appMode !== 'explore' && appMode !== 'density' && <HeaderCameraCount />}
                 <ShareButton variant="icon" className="-mr-2" />
               </div>
 
@@ -480,7 +482,10 @@ export function MapPage() {
 
             {/* Map Overlays */}
             {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
-            {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
+            {/* Camera-count overlay only where it's meaningful: route mode.
+                Timeline's count ignores the scrubbed date; Analysis renders
+                choropleths, not cameras. */}
+            {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
             <MapStyleControl />
             {showCameraPill && <LoadingPill />}
             <MapThemeControl />

@@ -73,7 +73,7 @@ function StopSheetDrag({ children }: { children: React.ReactNode }) {
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
   // route renders the FlockHopper line instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
-  explore: { title: 'Timeline', desc: 'Watch ALPR camera deployment grow over time.', Icon: History },
+  explore: { title: 'Timeline', desc: 'Timeline of when ALPR cameras were mapped on OpenStreetMap, not when they were installed.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
   network: { title: 'Flock Sharing Network', desc: 'Data sharing between Flock ALPR agencies, as publicly disclosed. Tap an agency to trace its connections.', Icon: Share2 },
 };
@@ -387,7 +387,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
                   <Skeleton className="w-[150px] h-4 flex-shrink-0" />
                 </div>
               )}
-              <p className="text-2xs text-dark-500 uppercase mt-1">Cameras over time</p>
+              <p className="text-2xs text-dark-500 uppercase mt-1">When cameras were mapped on OSM</p>
             </>
           )}
         </div>
@@ -465,11 +465,11 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <p className="text-xs text-dark-400 mb-3 leading-relaxed">
-              Visualize ALPR camera density across the US. Data from{' '}
+              Timeline of when ALPR cameras were mapped across the US. Each date is when a camera was added to{' '}
+              <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">OpenStreetMap</a>
+              {' '}by volunteers, not when it was installed. Data from{' '}
               <a href="https://deflock.me" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">DeFlock</a>
-              {' '}&amp;{' '}
-              <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">OSM</a>
-              {' '}contributors. Switch layers below.
+              {' '}&amp; OSM contributors. Switch layers below.
             </p>
 
             <div className="mb-3">
