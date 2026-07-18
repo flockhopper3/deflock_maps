@@ -345,7 +345,6 @@ export function CameraFilterControl() {
           selected={pendingFilters.brands}
           onToggle={(v) => togglePendingFilter('brands', v)}
           roomy={roomy}
-          defaultExpanded={roomy}
         />
         <SearchableMultiSelect
           label="Operator"
