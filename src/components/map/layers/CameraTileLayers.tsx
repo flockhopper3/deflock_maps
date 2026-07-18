@@ -9,6 +9,8 @@ import {
   CAMERA_POINTS_MINZOOM,
 } from '../../../services/cameraTilesService';
 import { createDirectionCone, parseDirections } from './cameraGeometry';
+import { CAMERA_POINT_FILL } from './cameraColors';
+import { useAppModeStore } from '../../../store';
 
 /** Zoom where cones start being built (slightly before their minzoom 10). */
 const CONE_BUILD_MINZOOM = 9.5;
@@ -35,7 +37,8 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
 function buildLayerSpecs(
   sourceId: string,
   idSuffix: string,
-  filter: FilterSpecification | undefined
+  filter: FilterSpecification | undefined,
+  pointFill: string
 ) {
   const withFilter = (spec: maplibregl.LayerSpecification) =>
     filter ? { ...spec, filter } : spec;
@@ -118,8 +121,10 @@ function buildLayerSpecs(
       // dots' blue at near-dot size, THEN the hue deepens and the ring widens
       // together over z9.6–10.4. Sequencing the ramps keeps any single wheel
       // kick from moving opacity, hue, ring, and glow all at once — the
-      // everything-at-once version read as a jarring pop.
-      'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, '#0080BC'],
+      // everything-at-once version read as a jarring pop. The settled fill is
+      // theme-keyed (see cameraColors.ts) so the dot reads the same blue on
+      // both basemaps.
+      'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, pointFill],
       // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
       // it holds past z10. The stroke widens 0→2 on the later z9.6–10.4 leg
       // (with the hue morph above): at full width from the start it would
@@ -179,10 +184,11 @@ export function CameraTileLayers({
   const { current: mapInstance } = useMap();
   const [conesData, setConesData] = useState<GeoJSON.FeatureCollection>(EMPTY_FC);
   const debounceRef = useRef<number | null>(null);
+  const mapTileStyle = useAppModeStore((s) => s.mapTileStyle);
 
   const specs = useMemo(
-    () => buildLayerSpecs(sourceId, idSuffix, filter),
-    [sourceId, idSuffix, filter]
+    () => buildLayerSpecs(sourceId, idSuffix, filter, CAMERA_POINT_FILL[mapTileStyle]),
+    [sourceId, idSuffix, filter, mapTileStyle]
   );
 
   const rebuildCones = useCallback(() => {

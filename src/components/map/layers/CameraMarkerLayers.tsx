@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { Source, Layer } from 'react-map-gl/maplibre';
 import type maplibregl from 'maplibre-gl';
-import { useMapStore } from '../../../store';
+import { useMapStore, useAppModeStore } from '../../../store';
+import { CAMERA_POINT_FILL } from './cameraColors';
 import type { ALPRCamera } from '../../../types';
 import { createDirectionCone, parseDirections } from './cameraGeometry';
 
@@ -99,15 +100,16 @@ const geojsonDotLayer: maplibregl.LayerSpecification = {
   },
 };
 
-const unclusteredPointLayer: maplibregl.LayerSpecification = {
+const makeUnclusteredPointLayer = (pointFill: string): maplibregl.LayerSpecification => ({
   id: 'unclustered-point',
   type: 'circle',
   source: 'cameras',
   minzoom: 9,
   paint: {
     // Staggered handoff: fade-in first (z9–9.6), then hue+ring together over
-    // z9.6–10.4 — matches camera-tile-points
-    'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, '#0080BC'],
+    // z9.6–10.4 — matches camera-tile-points. Settled fill is theme-keyed
+    // (see cameraColors.ts).
+    'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, pointFill],
     // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
     // it holds past z10. The stroke widens 0→2 over the same span: at full
     // width from the start it would bolt 2px of outer radius on the instant
@@ -119,7 +121,7 @@ const unclusteredPointLayer: maplibregl.LayerSpecification = {
     'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
     'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
   },
-};
+});
 
 // Direction cone layer style - only show once individual cameras are distinguishable
 const directionConeLayer: maplibregl.LayerSpecification = {
@@ -155,6 +157,11 @@ interface CameraMarkerLayersProps {
 
 export function CameraMarkerLayers({ cameras, visible }: CameraMarkerLayersProps) {
   const showCameraLayer = useMapStore(s => s.showCameraLayer);
+  const mapTileStyle = useAppModeStore((s) => s.mapTileStyle);
+  const unclusteredPointLayer = useMemo(
+    () => makeUnclusteredPointLayer(CAMERA_POINT_FILL[mapTileStyle]),
+    [mapTileStyle]
+  );
   const cameraLayerVisibility: 'visible' | 'none' = visible ? 'visible' : 'none';
 
   // Convert cameras to GeoJSON
