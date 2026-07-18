@@ -1137,11 +1137,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
           becomes the active path for filters/heatmap/Canada.
           Unmounted entirely in Timeline: `visible` only toggles layout visibility,
           so a mounted instance still builds a 114k-feature source plus a cone
-          polygon per camera that Timeline would never draw. */}
+          polygon per camera that Timeline would never draw.
+          Stays hidden during filter-tiles rendering to prevent double markers. */}
       {!isDotsMode && (
         <CameraMarkerLayers
           cameras={cameraSource}
-          visible={!isTilesMode && showCameraMarkers}
+          visible={renderMode === 'geojson' && showCameraMarkers}
           mapLoaded={mapLoaded}
           mapRef={mapRef}
         />
