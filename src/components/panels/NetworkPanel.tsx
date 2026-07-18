@@ -55,9 +55,9 @@ export function NetworkPanel() {
             <div className="flex items-center gap-3">
               <Network className="w-5 h-5 text-blue-400" />
               <div className="text-left">
-                <p className="text-sm font-semibold text-white">Network Explorer</p>
+                <p className="text-sm font-semibold text-white">Sharing Network</p>
                 <p className="text-xs text-dark-400">
-                  {selectedNode ? selectedNode.name : `${nodesArray.length.toLocaleString()} agencies`}
+                  {selectedNode ? selectedNode.name : `${nodesArray.length.toLocaleString()} law enforcement agencies`}
                 </p>
               </div>
             </div>
@@ -94,8 +94,8 @@ export function NetworkPanel() {
           <div className="flex items-center gap-3">
             <Network className="w-5 h-5 text-blue-400" />
             <div>
-              <h2 className="text-base font-semibold text-white">Network Explorer</h2>
-              <p className="text-xs text-dark-400">ALPR data-sharing relationships</p>
+              <h2 className="text-base font-semibold text-white">Sharing Network</h2>
+              <p className="text-xs text-dark-400">Law enforcement agencies sharing Flock ALPR data</p>
             </div>
           </div>
         </div>

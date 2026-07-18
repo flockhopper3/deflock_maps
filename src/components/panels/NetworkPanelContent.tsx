@@ -422,14 +422,14 @@ export function NetworkPanelContent() {
           ) : (
             <div>
               <p className="text-sm text-dark-300 leading-relaxed mb-3">
-                This map visualizes the Flock Safety surveillance sharing network &mdash; {nodesArray.length.toLocaleString()}+ law enforcement agencies that share automatic license plate reader (ALPR) data with each other. Click an agency to see who they share data with.
+                Law enforcement agencies that run Flock Safety license plate readers can share their ALPR data with each other. This map shows that network: {nodesArray.length.toLocaleString()}+ agencies and the sharing relationships between them. Click an agency to see who they share data with.
               </p>
               <div role="alert" className="mb-3 flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/40">
                 <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden />
                 <div className="text-xs text-amber-100/90 leading-relaxed">
                   <p className="font-semibold text-amber-300 mb-1">Most of the network is hidden.</p>
                   <p>
-                    Of <span className="font-semibold text-amber-200">6,400+ agencies</span> using Flock, only about <span className="font-semibold text-amber-200">900</span> run a public transparency portal &mdash; and just <span className="font-semibold text-amber-200">~530</span> of those actually disclose who they share data with. The rest redact their sharing list or don&rsquo;t publish one at all.
+                    Of <span className="font-semibold text-amber-200">6,400+ agencies</span> using Flock, only about <span className="font-semibold text-amber-200">900</span> run a public transparency portal. Just <span className="font-semibold text-amber-200">~530</span> of those actually disclose who they share data with. The rest redact their sharing list or don&rsquo;t publish one at all.
                   </p>
                 </div>
               </div>

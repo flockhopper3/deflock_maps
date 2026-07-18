@@ -72,9 +72,9 @@ function StopSheetDrag({ children }: { children: React.ReactNode }) {
 const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
   // route renders the FlockHopper start ad instead of IdentityRow; entry kept so the peek effects treat route as peekable
   route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
-  explore: { title: 'Timeline', desc: 'Timeline of when ALPR cameras were mapped on OpenStreetMap, not when they were installed.', Icon: History },
+  explore: { title: 'Timeline', desc: 'Watch the ALPR camera network grow as volunteers documented it on OpenStreetMap.', Icon: History },
   density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
-  network: { title: 'Flock Sharing Network', desc: 'Data sharing between Flock ALPR agencies, as publicly disclosed. Tap an agency to trace its connections.', Icon: Share2 },
+  network: { title: 'Flock Sharing Network', desc: 'Law enforcement agencies sharing Flock ALPR data with each other, as publicly disclosed. Tap an agency to trace its connections.', Icon: Share2 },
 };
 
 /** One resting height for every content-mode peek — the sheet never changes
@@ -430,7 +430,12 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               appMode === 'density'
                 ? <DensityPeekLegend />
                 : appMode === 'network'
-                  ? <p className="mt-3 text-2xs text-dark-600 uppercase">Swipe up for details</p>
+                  ? (
+                    <div className="mt-3 flex items-center justify-center gap-1 text-dark-400">
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span className="text-[11px] font-medium">Swipe up for details</span>
+                    </div>
+                  )
                   : undefined
             }
           />
@@ -469,9 +474,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <p className="text-xs text-dark-400 mb-3 leading-relaxed">
-              Timeline of when ALPR cameras were mapped across the US. Each date is when a camera was added to{' '}
+              Watch the US ALPR network grow. Each camera appears on the date volunteers documented it on{' '}
               <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">OpenStreetMap</a>
-              {' '}by volunteers, not when it was installed. Data from{' '}
+              {' '}(which trails real-world installation). Data from{' '}
               <a href="https://deflock.me" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">DeFlock</a>
               {' '}&amp; OSM contributors. Switch layers below.
             </p>
