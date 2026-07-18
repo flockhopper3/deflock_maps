@@ -24,8 +24,7 @@ export function FloatingRouteCard() {
     isCalculating,
     error: routeError,
     normalRoute,
-    pickingLocation,
-    startPickingSequence,
+    startPickingLocation,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
 
@@ -150,6 +149,15 @@ export function FloatingRouteCard() {
     );
   }, [setOrigin, flyTo]);
 
+  const handleChooseOnMap = useCallback(() => {
+    const field = activeField;
+    revertQueries();
+    setActiveField(null);
+    setResults([]);
+    setSearchError(null);
+    if (field) startPickingLocation(field);
+  }, [activeField, revertQueries, startPickingLocation]);
+
   const handleQueryChange = (field: Field) => (e: React.ChangeEvent<HTMLInputElement>) => {
     abortRef.current?.abort();
     if (field === 'origin') setOriginQuery(e.target.value);
@@ -191,9 +199,12 @@ export function FloatingRouteCard() {
     activeQuery.trim() !== committedName &&
     results.length === 0 &&
     !searchError;
+
+  const activeFieldIsEmpty = activeField !== null && activeQuery.trim().length === 0;
+
   const dropdownOpen =
     activeField !== null &&
-    (showSearchAction || isSearching || results.length > 0 || searchError !== null);
+    (activeFieldIsEmpty || showSearchAction || isSearching || results.length > 0 || searchError !== null);
 
   return (
     <div
@@ -206,7 +217,7 @@ export function FloatingRouteCard() {
         <div className="absolute left-[21px] top-[30px] bottom-[30px] w-px border-l border-dashed border-dark-500 pointer-events-none" />
 
         {/* Start row */}
-        <div className="flex items-center gap-3 pl-4 pr-2 py-1.5">
+        <div className="flex items-center gap-3 px-4 py-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-success flex-shrink-0" aria-hidden="true" />
           <input
             type="text"
@@ -227,33 +238,13 @@ export function FloatingRouteCard() {
               onClick={() => clearField('origin')}
               type="button"
               aria-label="Clear start"
-              className="p-1 text-dark-400 hover:text-white transition-colors"
+              className="p-1.5 -mr-1.5 text-dark-400 hover:text-white transition-colors flex-shrink-0"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
               </svg>
             </button>
           )}
-          <button
-            onClick={handleUseMyLocation}
-            type="button"
-            aria-label="Use my location"
-            disabled={geoState === 'loading'}
-            title={geoState === 'error' ? 'Location unavailable' : 'Use my location'}
-            className={`p-2 rounded-lg border transition-colors flex-shrink-0 ${
-              geoState === 'error'
-                ? 'bg-danger/15 border-danger/40 text-danger'
-                : 'bg-accent/10 border-accent/40 text-accent hover:bg-accent/20'
-            }`}
-          >
-            {geoState === 'loading' ? (
-              <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
-              </svg>
-            )}
-          </button>
         </div>
 
         {/* Divider with swap */}
@@ -272,7 +263,7 @@ export function FloatingRouteCard() {
         </div>
 
         {/* Destination row */}
-        <div className="flex items-center gap-3 pl-4 pr-2 py-1.5">
+        <div className="flex items-center gap-3 px-4 py-1.5">
           <svg className="w-3 h-3 text-danger flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
           </svg>
@@ -295,7 +286,7 @@ export function FloatingRouteCard() {
               onClick={() => clearField('destination')}
               type="button"
               aria-label="Clear destination"
-              className="p-1 text-dark-400 hover:text-white transition-colors"
+              className="p-1.5 -mr-1.5 text-dark-400 hover:text-white transition-colors flex-shrink-0"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
@@ -332,29 +323,52 @@ export function FloatingRouteCard() {
         </div>
       )}
 
-      {/* Guided pick-on-map entry */}
-      {!pickingLocation && !isCalculating && !dropdownOpen && (
-        <button
-          onClick={() => {
-            revertQueries();
-            setActiveField(null);
-            setResults([]);
-            setSearchError(null);
-            startPickingSequence();
-          }}
-          type="button"
-          className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-900/95 border border-dark-600 text-xs text-dark-300 hover:text-white hover:border-dark-500 transition-colors backdrop-blur-sm"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-          </svg>
-          Choose on map
-        </button>
-      )}
-
       {/* Dropdown: search action + results */}
       {dropdownOpen && (
         <div className="mt-2 bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl overflow-hidden animate-fade-in backdrop-blur-sm">
+          {activeFieldIsEmpty && (
+            <>
+              {activeField === 'origin' && (
+                <button
+                  onClick={handleUseMyLocation}
+                  type="button"
+                  disabled={geoState === 'loading'}
+                  className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm hover:bg-dark-700/70 transition-colors border-b border-dark-700/50"
+                >
+                  {geoState === 'loading' ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin flex-shrink-0" />
+                      <span className="text-dark-300">Getting location…</span>
+                    </>
+                  ) : geoState === 'error' ? (
+                    <>
+                      <svg className="w-4 h-4 text-danger flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+                      </svg>
+                      <span className="text-danger font-medium">Location unavailable</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 text-accent flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+                      </svg>
+                      <span className="text-white font-medium">Use my location</span>
+                    </>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={handleChooseOnMap}
+                type="button"
+                className="w-full px-4 py-3 text-left flex items-center gap-3 text-sm hover:bg-dark-700/70 transition-colors border-b border-dark-700/50 last:border-b-0"
+              >
+                <svg className="w-4 h-4 text-dark-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                </svg>
+                <span className="text-white font-medium">Choose on map</span>
+              </button>
+            </>
+          )}
           {(showSearchAction || isSearching) && (
             <button
               onClick={() => performSearch(activeField as Field, activeQuery)}
