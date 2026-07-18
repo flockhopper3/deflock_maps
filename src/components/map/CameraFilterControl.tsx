@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCameraStore } from '../../store';
 import { useAppModeStore } from '../../store/appModeStore';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { Filter, X, ChevronDown, Search } from 'lucide-react';
 
 // ─── Constants (moved from MapPanel) ────────────────────────────────────────
@@ -26,6 +29,8 @@ function SearchableMultiSelect({
   onToggle,
   maxVisible = 50,
   note,
+  roomy = false,
+  defaultExpanded = false,
 }: {
   label: string;
   items: string[];
@@ -33,23 +38,29 @@ function SearchableMultiSelect({
   onToggle: (item: string) => void;
   maxVisible?: number;
   note?: string;
+  /** Larger type + touch targets (mobile sheet) */
+  roomy?: boolean;
+  defaultExpanded?: boolean;
 }) {
   const [search, setSearch] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return items.filter((item) => item.toLowerCase().includes(q)).slice(0, maxVisible);
   }, [items, search, maxVisible]);
 
+  const rowText = roomy ? 'text-sm' : 'text-xs';
+  const rowPad = roomy ? 'px-3 py-2.5' : 'px-2.5 py-1.5';
+
   return (
     <div>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="w-full flex items-center justify-between py-2"
+        className={`w-full flex items-center justify-between ${roomy ? 'py-3' : 'py-2'}`}
       >
-        <span className="text-xs font-medium text-dark-300 uppercase tracking-wider">
+        <span className={`${roomy ? 'text-[13px]' : 'text-xs'} font-medium text-dark-300 uppercase tracking-wider`}>
           {label}
           {selected.length > 0 && (
             <span className="ml-2 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-semibold normal-case tracking-normal">
@@ -71,13 +82,13 @@ function SearchableMultiSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Search ${label.toLowerCase()}...`}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-dark-800 border border-dark-600 rounded-lg text-white placeholder:text-dark-500 focus:outline-none focus:border-accent/50"
+              className={`w-full pl-8 pr-3 ${roomy ? 'py-2.5 text-sm' : 'py-1.5 text-xs'} bg-dark-800 border border-dark-600 rounded-lg text-white placeholder:text-dark-500 focus:outline-none focus:border-accent/50`}
             />
           </div>
 
           {note && <p className="text-xs text-dark-500 mb-2">{note}</p>}
 
-          <div className="max-h-60 overflow-y-auto space-y-0.5 scrollbar-thin">
+          <div className={`${roomy ? 'max-h-none' : 'max-h-60'} overflow-y-auto space-y-0.5 scrollbar-thin`}>
             {filtered.length === 0 ? (
               <p className="text-xs text-dark-500 py-2 text-center">No results</p>
             ) : (
@@ -87,14 +98,14 @@ function SearchableMultiSelect({
                   <button
                     key={item}
                     onClick={() => onToggle(item)}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                    className={`w-full flex items-center gap-2.5 ${rowPad} rounded-lg text-left transition-colors ${
                       isChecked
                         ? 'bg-accent/10 text-white'
                         : 'text-dark-300 hover:bg-dark-800'
                     }`}
                   >
                     <div
-                      className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                      className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                         isChecked
                           ? 'bg-accent border-accent'
                           : 'border-dark-500 bg-dark-800'
@@ -106,7 +117,7 @@ function SearchableMultiSelect({
                         </svg>
                       )}
                     </div>
-                    <span className="text-xs truncate">{item}</span>
+                    <span className={`${rowText} truncate`}>{item}</span>
                   </button>
                 );
               })
@@ -124,22 +135,27 @@ function CheckboxGroup({
   options,
   selected,
   onToggle,
+  roomy = false,
 }: {
   label: string;
   options: readonly { value: string; label: string }[];
   selected: string[];
   onToggle: (value: string) => void;
+  roomy?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const rowText = roomy ? 'text-sm' : 'text-xs';
+  const rowPad = roomy ? 'px-3 py-2.5' : 'px-2.5 py-1.5';
 
   return (
     <div>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="w-full flex items-center justify-between py-2"
+        className={`w-full flex items-center justify-between ${roomy ? 'py-3' : 'py-2'}`}
       >
-        <span className="text-xs font-medium text-dark-300 uppercase tracking-wider">
+        <span className={`${roomy ? 'text-[13px]' : 'text-xs'} font-medium text-dark-300 uppercase tracking-wider`}>
           {label}
           {selected.length > 0 && (
             <span className="ml-2 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-xs font-semibold normal-case tracking-normal">
@@ -160,14 +176,14 @@ function CheckboxGroup({
               <button
                 key={value}
                 onClick={() => onToggle(value)}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center gap-2.5 ${rowPad} rounded-lg text-left transition-colors ${
                   isChecked
                     ? 'bg-accent/10 text-white'
                     : 'text-dark-300 hover:bg-dark-800'
                 }`}
               >
                 <div
-                  className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                  className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
                     isChecked
                       ? 'bg-accent border-accent'
                       : 'border-dark-500 bg-dark-800'
@@ -179,7 +195,7 @@ function CheckboxGroup({
                     </svg>
                   )}
                 </div>
-                <span className="text-xs">{optLabel}</span>
+                <span className={rowText}>{optLabel}</span>
               </button>
             );
           })}
@@ -239,12 +255,14 @@ function FilterDataGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Floating filter button + popover on the map surface (map mode only).
- * Replaces the old "Filters" section that was buried in the side panel /
- * mobile drawer. Staged UX is unchanged: selections are pending until Apply.
+ * Floating filter button on the map surface (map mode only). Desktop opens a
+ * popover anchored above the button; mobile opens a full-width bottom sheet
+ * (portal + backdrop) matching the app's sheet language. Staged UX is
+ * unchanged: selections are pending until Apply.
  */
 export function CameraFilterControl() {
   const appMode = useAppModeStore((s) => s.appMode);
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -273,7 +291,7 @@ export function CameraFilterControl() {
     [country, manifest, availableOperators]
   );
 
-  // Re-stage pending filters from the applied set each time the popover opens
+  // Re-stage pending filters from the applied set each time the UI opens
   useEffect(() => {
     if (!open) return;
     const applied = useCameraStore.getState().filters;
@@ -287,9 +305,9 @@ export function CameraFilterControl() {
     });
   }, [open]);
 
-  // Close on outside click
+  // Desktop popover: close on outside click (mobile sheet closes via backdrop)
   useEffect(() => {
-    if (!open) return;
+    if (!open || isMobile) return;
     const handleClick = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -297,7 +315,7 @@ export function CameraFilterControl() {
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
+  }, [open, isMobile]);
 
   const pendingChangeCount = useMemo(() => {
     let count = 0;
@@ -318,12 +336,48 @@ export function CameraFilterControl() {
 
   if (appMode !== 'map') return null;
 
+  const filterGroups = (roomy: boolean) => (
+    <FilterDataGate>
+      <div className={roomy ? 'divide-y divide-dark-700/40' : 'space-y-1'}>
+        <SearchableMultiSelect
+          label="Brand"
+          items={brandOptions}
+          selected={pendingFilters.brands}
+          onToggle={(v) => togglePendingFilter('brands', v)}
+          roomy={roomy}
+          defaultExpanded={roomy}
+        />
+        <SearchableMultiSelect
+          label="Operator"
+          items={operatorOptions}
+          selected={pendingFilters.operators}
+          onToggle={(v) => togglePendingFilter('operators', v)}
+          note="~28% of cameras have operator data"
+          roomy={roomy}
+        />
+        <CheckboxGroup
+          label="Surveillance Zone"
+          options={SURVEILLANCE_ZONES}
+          selected={pendingFilters.surveillanceZones}
+          onToggle={(v) => togglePendingFilter('surveillanceZones', v)}
+          roomy={roomy}
+        />
+        <CheckboxGroup
+          label="Mount Type"
+          options={MOUNT_TYPES}
+          selected={pendingFilters.mountTypes}
+          onToggle={(v) => togglePendingFilter('mountTypes', v)}
+          roomy={roomy}
+        />
+      </div>
+    </FilterDataGate>
+  );
+
   return (
     <div ref={rootRef} className="map-filter-control absolute z-20 flex flex-col items-end">
-      {/* Popover */}
-      {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-[320px] max-w-[calc(100vw-24px)] bg-dark-900/95 backdrop-blur-md rounded-xl border border-dark-600 shadow-xl shadow-black/40 overflow-hidden">
-          {/* Header */}
+      {/* Desktop popover */}
+      {open && !isMobile && (
+        <div className="absolute bottom-full right-0 mb-2 w-[320px] bg-dark-900/95 backdrop-blur-md rounded-xl border border-dark-600 shadow-xl shadow-black/40 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700/50">
             <div className="flex items-center gap-2.5">
               <span className="text-[13px] font-semibold text-white tracking-tight">Filters</span>
@@ -342,42 +396,10 @@ export function CameraFilterControl() {
             </button>
           </div>
 
-          {/* Body — mobile cap keeps the popover's top edge below the search
-              bar (button sits at drawer+120px from the bottom; search bar
-              occupies the top ~115px; header+footer eat ~106px) */}
-          <div className="px-4 py-2 max-h-[calc(100dvh-425px)] lg:max-h-[min(60vh,480px)] overflow-y-auto scrollbar-thin">
-            <FilterDataGate>
-              <div className="space-y-1">
-                <SearchableMultiSelect
-                  label="Brand"
-                  items={brandOptions}
-                  selected={pendingFilters.brands}
-                  onToggle={(v) => togglePendingFilter('brands', v)}
-                />
-                <SearchableMultiSelect
-                  label="Operator"
-                  items={operatorOptions}
-                  selected={pendingFilters.operators}
-                  onToggle={(v) => togglePendingFilter('operators', v)}
-                  note="~28% of cameras have operator data"
-                />
-                <CheckboxGroup
-                  label="Surveillance Zone"
-                  options={SURVEILLANCE_ZONES}
-                  selected={pendingFilters.surveillanceZones}
-                  onToggle={(v) => togglePendingFilter('surveillanceZones', v)}
-                />
-                <CheckboxGroup
-                  label="Mount Type"
-                  options={MOUNT_TYPES}
-                  selected={pendingFilters.mountTypes}
-                  onToggle={(v) => togglePendingFilter('mountTypes', v)}
-                />
-              </div>
-            </FilterDataGate>
+          <div className="px-4 py-2 max-h-[min(60vh,480px)] overflow-y-auto scrollbar-thin">
+            {filterGroups(false)}
           </div>
 
-          {/* Footer: Apply / Reset */}
           <div className="flex gap-2 px-4 py-3 border-t border-dark-700/50">
             <button
               onClick={resetAllFilters}
@@ -399,6 +421,91 @@ export function CameraFilterControl() {
           </div>
         </div>
       )}
+
+      {/* Mobile bottom sheet (portal above the app's drawer) */}
+      {isMobile &&
+        createPortal(
+          <AnimatePresence>
+            {open && (
+              <>
+                <motion.div
+                  key="filter-backdrop"
+                  className="fixed inset-0 z-[70] bg-black/50"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setOpen(false)}
+                />
+                <motion.div
+                  key="filter-sheet"
+                  role="dialog"
+                  aria-label="Camera filters"
+                  className="fixed inset-x-0 bottom-0 z-[71] flex flex-col max-h-[85dvh] bg-dark-900 border-t border-dark-600 rounded-t-2xl shadow-2xl shadow-black/60"
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', damping: 32, stiffness: 360 }}
+                >
+                  {/* Grab handle + header */}
+                  <div className="flex-shrink-0">
+                    <div className="flex justify-center pt-2.5 pb-1">
+                      <div className="w-9 h-1 rounded-full bg-dark-600" />
+                    </div>
+                    <div className="flex items-center justify-between px-5 pb-3 pt-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base font-semibold text-white tracking-tight">Filters</span>
+                        {appliedFilterCount > 0 && (
+                          <span className="min-w-[22px] h-[22px] px-1.5 rounded-md bg-accent/15 text-accent text-xs font-bold flex items-center justify-center tabular-nums">
+                            {appliedFilterCount}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setOpen(false)}
+                        aria-label="Close filters"
+                        className="w-9 h-9 -mr-1.5 rounded-lg flex items-center justify-center text-dark-400 hover:text-white active:bg-dark-800 transition-colors"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="h-px bg-dark-700/50" />
+                  </div>
+
+                  {/* Body */}
+                  <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-1">
+                    {filterGroups(true)}
+                  </div>
+
+                  {/* Sticky footer */}
+                  <div className="flex-shrink-0 flex gap-3 px-5 pt-3 border-t border-dark-700/50 safe-area-inset-bottom">
+                    <button
+                      onClick={resetAllFilters}
+                      className="flex-1 px-4 py-3 rounded-xl text-sm font-medium text-dark-300 bg-dark-800 active:bg-dark-700 transition-colors"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => {
+                        applyPendingFilters();
+                        setOpen(false);
+                      }}
+                      disabled={pendingChangeCount === 0}
+                      className={`flex-[2] px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-150 ${
+                        pendingChangeCount > 0
+                          ? 'bg-accent text-white active:bg-accent/90'
+                          : 'bg-dark-800 text-dark-600'
+                      }`}
+                    >
+                      Apply{pendingChangeCount > 0 ? ` (${pendingChangeCount})` : ''}
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
       {/* Trigger */}
       <button
