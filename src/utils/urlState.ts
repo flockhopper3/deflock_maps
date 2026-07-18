@@ -1,6 +1,9 @@
 import type { AppMode, MapVisualizationType } from '@/store/appModeStore';
 import type { CameraCountry } from '@/services/cameraDataService';
-import { normalizeStateCode, stateFromSlug } from '@/services/stateFilterService';
+import { normalizeStateCode, stateFromSlug, stateSlug } from '@/services/stateFilterService';
+import { useMapStore } from '@/store/mapStore';
+import { useAppModeStore } from '@/store/appModeStore';
+import { useCameraStore } from '@/store/cameraStore';
 
 export interface UrlViewport {
   lat: number;
@@ -89,4 +92,35 @@ export function parseAppUrl(pathname: string, search: string): AppUrlState {
     country: parseCountryParam(search),
     viz: vizParam === 'heatmap' ? 'heatmap' : vizParam === 'dots' ? 'dots' : null,
   };
+}
+
+/**
+ * Serialize current store state into the canonical URL. Single source of
+ * truth shared by the live URL sync and the Share button, so the address
+ * bar and share links are identical by construction.
+ */
+export function buildAppUrl(): { pathname: string; search: string } {
+  const { appMode, mapVisualization } = useAppModeStore.getState();
+  const { center, zoom } = useMapStore.getState();
+  const { country, filters } = useCameraStore.getState();
+
+  const pathname =
+    appMode === 'map' && filters.state
+      ? `/state/${stateSlug(filters.state)}`
+      : MODE_PATHS[appMode];
+
+  const params = new URLSearchParams();
+  params.set('lat', center[0].toFixed(4));
+  params.set('lng', center[1].toFixed(4));
+  params.set('zoom', zoom.toFixed(2));
+  if (appMode === 'explore') params.set('viz', mapVisualization);
+  if (country !== 'us') params.set('country', country);
+
+  return { pathname, search: `?${params.toString()}` };
+}
+
+/** Full shareable URL for the current app state. */
+export function buildShareURL(): string {
+  const { pathname, search } = buildAppUrl();
+  return `${window.location.origin}${pathname}${search}`;
 }

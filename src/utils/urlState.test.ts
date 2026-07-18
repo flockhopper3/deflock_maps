@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { parseAppUrl, parseCountryParam } from './urlState';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { parseAppUrl, parseCountryParam, buildAppUrl } from './urlState';
+import { useMapStore } from '../store/mapStore';
+import { useAppModeStore } from '../store/appModeStore';
+import { useCameraStore } from '../store/cameraStore';
+import type { CameraFilters } from '../types';
 
 describe('parseAppUrl — mode from path', () => {
   it.each([
@@ -89,5 +93,85 @@ describe('parseCountryParam', () => {
     expect(parseCountryParam('?country=ca')).toBe('ca');
     expect(parseCountryParam('?country=us')).toBeNull();
     expect(parseCountryParam('')).toBeNull();
+  });
+});
+
+function filters(overrides: Partial<CameraFilters> = {}): CameraFilters {
+  return {
+    operators: [],
+    brands: [],
+    surveillanceZones: [],
+    mountTypes: [],
+    showAll: true,
+    ...overrides,
+  };
+}
+
+describe('buildAppUrl', () => {
+  beforeEach(() => {
+    useMapStore.setState({ center: [33.7, -84.4], zoom: 10.5 });
+    useAppModeStore.setState({ appMode: 'map', mapVisualization: 'dots' });
+    useCameraStore.setState({ country: 'us', filters: filters() });
+  });
+
+  it('map mode serializes to / with viewport only', () => {
+    const { pathname, search } = buildAppUrl();
+    expect(pathname).toBe('/');
+    const params = new URLSearchParams(search);
+    expect(params.get('lat')).toBe('33.7000');
+    expect(params.get('lng')).toBe('-84.4000');
+    expect(params.get('zoom')).toBe('10.50');
+    expect(params.get('viz')).toBeNull();
+    expect(params.get('country')).toBeNull();
+    expect(params.get('mode')).toBeNull();
+    expect(params.get('state')).toBeNull();
+  });
+
+  it('each mode serializes to its canonical path', () => {
+    for (const [mode, path] of [
+      ['route', '/route'],
+      ['explore', '/timeline'],
+      ['density', '/analysis'],
+      ['network', '/network'],
+    ] as const) {
+      useAppModeStore.setState({ appMode: mode });
+      expect(buildAppUrl().pathname).toBe(path);
+    }
+  });
+
+  it('explore mode includes viz', () => {
+    useAppModeStore.setState({ appMode: 'explore', mapVisualization: 'heatmap' });
+    expect(new URLSearchParams(buildAppUrl().search).get('viz')).toBe('heatmap');
+  });
+
+  it('map mode with a state filter serializes to /state/<slug>', () => {
+    useCameraStore.setState({ filters: filters({ state: 'TX', showAll: false }) });
+    expect(buildAppUrl().pathname).toBe('/state/texas');
+  });
+
+  it('non-map modes do not encode the state filter', () => {
+    useCameraStore.setState({ filters: filters({ state: 'TX', showAll: false }) });
+    useAppModeStore.setState({ appMode: 'route' });
+    const { pathname, search } = buildAppUrl();
+    expect(pathname).toBe('/route');
+    expect(new URLSearchParams(search).get('state')).toBeNull();
+  });
+
+  it('non-US country is encoded', () => {
+    useCameraStore.setState({ country: 'ca' });
+    expect(new URLSearchParams(buildAppUrl().search).get('country')).toBe('ca');
+  });
+
+  it('round-trips through parseAppUrl for every mode', () => {
+    useCameraStore.setState({ country: 'ca', filters: filters({ state: 'TX', showAll: false }) });
+    for (const mode of ['map', 'route', 'explore', 'density', 'network'] as const) {
+      useAppModeStore.setState({ appMode: mode });
+      const { pathname, search } = buildAppUrl();
+      const parsed = parseAppUrl(pathname, search);
+      expect(parsed.mode).toBe(mode);
+      expect(parsed.country).toBe('ca');
+      expect(parsed.viewport).not.toBeNull();
+      if (mode === 'map') expect(parsed.stateFilter).toBe('TX');
+    }
   });
 });
