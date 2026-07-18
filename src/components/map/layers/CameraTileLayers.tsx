@@ -49,23 +49,23 @@ function buildLayerSpecs(
     paint: {
       'circle-color': '#4DA6FF',
       // Stays just behind the mark it sits under — at z9 it is barely wider than
-      // the r≈4.3 dot. Blooms to the full r=16 only at z12+, where cameras
-      // have separated and the halo has room to read as presence, not as bulk.
+      // the r≈4.3 dot, then blooms on ONE uniform slope to the full r=16 at
+      // z12. A steeper mid-ramp (5→10 over z9–10) made every wheel kick in
+      // the handoff band jump the whole halo field at once, which read as
+      // flicker — measured 2026-07-18, MapLibre wheel zoom advances in
+      // kick-then-pause sawtooths, so steep ramps render as steps.
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
         8, 2,
         9, 5,
-        10, 10,
         12, 16,
       ],
-      // Ramps up through the handoff and holds the full master-strength halo
-      // (0.4) from z12 — the bright glow is the signature DeFlock look,
-      // restored 2026-07-18 from the pre-tiles design.
+      // One gentle ramp to the full master-strength halo (0.4) at z12 — the
+      // bright glow is the signature DeFlock look, restored 2026-07-18.
       'circle-opacity': [
         'interpolate', ['linear'], ['zoom'],
         8, 0,
         9, 0.25,
-        10, 0.35,
         12, 0.4,
       ],
       'circle-blur': 0.5,
@@ -114,16 +114,19 @@ function buildLayerSpecs(
     // points at/above it — the two layers overlap on [9, 10).
     minzoom: CAMERA_POINTS_MINZOOM,
     paint: {
-      // Enters in the dots' blue so the handoff never changes hue mid-fade,
-      // then deepens into the master dark fill by z10, where the light ring
-      // has reached full width and carries the contrast.
-      'circle-color': ['interpolate', ['linear'], ['zoom'], 9, '#4DA6FF', 10, '#0080BC'],
+      // Staggered handoff: the point fades in FIRST (z9–9.6, below) in the
+      // dots' blue at near-dot size, THEN the hue deepens and the ring widens
+      // together over z9.6–10.4. Sequencing the ramps keeps any single wheel
+      // kick from moving opacity, hue, ring, and glow all at once — the
+      // everything-at-once version read as a jarring pop.
+      'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, '#0080BC'],
       // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
-      // it holds past z10. The stroke widens 0→2 over the same span: at full
-      // width from the start it would bolt 2px of outer radius on the instant
-      // the point appears, which is a pop of its own.
+      // it holds past z10. The stroke widens 0→2 on the later z9.6–10.4 leg
+      // (with the hue morph above): at full width from the start it would
+      // bolt 2px of outer radius on the instant the point appears, which is
+      // a pop of its own.
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
-      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 2],
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9.6, 0, 10.4, 2],
       // Light near-white ring on a dark fill — the signature master look
       // (glow + dark core + bright ring), restored 2026-07-18.
       'circle-stroke-color': '#93CBFF',

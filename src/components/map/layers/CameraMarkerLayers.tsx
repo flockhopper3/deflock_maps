@@ -54,15 +54,14 @@ const geojsonGlowLayer: maplibregl.LayerSpecification = {
       'interpolate', ['linear'], ['zoom'],
       8, 2,
       9, 5,
-      10, 10,
       12, 16,
     ],
-    // Ramps to the full master-strength halo from z12 — matches camera-tile-glow
+    // One gentle ramp to the full halo at z12 — matches camera-tile-glow
+    // (steeper mid-ramps read as flicker under wheel-kick zooming)
     'circle-opacity': [
       'interpolate', ['linear'], ['zoom'],
       8, 0,
       9, 0.25,
-      10, 0.35,
       12, 0.4,
     ],
     'circle-blur': 0.5,
@@ -106,14 +105,15 @@ const unclusteredPointLayer: maplibregl.LayerSpecification = {
   source: 'cameras',
   minzoom: 9,
   paint: {
-    // Dot blue into master dark fill over the handoff — matches camera-tile-points
-    'circle-color': ['interpolate', ['linear'], ['zoom'], 9, '#4DA6FF', 10, '#0080BC'],
+    // Staggered handoff: fade-in first (z9–9.6), then hue+ring together over
+    // z9.6–10.4 — matches camera-tile-points
+    'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, '#0080BC'],
     // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
     // it holds past z10. The stroke widens 0→2 over the same span: at full
     // width from the start it would bolt 2px of outer radius on the instant
     // the point appears, which is a pop of its own.
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
-    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 2],
+    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9.6, 0, 10.4, 2],
     'circle-stroke-color': '#93CBFF', // light master ring — matches camera-tile-points
     // Fully opaque by z9.6 — matches camera-tile-points (green-murk fix)
     'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
