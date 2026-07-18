@@ -64,7 +64,9 @@ content as early as possible. No new visual vocabulary.
   connection tabs while `adjacencyReady` is false.
 - `NetworkPanelContent` gates on nodes-ready instead of full `loadPhase === 'ready'`
   (identical in the new semantics, since `ready` now means nodes-ready).
-- Mobile sheet header: "Loading agencies…" instead of "0 agencies" while nodes load.
+- Mobile: the drawer (`MobileTabDrawer`) already renders identity peeks without
+  raw counts, and `NetworkPanel`'s BottomSheet branch is dead code (desktop-only
+  mount), so no header copy change is needed; the pill provides mobile feedback.
 - Byte-progress state in the store: `downloadProgress: { percent: number | null;
   loadedBytes: number } | null` covering the phase currently streaming.
 

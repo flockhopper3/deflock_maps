@@ -38,6 +38,7 @@ export function NetworkLayers() {
   const nodesArray = useNetworkStore(s => s.nodesArray);
   const nodesMap = useNetworkStore(s => s.nodesMap);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const adjacencyReady = useNetworkStore(s => s.adjacencyReady);
   const reverseAdjacency = useNetworkStore(s => s.reverseAdjacency);
   const selectedArcs = useNetworkStore(s => s.selectedArcs);
   const selectedNodeId = useNetworkStore(s => s.selectedNodeId);
@@ -126,6 +127,10 @@ export function NetworkLayers() {
         },
         getLineColor: (d: NetworkNode): [number, number, number] => {
           if (!d.isPortal) return [0, 0, 0];
+          // Adjacency still streaming: no sharing verdict yet, so use the same
+          // neutral gray as NODE_COLORS.other (Tailwind dark-500) rather than
+          // red/green — otherwise every portal briefly paints "redacted".
+          if (!adjacencyReady) return [107, 114, 128];
           const hasOutgoing = (adjacency[d.id]?.length ?? 0) > 0;
           return hasOutgoing ? [34, 197, 94] : [239, 68, 68]; // green vs red
         },
@@ -145,7 +150,7 @@ export function NetworkLayers() {
         },
         updateTriggers: {
           getFillColor: [selectedNodeId, selectedArcs.length],
-          getLineColor: [adjacency],
+          getLineColor: [adjacency, adjacencyReady],
           getLineWidth: [adjacency],
         },
       })
@@ -202,8 +207,10 @@ export function NetworkLayers() {
     }
 
     return result;
-  }, [filteredNodes, selectedArcs, selectedNodeId, arcWidth, visibleSelectedArcs, visibleHoveredArcs, handleNodeClick, handleNodeHover]);
+  }, [filteredNodes, selectedArcs, selectedNodeId, arcWidth, visibleSelectedArcs, visibleHoveredArcs, handleNodeClick, handleNodeHover, adjacency, adjacencyReady]);
   // Note: selectedArcs kept in deps because ScatterplotLayer dimming uses it unfiltered (direction filter should not change which nodes dim).
+  // adjacency/adjacencyReady kept in deps so the portal-ring ScatterplotLayer is rebuilt (not just
+  // attribute-diffed) when adjacency finishes streaming in — see updateTriggers.getLineColor above.
 
   // Mount/unmount the deck.gl overlay
   useEffect(() => {

@@ -91,6 +91,7 @@ export function NetworkPanelContent() {
     activeTab, setActiveTab,
     clearSelection, arcWidth, setArcWidth, hoverArcsEnabled, setHoverArcsEnabled,
     portalOnly, togglePortalOnly, typeFilter, toggleTypeFilter, clearTypeFilter, error,
+    adjacencyReady,
   } = useNetworkStore();
 
   // Load data on mount
@@ -297,7 +298,7 @@ export function NetworkPanelContent() {
                 {incomingCount > 0 && (
                   <StatRow icon={ArrowDownLeft} label="Incoming only" value={formatNumber(incomingCount)} colorClass={DIRECTION_DOT.incoming} />
                 )}
-                {mutualCount + outgoingCount + incomingCount === 0 && (
+                {adjacencyReady && mutualCount + outgoingCount + incomingCount === 0 && (
                   <StatRow icon={Link2} label="Connections" value="0" />
                 )}
                 {selectedNode.population > 0 && (
@@ -305,7 +306,14 @@ export function NetworkPanelContent() {
                 )}
               </div>
 
-              {selectedNode.isPortal && outgoingCount === 0 && mutualCount === 0 && (
+              {!adjacencyReady && (
+                <div className="mb-4 flex items-center gap-2 py-1" role="status">
+                  <span className="w-3.5 h-3.5 border-2 border-dark-600 border-t-accent rounded-full animate-spin shrink-0" />
+                  <span className="text-xs text-dark-400">Loading connections…</span>
+                </div>
+              )}
+
+              {adjacencyReady && selectedNode.isPortal && outgoingCount === 0 && mutualCount === 0 && (
                 <div role="status" className="mb-4 flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
                   <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden />
                   <div className="text-xs text-amber-100/90 leading-relaxed">

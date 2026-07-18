@@ -186,6 +186,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const loadNetworkData = useNetworkStore(s => s.loadNetworkData);
   const selectedNode = useNetworkStore(s => s.selectedNode);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const adjacencyReady = useNetworkStore(s => s.adjacencyReady);
   const setSelectedNodeId = useNetworkStore(s => s.setSelectedNodeId);
 
   /* ---- country (gates US-only tabs) ---- */
@@ -591,6 +592,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ================================================================ */
 
   const isNonSharingPortal = appMode === 'network' &&
+    adjacencyReady &&
     selectedNode?.isPortal &&
     (adjacency[selectedNode.id]?.length ?? 0) === 0;
   const showNetworkWarning = isNonSharingPortal && snapPoint !== 'full';

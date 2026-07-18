@@ -10,7 +10,7 @@ export function NetworkPanel() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
 
-  const { nodesArray, selectedNode, adjacency } = useNetworkStore();
+  const { nodesArray, selectedNode, adjacency, adjacencyReady } = useNetworkStore();
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -26,7 +26,7 @@ export function NetworkPanel() {
 
   // Mobile: BottomSheet
   if (isMobile) {
-    const isNonSharingPortal = selectedNode?.isPortal &&
+    const isNonSharingPortal = adjacencyReady && selectedNode?.isPortal &&
       (adjacency[selectedNode.id]?.length ?? 0) === 0;
     const showWarning = isNonSharingPortal && snapPoint !== 'full';
 

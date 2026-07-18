@@ -10,6 +10,7 @@ import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
+import { NetworkLoadingPill } from '@/components/map/NetworkLoadingPill';
 import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
 import { parseViewportFromURL, parseCountryFromURL, parseStateFromURL, writeViewportParams } from '@/utils/urlParams';
 import { loadStateGeometry, getStateBounds, stateFromSlug, stateSlug, getStateName } from '@/services/stateFilterService';
@@ -488,6 +489,7 @@ export function MapPage() {
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
             <MapStyleControl />
             {showCameraPill && <LoadingPill />}
+            {appMode === 'network' && <NetworkLoadingPill />}
             <MapThemeControl />
             <CameraFilterControl />
 
