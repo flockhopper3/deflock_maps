@@ -13,6 +13,14 @@ import { Protocol } from 'pmtiles';
 export const CAMERA_TILES_HOST = 'https://tiles.dontgetflocked.com';
 export const CAMERA_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras.pmtiles`;
 export const CAMERA_TILES_URL = `pmtiles://${CAMERA_TILES_ARCHIVE}`;
+/**
+ * Filter-enabled companion archive: same points, but with integer filter
+ * codes (b/o/z/m) at ALL zooms — z11+ additionally carries the full
+ * attributes, mirroring the main archive. Only attached to the map once a
+ * filter activates; idle users never fetch it.
+ */
+export const CAMERA_FILTER_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras-filter.pmtiles`;
+export const CAMERA_FILTER_TILES_URL = `pmtiles://${CAMERA_FILTER_TILES_ARCHIVE}`;
 export const CAMERA_TILES_SOURCE_LAYER = 'cameras';
 export const CAMERA_TILES_MAXZOOM = 14;
 /** Below this zoom, tile features have no attributes (no osmId, no direction). */

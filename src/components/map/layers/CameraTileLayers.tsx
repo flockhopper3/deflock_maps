@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Source, Layer, useMap } from 'react-map-gl/maplibre';
 import type maplibregl from 'maplibre-gl';
+import type { FilterSpecification } from 'maplibre-gl';
 import {
   CAMERA_TILES_URL,
   CAMERA_TILES_SOURCE_LAYER,
@@ -27,105 +28,139 @@ const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', feature
  * Starts at z10 (not z0): blurred circles are fill-rate bound, and glowing
  * ~114k features at country zoom would blob dense metros into featureless mass.
  */
-const glowLayer: maplibregl.LayerSpecification = {
-  id: 'camera-tile-glow',
-  type: 'circle',
-  source: 'camera-tiles',
-  'source-layer': CAMERA_TILES_SOURCE_LAYER,
-  minzoom: 10,
-  paint: {
-    'circle-color': '#4DA6FF',
-    // Stays just behind the mark it sits under — at z11 it is barely wider than
-    // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
-    // have separated and the halo has room to read as presence, not as bulk.
-    'circle-radius': [
-      'interpolate', ['linear'], ['zoom'],
-      10, 2,
-      11, 5,
-      12, 10,
-      14, 16,
-    ],
-    'circle-opacity': [
-      'interpolate', ['linear'], ['zoom'],
-      10, 0,
-      11, 0.25,
-      12, 0.4,
-    ],
-    'circle-blur': 0.5,
-    'circle-stroke-width': 0,
-  },
-};
+function buildLayerSpecs(
+  sourceId: string,
+  idSuffix: string,
+  filter: FilterSpecification | undefined
+) {
+  const withFilter = (spec: maplibregl.LayerSpecification) =>
+    filter ? { ...spec, filter } : spec;
 
-const dotLayer: maplibregl.LayerSpecification = {
-  id: 'camera-tile-dots',
-  type: 'circle',
-  source: 'camera-tiles',
-  'source-layer': CAMERA_TILES_SOURCE_LAYER,
-  maxzoom: 12,
-  paint: {
-    'circle-color': '#4DA6FF',
-    'circle-radius': [
-      'interpolate', ['linear'], ['zoom'],
-      0, 1,
-      4, 1.5,
-      7, 2.2,
-      10, 3.5,
-      11.9, 5,
-    ],
-    'circle-opacity': [
-      'interpolate', ['linear'], ['zoom'],
-      0, 0.5,
-      8, 0.6,
-      10.5, 0.75,
-      11, 0.75,
-      12, 0,
-    ],
-    'circle-stroke-width': 0,
-  },
-};
+  const glowLayer: maplibregl.LayerSpecification = withFilter({
+    id: `camera-tile-glow${idSuffix}`,
+    type: 'circle',
+    source: sourceId,
+    'source-layer': CAMERA_TILES_SOURCE_LAYER,
+    minzoom: 10,
+    paint: {
+      'circle-color': '#4DA6FF',
+      // Stays just behind the mark it sits under — at z11 it is barely wider than
+      // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
+      // have separated and the halo has room to read as presence, not as bulk.
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        10, 2,
+        11, 5,
+        12, 10,
+        14, 16,
+      ],
+      'circle-opacity': [
+        'interpolate', ['linear'], ['zoom'],
+        10, 0,
+        11, 0.25,
+        12, 0.4,
+      ],
+      'circle-blur': 0.5,
+      'circle-stroke-width': 0,
+    },
+  });
 
-const pointLayer: maplibregl.LayerSpecification = {
-  id: 'camera-tile-points',
-  type: 'circle',
-  source: 'camera-tiles',
-  'source-layer': CAMERA_TILES_SOURCE_LAYER,
-  // Shared with the viewport count, which queries dots below this zoom and
-  // points at/above it — the two layers overlap on [11, 12).
-  minzoom: CAMERA_POINTS_MINZOOM,
-  paint: {
-    'circle-color': '#0080BC',
-    // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
-    // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
-    // at full width from the start it would bolt 2px of outer radius on the
-    // instant the point appears, which is a pop of its own.
-    'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
-    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
-    'circle-stroke-color': '#93CBFF',
-    'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-  },
-};
+  const dotLayer: maplibregl.LayerSpecification = withFilter({
+    id: `camera-tile-dots${idSuffix}`,
+    type: 'circle',
+    source: sourceId,
+    'source-layer': CAMERA_TILES_SOURCE_LAYER,
+    maxzoom: 12,
+    paint: {
+      'circle-color': '#4DA6FF',
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        0, 1,
+        4, 1.5,
+        7, 2.2,
+        10, 3.5,
+        11.9, 5,
+      ],
+      'circle-opacity': [
+        'interpolate', ['linear'], ['zoom'],
+        0, 0.5,
+        8, 0.6,
+        10.5, 0.75,
+        11, 0.75,
+        12, 0,
+      ],
+      'circle-stroke-width': 0,
+    },
+  });
 
-const coneLayer: maplibregl.LayerSpecification = {
-  id: 'camera-tile-cones',
-  type: 'fill',
-  source: 'camera-tile-cones',
-  minzoom: 12,
-  paint: { 'fill-color': '#4DA6FF', 'fill-opacity': 0.35 },
-};
+  const pointLayer: maplibregl.LayerSpecification = withFilter({
+    id: `camera-tile-points${idSuffix}`,
+    type: 'circle',
+    source: sourceId,
+    'source-layer': CAMERA_TILES_SOURCE_LAYER,
+    // Shared with the viewport count, which queries dots below this zoom and
+    // points at/above it — the two layers overlap on [11, 12).
+    minzoom: CAMERA_POINTS_MINZOOM,
+    paint: {
+      'circle-color': '#0080BC',
+      // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
+      // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
+      // at full width from the start it would bolt 2px of outer radius on the
+      // instant the point appears, which is a pop of its own.
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
+      'circle-stroke-color': '#93CBFF',
+      'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+      'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+    },
+  });
 
-const coneOutlineLayer: maplibregl.LayerSpecification = {
-  id: 'camera-tile-cones-outline',
-  type: 'line',
-  source: 'camera-tile-cones',
-  minzoom: 12,
-  paint: { 'line-color': '#0080BC', 'line-width': 2, 'line-opacity': 0.7 },
-};
+  const coneLayer: maplibregl.LayerSpecification = {
+    id: `camera-tile-cones${idSuffix}`,
+    type: 'fill',
+    source: `camera-tile-cones${idSuffix}`,
+    minzoom: 12,
+    paint: { 'fill-color': '#4DA6FF', 'fill-opacity': 0.35 },
+  };
 
-export function CameraTileLayers({ visible }: { visible: boolean }) {
+  const coneOutlineLayer: maplibregl.LayerSpecification = {
+    id: `camera-tile-cones-outline${idSuffix}`,
+    type: 'line',
+    source: `camera-tile-cones${idSuffix}`,
+    minzoom: 12,
+    paint: { 'line-color': '#0080BC', 'line-width': 2, 'line-opacity': 0.7 },
+  };
+
+  return { glowLayer, dotLayer, pointLayer, coneLayer, coneOutlineLayer };
+}
+
+interface CameraTileLayersProps {
+  visible: boolean;
+  /** Vector source id — must be unique per instance. */
+  sourceId?: string;
+  sourceUrl?: string;
+  /** Appended to every layer id — '' for the default instance. */
+  idSuffix?: string;
+  /** Attribute filter (filter tileset codes). Applied to glow/dots/points
+   *  declaratively and to cone building via querySourceFeatures. */
+  filter?: FilterSpecification;
+}
+
+export function CameraTileLayers({
+  visible,
+  sourceId = 'camera-tiles',
+  sourceUrl = CAMERA_TILES_URL,
+  idSuffix = '',
+  filter,
+}: CameraTileLayersProps) {
   const { current: mapInstance } = useMap();
   const [conesData, setConesData] = useState<GeoJSON.FeatureCollection>(EMPTY_FC);
   const debounceRef = useRef<number | null>(null);
+
+  const specs = useMemo(
+    () => buildLayerSpecs(sourceId, idSuffix, filter),
+    [sourceId, idSuffix, filter]
+  );
 
   const rebuildCones = useCallback(() => {
     const map = mapInstance?.getMap();
@@ -134,10 +169,11 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
       setConesData(prev => (prev.features.length === 0 ? prev : EMPTY_FC));
       return;
     }
-    if (!map.getSource('camera-tiles')) return;
+    if (!map.getSource(sourceId)) return;
 
-    const rendered = map.querySourceFeatures('camera-tiles', {
+    const rendered = map.querySourceFeatures(sourceId, {
       sourceLayer: CAMERA_TILES_SOURCE_LAYER,
+      filter,
     });
 
     // Tiles duplicate features in buffers — dedupe by osmId (present at z11+)
@@ -160,7 +196,7 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
       if (features.length >= CONE_FEATURE_CAP) break;
     }
     setConesData({ type: 'FeatureCollection', features });
-  }, [mapInstance, visible]);
+  }, [mapInstance, visible, sourceId, filter]);
 
   // Rebuild cones when tiles finish loading or the camera stops moving
   useEffect(() => {
@@ -172,7 +208,7 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
       debounceRef.current = window.setTimeout(rebuildCones, 200);
     };
     const onSourceData = (e: maplibregl.MapSourceDataEvent) => {
-      if (e.sourceId === 'camera-tiles' && e.isSourceLoaded) schedule();
+      if (e.sourceId === sourceId && e.isSourceLoaded) schedule();
     };
 
     map.on('moveend', schedule);
@@ -184,27 +220,22 @@ export function CameraTileLayers({ visible }: { visible: boolean }) {
       map.off('moveend', schedule);
       map.off('sourcedata', onSourceData);
     };
-  }, [mapInstance, rebuildCones]);
+  }, [mapInstance, rebuildCones, sourceId]);
 
   const visibility: 'visible' | 'none' = visible ? 'visible' : 'none';
 
   return (
     <>
-      <Source
-        id="camera-tiles"
-        type="vector"
-        url={CAMERA_TILES_URL}
-        maxzoom={CAMERA_TILES_MAXZOOM}
-      >
+      <Source id={sourceId} type="vector" url={sourceUrl} maxzoom={CAMERA_TILES_MAXZOOM}>
         {/* Glow first — document order is paint order, and it must sit beneath both marks */}
-        <Layer {...glowLayer} layout={{ visibility }} />
-        <Layer {...dotLayer} layout={{ visibility }} />
-        <Layer {...pointLayer} layout={{ visibility }} />
+        <Layer {...specs.glowLayer} layout={{ visibility }} />
+        <Layer {...specs.dotLayer} layout={{ visibility }} />
+        <Layer {...specs.pointLayer} layout={{ visibility }} />
       </Source>
-      <Source id="camera-tile-cones" type="geojson" data={conesData}>
+      <Source id={`camera-tile-cones${idSuffix}`} type="geojson" data={conesData}>
         {/* Anchored beneath the glow so cones never cover the camera marks */}
-        <Layer {...coneLayer} beforeId="camera-tile-glow" layout={{ visibility }} />
-        <Layer {...coneOutlineLayer} beforeId="camera-tile-glow" layout={{ visibility }} />
+        <Layer {...specs.coneLayer} beforeId={`camera-tile-glow${idSuffix}`} layout={{ visibility }} />
+        <Layer {...specs.coneOutlineLayer} beforeId={`camera-tile-glow${idSuffix}`} layout={{ visibility }} />
       </Source>
     </>
   );
