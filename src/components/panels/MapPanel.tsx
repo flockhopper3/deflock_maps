@@ -351,24 +351,33 @@ function CheckboxGroup({
 }
 
 /**
- * Filters need the full dataset (brand/operator lists). Mounts only when the
- * Filters section is expanded (Section renders children lazily), so this is
- * the lazy-load trigger for the JSON download.
+ * Gates the filter controls on the few-KB manifest instead of the full
+ * dataset. Legacy fallback: if the manifest fails, load the GeoJSON and
+ * derive the option lists from it (today's behavior).
  */
 function FilterDataGate({ children }: { children: React.ReactNode }) {
+  const manifestPhase = useCameraStore((s) => s.manifestPhase);
+  const ensureManifestLoaded = useCameraStore((s) => s.ensureManifestLoaded);
   const isInitialized = useCameraStore((s) => s.isInitialized);
   const loadPhase = useCameraStore((s) => s.loadPhase);
   const ensureCamerasLoaded = useCameraStore((s) => s.ensureCamerasLoaded);
   const retryCameraLoad = useCameraStore((s) => s.retryCameraLoad);
 
   useEffect(() => {
-    void ensureCamerasLoaded().catch(() => {});
-  }, [ensureCamerasLoaded]);
+    void ensureManifestLoaded();
+  }, [ensureManifestLoaded]);
 
-  if (!isInitialized) {
+  // Manifest failed → legacy path: full dataset download + derived lists
+  useEffect(() => {
+    if (manifestPhase === 'error') void ensureCamerasLoaded().catch(() => {});
+  }, [manifestPhase, ensureCamerasLoaded]);
+
+  const ready = manifestPhase === 'ready' || isInitialized;
+  if (!ready) {
+    const bothFailed = manifestPhase === 'error' && loadPhase === 'error';
     return (
       <div className="flex flex-col items-center gap-2 py-6">
-        {loadPhase === 'error' ? (
+        {bothFailed ? (
           <>
             <span className="text-xs text-dark-400">Couldn't load camera data</span>
             <button
@@ -381,7 +390,7 @@ function FilterDataGate({ children }: { children: React.ReactNode }) {
         ) : (
           <>
             <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-            <span className="text-xs text-dark-400">Loading camera data…</span>
+            <span className="text-xs text-dark-400">Loading filters…</span>
           </>
         )}
       </div>
@@ -399,6 +408,23 @@ export function MapPanelContent() {
   const togglePendingFilter = useCameraStore((s) => s.togglePendingFilter);
   const applyPendingFilters = useCameraStore((s) => s.applyPendingFilters);
   const resetAllFilters = useCameraStore((s) => s.resetAllFilters);
+  const manifest = useCameraStore((s) => s.manifest);
+  const country = useCameraStore((s) => s.country);
+
+  const brandOptions = useMemo(
+    () =>
+      country === 'us' && manifest
+        ? manifest.brands.map((b) => b.label)
+        : availableBrands,
+    [country, manifest, availableBrands]
+  );
+  const operatorOptions = useMemo(
+    () =>
+      country === 'us' && manifest
+        ? manifest.operators.map((o) => o.label)
+        : availableOperators,
+    [country, manifest, availableOperators]
+  );
 
   const visualization = useMapModeStore((s) => s.visualization);
   const activeView = useMapModeStore((s) => s.activeView);
@@ -609,13 +635,13 @@ export function MapPanelContent() {
           <div className="space-y-1">
             <SearchableMultiSelect
               label="Brand"
-              items={availableBrands}
+              items={brandOptions}
               selected={pendingFilters.brands}
               onToggle={(v) => togglePendingFilter('brands', v)}
             />
             <SearchableMultiSelect
               label="Operator"
-              items={availableOperators}
+              items={operatorOptions}
               selected={pendingFilters.operators}
               onToggle={(v) => togglePendingFilter('operators', v)}
               note="~28% of cameras have operator data"
