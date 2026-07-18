@@ -1233,13 +1233,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
               'line-join': 'round',
             }}
           />
-          {/* Privacy route - solid blue (rendered first/underneath) */}
+          {/* Privacy route - solid green (rendered first/underneath) */}
           <Layer
             id="route-line-privacy"
             type="line"
             filter={['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'type'], 'avoidance']]}
             paint={{
-              'line-color': '#0080BC', // Blue for privacy route
+              'line-color': '#22c55e', // Green: must not blend into the blue camera dots
               'line-width': 6,
               'line-opacity': 0.95,
             }}

@@ -37,7 +37,8 @@ export default {
         },
         route: {
           direct: '#e5a04d',
-          avoid: '#0080BC',
+          // Green: privacy route must not blend into the blue camera dots
+          avoid: '#22c55e',
         },
         danger: '#ef4444',
         success: '#22c55e',

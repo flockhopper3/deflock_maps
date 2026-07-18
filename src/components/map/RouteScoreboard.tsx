@@ -33,11 +33,11 @@ export function RouteScoreboard({ onEdit }: RouteScoreboardProps) {
           aria-selected={activeRoute === 'normal'}
           aria-label="Show direct route"
           className={`relative flex-1 min-w-0 px-4 py-3 text-left transition-colors ${
-            activeRoute === 'normal' ? 'bg-accent-muted' : ''
+            activeRoute === 'normal' ? 'bg-route-direct/10' : ''
           }`}
         >
           {activeRoute === 'normal' && (
-            <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" aria-hidden="true" />
+            <span className="absolute inset-x-0 top-0 h-0.5 bg-route-direct" aria-hidden="true" />
           )}
           <div className="flex items-center gap-2">
             <span
@@ -69,11 +69,11 @@ export function RouteScoreboard({ onEdit }: RouteScoreboardProps) {
           aria-selected={activeRoute === 'avoidance'}
           aria-label="Show privacy route"
           className={`relative flex-1 min-w-0 px-4 py-3 text-left transition-colors ${
-            activeRoute === 'avoidance' ? 'bg-accent-muted' : ''
+            activeRoute === 'avoidance' ? 'bg-route-avoid/10' : ''
           }`}
         >
           {activeRoute === 'avoidance' && (
-            <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" aria-hidden="true" />
+            <span className="absolute inset-x-0 top-0 h-0.5 bg-route-avoid" aria-hidden="true" />
           )}
           <div className="flex items-center gap-2">
             <span className="w-5 h-[3px] rounded-full bg-route-avoid flex-shrink-0" aria-hidden="true" />

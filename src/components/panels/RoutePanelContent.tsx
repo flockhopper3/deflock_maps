@@ -247,12 +247,12 @@ export function RoutePanelContent() {
                   aria-label="Select privacy route"
                   className={`relative p-4 rounded-md border-2 transition-all ${
                     activeRoute === 'avoidance'
-                      ? 'bg-blue-500/10 border-blue-500'
+                      ? 'bg-success/10 border-success'
                       : 'bg-dark-800 border-dark-600 hover:border-dark-500'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-1 rounded-full bg-blue-500"></div>
+                    <div className="w-6 h-1 rounded-full bg-success"></div>
                     <span className="text-xs font-semibold text-gray-200 uppercase tracking-wide">
                       Privacy
                     </span>

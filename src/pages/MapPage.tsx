@@ -514,7 +514,7 @@ export function MapPage() {
                     </div>
                     <div className="w-px h-5 bg-dark-600"></div>
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-1 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]"></div>
+                      <div className="w-6 h-1 rounded-full bg-success shadow-[0_0_6px_rgba(34,197,94,0.5)]"></div>
                       <span className="text-dark-100">Privacy Route</span>
                     </div>
                   </div>

@@ -201,17 +201,17 @@ export function RoutePlannerTab() {
               aria-label="Select privacy route"
               className={`relative p-4 rounded-md border transition-all ${
                 activeRoute === 'avoidance'
-                  ? 'bg-blue-500/10 border-blue-500 ring-2 ring-blue-500/30'
+                  ? 'bg-success/10 border-success ring-2 ring-success/30'
                   : 'bg-dark-800 border-dark-600 hover:border-dark-500'
               }`}
             >
               {activeRoute === 'avoidance' && (
                 <div className="absolute top-2 right-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                  <div className="w-2 h-2 rounded-full bg-success"></div>
                 </div>
               )}
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-1 rounded-full bg-blue-500"></div>
+                <div className="w-6 h-1 rounded-full bg-success"></div>
                 <span className="text-xs font-semibold text-dark-300 uppercase tracking-wider">
                   Privacy
                 </span>
