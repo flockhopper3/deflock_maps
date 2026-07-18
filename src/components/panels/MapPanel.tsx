@@ -25,7 +25,8 @@ function AboutContent() {
         <p className="text-xs text-dark-400 leading-relaxed">
           A camera may be missing, moved, or misidentified. Download the
           DeFlock app, sign in with a free OpenStreetMap account, and fix it
-          right from your phone.
+          right from your phone. Prefer another tool? Any OpenStreetMap
+          editor works too.
         </p>
       </div>
 
