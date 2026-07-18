@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { readBodyWithProgress, type DownloadProgress } from '../services/cameraDataService';
 
 export interface NetworkNode {
   id: string;
@@ -78,7 +79,12 @@ export function classifyArcs(
 export type NetworkLoadPhase = 'idle' | 'fetching' | 'ready' | 'error';
 
 interface NetworkState {
+  /** Nodes lifecycle. 'ready' means agency dots can render; adjacency may still be streaming. */
   loadPhase: NetworkLoadPhase;
+  /** True once adjacency + reverseAdjacency are committed. */
+  adjacencyReady: boolean;
+  nodesProgress: DownloadProgress | null;
+  adjacencyProgress: DownloadProgress | null;
   nodesMap: Map<string, NetworkNode>;
   nodesArray: NetworkNode[];
   adjacency: Record<string, string[]>;
@@ -181,6 +187,9 @@ let _initPromise: Promise<void> | null = null;
 
 export const useNetworkStore = create<NetworkState>((set, get) => ({
   loadPhase: 'idle',
+  adjacencyReady: false,
+  nodesProgress: null,
+  adjacencyProgress: null,
   nodesMap: new Map(),
   nodesArray: [],
   adjacency: {},
@@ -198,46 +207,66 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   error: null,
 
   loadNetworkData: async () => {
-    const { loadPhase, nodesArray } = get();
-    if (loadPhase === 'fetching') return;
-    if (nodesArray.length > 0) return; // already loaded
-
+    if (get().loadPhase === 'fetching') return;
     if (_initPromise) return _initPromise;
 
+    const needNodes = get().nodesArray.length === 0;
+    const needAdjacency = !get().adjacencyReady;
+    if (!needNodes && !needAdjacency) return;
+
     _initPromise = (async () => {
-      set({ loadPhase: 'fetching', error: null });
-      try {
-        const [nodesResponse, adjacencyResponse] = await Promise.all([
-          fetch('/sharing-network-nodes.geojson'),
-          fetch('/sharing-network-adjacency.json'),
-        ]);
+      set({ error: null, ...(needNodes ? { loadPhase: 'fetching' as const } : {}) });
 
-        if (!nodesResponse.ok) throw new Error(`Nodes fetch failed: ${nodesResponse.status}`);
-        if (!adjacencyResponse.ok) throw new Error(`Adjacency fetch failed: ${adjacencyResponse.status}`);
+      // Each file commits the moment it lands: nodes unlock the dot layer
+      // (and flip loadPhase to 'ready'); adjacency arrives later and
+      // backfills arcs for any selection made in the meantime.
+      const nodesTask = needNodes
+        ? (async () => {
+            const response = await fetch('/sharing-network-nodes.geojson');
+            if (!response.ok) throw new Error(`Nodes fetch failed: ${response.status}`);
+            const text = await readBodyWithProgress(response, (percent, loadedBytes) => {
+              set({ nodesProgress: { percent, loadedBytes } });
+            });
+            const { nodesMap, nodesArray } = parseGeoJSON(JSON.parse(text));
+            set({ nodesMap, nodesArray, loadPhase: 'ready', nodesProgress: null });
+          })()
+        : Promise.resolve();
 
-        const [nodesGeoJSON, adjacency] = await Promise.all([
-          nodesResponse.json(),
-          adjacencyResponse.json(),
-        ]);
+      const adjacencyTask = needAdjacency
+        ? (async () => {
+            const response = await fetch('/sharing-network-adjacency.json');
+            if (!response.ok) throw new Error(`Adjacency fetch failed: ${response.status}`);
+            const text = await readBodyWithProgress(response, (percent, loadedBytes) => {
+              set({ adjacencyProgress: { percent, loadedBytes } });
+            });
+            const adjacency = JSON.parse(text) as Record<string, string[]>;
+            const reverseAdjacency = buildReverseAdjacency(adjacency);
+            set({ adjacency, reverseAdjacency, adjacencyReady: true, adjacencyProgress: null });
 
-        const { nodesMap, nodesArray } = parseGeoJSON(nodesGeoJSON);
-        const reverseAdjacency = buildReverseAdjacency(adjacency);
+            // Backfill arcs for a selection made while adjacency streamed
+            const { selectedNodeId, nodesMap } = get();
+            const source = selectedNodeId ? nodesMap.get(selectedNodeId) : undefined;
+            if (source) {
+              set({ selectedArcs: classifyArcs(source, nodesMap, adjacency, reverseAdjacency) });
+            }
+          })()
+        : Promise.resolve();
 
-        set({
-          nodesMap,
-          nodesArray,
-          adjacency,
-          reverseAdjacency,
-          loadPhase: 'ready',
-        });
-        _initPromise = null;
-      } catch (error) {
-        console.error('[NetworkStore] Failed to load network data:', error);
-        set({
-          error: error instanceof Error ? error.message : 'Failed to load network data',
-          loadPhase: 'error',
-        });
-        _initPromise = null;
+      const [nodesResult, adjacencyResult] = await Promise.allSettled([nodesTask, adjacencyTask]);
+      _initPromise = null;
+
+      const failure = [nodesResult, adjacencyResult].find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+      if (failure) {
+        console.error('[NetworkStore] Failed to load network data:', failure.reason);
+        set((state) => ({
+          error: failure.reason instanceof Error ? failure.reason.message : 'Failed to load network data',
+          // Failed adjacency after committed nodes leaves the dots usable
+          loadPhase: nodesResult.status === 'rejected' ? 'error' : state.loadPhase,
+          nodesProgress: null,
+          adjacencyProgress: null,
+        }));
       }
     })();
 
