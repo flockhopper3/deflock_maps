@@ -342,8 +342,10 @@ export function CameraFilterControl() {
             </button>
           </div>
 
-          {/* Body */}
-          <div className="px-4 py-2 max-h-[min(60vh,480px)] overflow-y-auto scrollbar-thin">
+          {/* Body — mobile cap keeps the popover's top edge below the search
+              bar (button sits at drawer+120px from the bottom; search bar
+              occupies the top ~115px; header+footer eat ~106px) */}
+          <div className="px-4 py-2 max-h-[calc(100dvh-425px)] lg:max-h-[min(60vh,480px)] overflow-y-auto scrollbar-thin">
             <FilterDataGate>
               <div className="space-y-1">
                 <SearchableMultiSelect
