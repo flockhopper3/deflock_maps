@@ -69,7 +69,8 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM } from '../../services/cameraTilesService';
+import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_FILTER_TILES_URL } from '../../services/cameraTilesService';
+import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
 const TILES_URL = 'https://tiles.dontgetflocked.com';
 
@@ -207,6 +208,22 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const isDotsMode = isExploreMode && mapVisualization === 'dots';
   const { renderMode } = useCameraRenderMode();
   const isTilesMode = renderMode === 'tiles';
+  const isFilterTilesMode = renderMode === 'filter-tiles';
+
+  // Once a filter has been used, keep the filtered source mounted for the
+  // session (visibility toggles instead) so its tiles stay cached. Never
+  // mounted for users who never filter — zero filter-tileset bytes for them.
+  const [filterLayersMounted, setFilterLayersMounted] = useState(false);
+  useEffect(() => {
+    if (isFilterTilesMode) setFilterLayersMounted(true);
+  }, [isFilterTilesMode]);
+
+  const manifest = useCameraStore((s) => s.manifest);
+  const cameraFilters = useCameraStore((s) => s.filters);
+  const tileFilterExpr = useMemo(
+    () => (manifest ? buildCameraTileFilter(cameraFilters, manifest) : undefined),
+    [cameraFilters, manifest]
+  );
   // Only render camera markers + direction cones when needed.
   // Map-mode auto no longer crossfades heatmap→markers; heatmap is only shown
   // when explicitly selected (isMapModeHeatmap below).
@@ -618,28 +635,48 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // old effect's synchronous seed check existed to cover.
   const tileLoadSeenRef = useRef(false);
   const tileErrorCountRef = useRef(0);
+  const filterTileLoadSeenRef = useRef(false);
+  const filterTileErrorCountRef = useRef(0);
 
   // Fresh map instance per remount (mapKey bumps on retry) ⇒ fresh counters.
   useEffect(() => {
     tileLoadSeenRef.current = false;
     tileErrorCountRef.current = 0;
+    filterTileLoadSeenRef.current = false;
+    filterTileErrorCountRef.current = 0;
   }, [mapKey]);
 
   const handleTileSourceData = useCallback((e: maplibregl.MapSourceDataEvent) => {
-    if (renderMode !== 'tiles') return;
-    if (e.sourceId !== 'camera-tiles' || !e.isSourceLoaded) return;
-    tileLoadSeenRef.current = true;
-    setMarkersReady(true);
+    if (!e.isSourceLoaded) return;
+    if (renderMode === 'tiles' && e.sourceId === 'camera-tiles') {
+      tileLoadSeenRef.current = true;
+      setMarkersReady(true);
+      return;
+    }
+    if (renderMode === 'filter-tiles' && e.sourceId === 'camera-tiles-filtered') {
+      filterTileLoadSeenRef.current = true;
+      setMarkersReady(true);
+    }
   }, [renderMode]);
 
   const handleMapError = useCallback((e: maplibregl.ErrorEvent & { sourceId?: string }) => {
     const sourceId = e?.sourceId ?? (e as { source?: { id?: string } })?.source?.id;
-    if (sourceId !== 'camera-tiles') return;
-    if (tileLoadSeenRef.current) return;
-    tileErrorCountRef.current += 1;
-    if (tileErrorCountRef.current >= 3) {
-      console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
-      useCameraStore.getState().setTilesFailed(true);
+    if (sourceId === 'camera-tiles') {
+      if (tileLoadSeenRef.current) return;
+      tileErrorCountRef.current += 1;
+      if (tileErrorCountRef.current >= 3) {
+        console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
+        useCameraStore.getState().setTilesFailed(true);
+      }
+      return;
+    }
+    if (sourceId === 'camera-tiles-filtered') {
+      if (filterTileLoadSeenRef.current) return;
+      filterTileErrorCountRef.current += 1;
+      if (filterTileErrorCountRef.current >= 3) {
+        console.warn('[MapLibre] Filter tiles failing — filters fall back to GeoJSON path');
+        useCameraStore.getState().setFilterTilesFailed(true);
+      }
     }
   }, []);
 
@@ -1056,6 +1093,18 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       {/* Camera tiles — the default rendering path. Always mounted; hidden
           when the geojson path (filters/timeline/heatmap/CA) is active. */}
       <CameraTileLayers visible={isTilesMode && showCameraMarkers && showCameraLayer} />
+      {/* Filtered camera tiles — mounted the first time a filter is applied this
+          session and left mounted (visibility toggles) so its tiles stay cached.
+          Users who never filter never mount this source. */}
+      {filterLayersMounted && (
+        <CameraTileLayers
+          visible={isFilterTilesMode && showCameraMarkers && showCameraLayer}
+          sourceId="camera-tiles-filtered"
+          sourceUrl={CAMERA_FILTER_TILES_URL}
+          idSuffix="-filtered"
+          filter={tileFilterExpr}
+        />
+      )}
 
       {/* Legacy GeoJSON camera layers — empty until the dataset lazily loads;
           becomes the active path for filters/heatmap/Canada.
