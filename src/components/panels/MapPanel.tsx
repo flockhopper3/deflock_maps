@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useCameraStore, useMapStore } from '../../store';
 import { useMapModeStore } from '../../store/mapModeStore';
 import type { MapVisualization, ActiveView, OverlayState } from '../../store/mapModeStore';
@@ -220,25 +220,6 @@ export function MapPanelContent() {
     }
   };
 
-  // Viewport-reactive stats (respects active filters)
-  const bounds = useMapStore(s => s.bounds);
-  const filteredCameras = useCameraStore((s) => s.filteredCameras);
-  // Tiles mode reports the rendered viewport count before the (lazily-loaded)
-  // GeoJSON dataset exists — prefer it so the hero stat isn't stuck at 0.
-  const tileViewCameraCount = useMapStore(s => s.tileViewCameraCount);
-
-  const viewportCount = useMemo(() => {
-    if (!bounds) return 0;
-    return filteredCameras.filter(
-      (c) => c.lat >= bounds.south && c.lat <= bounds.north && c.lon >= bounds.west && c.lon <= bounds.east
-    ).length;
-  }, [bounds, filteredCameras]);
-
-  // In tiles mode (default render path), filteredCameras is empty until the
-  // GeoJSON dataset lazy-loads, so viewportCount reads 0. Prefer the
-  // tile-rendered viewport count when available — same pattern as CameraStats.tsx.
-  const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportCount;
-
   const country = useCameraStore((s) => s.country);
   const ensureManifestLoaded = useCameraStore((s) => s.ensureManifestLoaded);
 
@@ -251,24 +232,6 @@ export function MapPanelContent() {
 
   return (
     <div className="flex flex-col">
-      {/* Hero: Cameras in View */}
-      <div className="px-6 pt-4 pb-3">
-        <div className="bg-gradient-to-br from-accent/10 to-accent/[0.03] border border-accent/15 rounded-xl px-5 py-4 text-center">
-          <div className="flex items-baseline justify-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_rgba(56,189,248,0.5)] flex-shrink-0 relative -top-0.5" />
-            <span className="text-[40px] font-bold text-accent tracking-tight leading-none tabular-nums">
-              {heroViewCount.toLocaleString()}
-            </span>
-          </div>
-          <p className="text-[11px] text-dark-500 uppercase tracking-[1.5px] mt-1">
-            cameras in view
-          </p>
-        </div>
-      </div>
-
-      {/* Divider before sections */}
-      <div className="h-px bg-dark-700/50 mx-6" />
-
       {/* Section: About */}
       <AboutSection />
 
