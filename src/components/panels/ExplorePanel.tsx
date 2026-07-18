@@ -7,6 +7,8 @@ import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
 import { DotDensityControls } from '../../modes/dots/DotDensityControls';
 import { ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 import { MapTypeDropdown, VIZ_OPTIONS } from './MapTypeDropdown';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 
 export function ExplorePanel() {
   const isMobile = useIsMobile();
@@ -16,6 +18,15 @@ export function ExplorePanel() {
 
   const cameraCount = useCameraStore(s => s.cameras.length);
   const mapVisualization = useAppModeStore(s => s.mapVisualization);
+
+  const isInitialized = useCameraStore(s => s.isInitialized);
+  const loadPhase = useCameraStore(s => s.loadPhase);
+  const downloadProgress = useCameraStore(s => s.downloadProgress);
+  const cameraError = useCameraStore(s => s.error);
+  const retryCameraLoad = useCameraStore(s => s.retryCameraLoad);
+
+  const camerasPending = !isInitialized && loadPhase !== 'error';
+  const showSkeleton = useDelayedFlag(camerasPending);
 
   useEffect(() => {
     const timer = setTimeout(() => setHasAnimated(true), 50);
@@ -32,6 +43,37 @@ export function ExplorePanel() {
       default:
         return null;
     }
+  };
+
+  // Loading/error/content for the panel body — shared by mobile sheet and desktop panel
+  const panelBody = () => {
+    if (loadPhase === 'error' && cameraError) {
+      return (
+        <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
+          <p className="text-sm text-red-400 mb-2">Failed to load camera data</p>
+          <p className="text-xs text-dark-500 mb-3">{cameraError}</p>
+          <button
+            onClick={() => { void retryCameraLoad(); }}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (camerasPending) {
+      if (!showSkeleton) return null;
+      return (
+        <div className="space-y-4" aria-busy="true">
+          <Skeleton className="h-4 w-3/5" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+          <Skeleton className="h-3 w-2/5" />
+        </div>
+      );
+    }
+    return renderControls();
   };
 
   const vizLabel = VIZ_OPTIONS.find((o) => o.id === mapVisualization)?.label ?? 'Explore';
@@ -56,7 +98,9 @@ export function ExplorePanel() {
               </div>
               <div className="text-left">
                 <p className="text-sm font-semibold text-white">{vizLabel}</p>
-                <p className="text-xs text-dark-400">{cameraCount.toLocaleString()} cameras</p>
+                <p className="text-xs text-dark-400">
+                  {isInitialized ? `${cameraCount.toLocaleString()} cameras` : 'Loading…'}
+                </p>
               </div>
             </div>
             <svg className="w-5 h-5 text-dark-400" viewBox="0 0 24 24" fill="currentColor">
@@ -76,7 +120,7 @@ export function ExplorePanel() {
               <MapTypeDropdown />
             </div>
 
-            {renderControls()}
+            {panelBody()}
 
             {mapVisualization === 'heatmap' && (
               <div className="mt-6">
@@ -99,9 +143,21 @@ export function ExplorePanel() {
   // Desktop: Side Panel
   return (
     <div className="hidden lg:block relative h-full">
-      <div className={`flex flex-col h-full bg-dark-900 border-r border-dark-700/50 ${
+      <div className={`relative flex flex-col h-full bg-dark-900 border-r border-dark-700/50 ${
         hasAnimated ? 'transition-all duration-300' : ''
       } ${isCollapsed ? 'w-0 overflow-hidden' : 'w-[400px]'}`}>
+        {/* 2px download progress line while the GeoJSON streams in */}
+        {camerasPending && (
+          downloadProgress != null ? (
+            <div
+              className="absolute top-0 left-0 h-0.5 bg-accent transition-all duration-300 z-10"
+              style={{ width: `${downloadProgress}%` }}
+            />
+          ) : (
+            <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent/60 animate-pulse z-10" />
+          )
+        )}
+
         {/* Header */}
         <div className="flex-shrink-0 px-6 py-5 border-b border-dark-700/50">
           <h2 className="text-lg font-display font-semibold text-white mb-2">Timeline</h2>
@@ -114,7 +170,7 @@ export function ExplorePanel() {
         {/* Visualization Controls */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-6">
-            {renderControls()}
+            {panelBody()}
           </div>
           {mapVisualization === 'heatmap' && (
             <div className="px-6 pb-4">

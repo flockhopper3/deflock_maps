@@ -530,7 +530,7 @@ export function MapPage() {
             )}
 
             {/* Timeline Bar — desktop only; on mobile the scrubber lives in the drawer peek */}
-            {isExploreMode && !isMobile && (
+            {isExploreMode && !isMobile && isInitialized && (
               <div className="timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30">
                 <TimelineBar />
               </div>
