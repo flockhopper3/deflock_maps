@@ -11,6 +11,53 @@ import type { ALPRCamera } from '../types';
 
 export type CameraCountry = 'us' | 'ca';
 
+/** Progress for a streamed dataset download. `null` = indeterminate (unknown total). */
+export type DownloadProgressCallback = (percent: number | null) => void;
+
+/**
+ * Read a response body as text, reporting download progress. Percent is only
+ * determinate when Content-Length is present AND no Content-Encoding is set:
+ * with edge compression the reader yields decompressed bytes while
+ * Content-Length counts compressed ones, so the ratio would lie.
+ */
+export async function readBodyWithProgress(
+  response: Response,
+  onProgress?: DownloadProgressCallback
+): Promise<string> {
+  const total = Number(response.headers.get('Content-Length') ?? 0);
+  const determinate = total > 0 && !response.headers.get('Content-Encoding');
+
+  if (!response.body) {
+    onProgress?.(null);
+    const text = await response.text();
+    onProgress?.(100);
+    return text;
+  }
+
+  onProgress?.(determinate ? 0 : null);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    if (determinate) {
+      onProgress?.(Math.min(99, Math.round((loaded / total) * 100)));
+    }
+  }
+
+  const merged = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  onProgress?.(100);
+  return new TextDecoder().decode(merged);
+}
+
 export interface CountryConfig {
   id: CameraCountry;
   label: string;
@@ -80,7 +127,10 @@ const RETRY_DELAY_MS = 1000;
  * This is instantaneous after first load (cached per country)
  * Includes retry logic for network failures
  */
-export async function loadBundledCameras(country: CameraCountry = 'us'): Promise<ALPRCamera[]> {
+export async function loadBundledCameras(
+  country: CameraCountry = 'us',
+  onProgress?: DownloadProgressCallback
+): Promise<ALPRCamera[]> {
   const state = loadStates[country];
 
   // Return cached data if available
@@ -128,7 +178,9 @@ export async function loadBundledCameras(country: CameraCountry = 'us'): Promise
           throw new Error(`Failed to load camera data: ${response.status}`);
         }
         
-        const data = await response.json();
+        // Note: when a load is already in flight, callers get the cached
+        // promise and this onProgress belongs to the first initiator only.
+        const data = JSON.parse(await readBodyWithProgress(response, onProgress));
 
         // Support both GeoJSON FeatureCollection (from Worker) and legacy flat array
         let cameras: ALPRCamera[];
@@ -227,7 +279,10 @@ export async function loadBundledCameras(country: CameraCountry = 'us'): Promise
 /**
  * Retry loading cameras (for UI retry buttons)
  */
-export async function retryLoadCameras(country: CameraCountry = 'us'): Promise<ALPRCamera[]> {
+export async function retryLoadCameras(
+  country: CameraCountry = 'us',
+  onProgress?: DownloadProgressCallback
+): Promise<ALPRCamera[]> {
   if (import.meta.env.DEV) {
     console.log(`[CameraService] Retry requested for ${country}, clearing state...`);
   }
@@ -239,7 +294,7 @@ export async function retryLoadCameras(country: CameraCountry = 'us'): Promise<A
   state.cachedCameras = null;
   state.loadAttempts = 0;
 
-  return loadBundledCameras(country);
+  return loadBundledCameras(country, onProgress);
 }
 
 /**
