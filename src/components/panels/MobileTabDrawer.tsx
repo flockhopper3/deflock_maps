@@ -217,10 +217,15 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   // Entering a mode that has an identity peek from the minimized state
   // raises the sheet to peek — covers tab taps AND deep links, and never
-  // fights a user who deliberately expanded or is mid-gesture.
+  // fights a user who deliberately expanded or is mid-gesture. The mirror
+  // case: returning to Map (no peek content) from a mode parked at peek
+  // drops back to minimized so the swipe-up hint row returns; a
+  // deliberately-expanded full sheet is left alone.
   useEffect(() => {
     if (PEEK[appMode] && snapPoint === 'minimized') {
       setSnapPoint('peek');
+    } else if (!PEEK[appMode] && snapPoint === 'peek') {
+      setSnapPoint('minimized');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appMode]);
