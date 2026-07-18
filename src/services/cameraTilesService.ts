@@ -19,8 +19,11 @@ export const CAMERA_TILES_URL = `pmtiles://${CAMERA_TILES_ARCHIVE}`;
  * attributes, mirroring the main archive. Only attached to the map once a
  * filter activates; idle users never fetch it.
  */
-export const CAMERA_FILTER_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras-filter.pmtiles`;
+export const CAMERA_FILTER_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras-us-hourly-filter.pmtiles`;
 export const CAMERA_FILTER_TILES_URL = `pmtiles://${CAMERA_FILTER_TILES_ARCHIVE}`;
+/** TileJSON endpoint for the filter archive — used to verify the manifest and
+ *  tileset came from the same pipeline build (build-scoped ids). */
+export const CAMERA_FILTER_TILEJSON_URL = `${CAMERA_TILES_HOST}/cameras-us-hourly-filter.json`;
 export const CAMERA_TILES_SOURCE_LAYER = 'cameras';
 export const CAMERA_TILES_MAXZOOM = 14;
 /** Below this zoom, tile features have no attributes (no osmId, no direction). */

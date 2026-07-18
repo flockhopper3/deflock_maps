@@ -223,6 +223,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (isFilterTilesMode) setFilterLayersMounted(true);
   }, [isFilterTilesMode]);
 
+  // First successful load of the filtered source this map instance. Until
+  // then the default tile layers stay visible under the filtered ones, so
+  // activating a filter never blanks the camera layer while filter tiles
+  // stream in (and if the filter source is unhealthy, the map stays populated
+  // for the whole error window before the geojson fallback kicks in).
+  const [filterTilesReady, setFilterTilesReady] = useState(false);
+
   const manifest = useCameraStore((s) => s.manifest);
   const cameraFilters = useCameraStore((s) => s.filters);
   const tileFilterExpr = useMemo(
@@ -323,14 +330,18 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // that calls updateVisibleCameras on renderMode change fires immediately,
   // often before the newly-visible tile layer has actually painted, so its
   // query can read 0. This idle-triggered refresh corrects that once the map
-  // settles, without requiring a user pan/zoom.
+  // settles, without requiring a user pan/zoom. Also re-fires when
+  // filterTilesReady flips: during warmup the -filtered layer may be
+  // partially painted, so the count taken right as it finishes loading can
+  // still be off — the map may already be idle by then, so a dep-driven
+  // re-run (not just the idle listener) is needed to correct it.
   useEffect(() => {
     if (!(isFilterTilesMode || isTilesMode) || !mapRef.current) return;
     const map = mapRef.current.getMap();
     const onIdle = () => updateVisibleCameras();
     map.once('idle', onIdle);
     return () => { map.off('idle', onIdle); };
-  }, [isFilterTilesMode, isTilesMode, tileFilterExpr, updateVisibleCameras]);
+  }, [isFilterTilesMode, isTilesMode, tileFilterExpr, filterTilesReady, updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -665,18 +676,20 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     tileErrorCountRef.current = 0;
     filterTileLoadSeenRef.current = false;
     filterTileErrorCountRef.current = 0;
+    setFilterTilesReady(false);
   }, [mapKey]);
 
   const handleTileSourceData = useCallback((e: maplibregl.MapSourceDataEvent) => {
     if (!e.isSourceLoaded) return;
-    if (renderMode === 'tiles' && e.sourceId === 'camera-tiles') {
+    if (e.sourceId === 'camera-tiles') {
       tileLoadSeenRef.current = true;
-      setMarkersReady(true);
+      if (renderMode === 'tiles') setMarkersReady(true);
       return;
     }
-    if (renderMode === 'filter-tiles' && e.sourceId === 'camera-tiles-filtered') {
+    if (e.sourceId === 'camera-tiles-filtered') {
       filterTileLoadSeenRef.current = true;
-      setMarkersReady(true);
+      setFilterTilesReady(true);
+      if (renderMode === 'filter-tiles') setMarkersReady(true);
     }
   }, [renderMode]);
 
@@ -1123,8 +1136,15 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       {isMapMode && <BoundaryOverlayLayers />}
 
       {/* Camera tiles — the default rendering path. Always mounted; hidden
-          when the geojson path (filters/timeline/heatmap/CA) is active. */}
-      <CameraTileLayers visible={isTilesMode && showCameraMarkers && showCameraLayer} />
+          when the geojson path (filters/timeline/heatmap/CA) is active. Kept
+          visible through filter-tiles warmup (until filterTilesReady) so the
+          camera layer never blanks while the filtered source streams in. */}
+      <CameraTileLayers
+        visible={
+          (isTilesMode || (isFilterTilesMode && !filterTilesReady)) &&
+          showCameraMarkers && showCameraLayer
+        }
+      />
       {/* Filtered camera tiles — mounted the first time a filter is applied this
           session and left mounted (visibility toggles) so its tiles stay cached.
           Users who never filter never mount this source. */}

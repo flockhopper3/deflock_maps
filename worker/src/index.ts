@@ -65,7 +65,7 @@ export async function handleFetchRequest(
     headers: {
       'Content-Type': isManifest ? 'application/json' : 'application/geo+json',
       'Cache-Control': isManifest
-        ? 'public, max-age=300, s-maxage=3600'
+        ? 'public, max-age=300, s-maxage=300'
         : isHourly
           ? 'public, max-age=300, s-maxage=3600'
           : 'public, max-age=3600, s-maxage=86400',

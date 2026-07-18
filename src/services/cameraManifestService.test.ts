@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   loadCameraManifest,
+  verifyFilterTilesetVersion,
   _resetManifestCacheForTests,
 } from './cameraManifestService';
 
@@ -65,5 +66,42 @@ describe('loadCameraManifest', () => {
       new Response(JSON.stringify({ hello: 'world' }), { status: 200 })
     ));
     await expect(loadCameraManifest()).rejects.toThrow();
+  });
+});
+
+describe('verifyFilterTilesetVersion', () => {
+  const manifestVersion = 'abc123def4567890';
+
+  it('returns "match" when the TileJSON name contains the manifest version', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: `cameras-filter ${manifestVersion}` }), { status: 200 })
+    ));
+    await expect(verifyFilterTilesetVersion(manifestVersion)).resolves.toBe('match');
+  });
+
+  it('returns "mismatch" when the TileJSON name contains a different stamp', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: 'cameras-filter 1111111111111111' }), { status: 200 })
+    ));
+    await expect(verifyFilterTilesetVersion(manifestVersion)).resolves.toBe('mismatch');
+  });
+
+  it('returns "unknown" when the TileJSON name has no stamp', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: 'cameras-filter' }), { status: 200 })
+    ));
+    await expect(verifyFilterTilesetVersion(manifestVersion)).resolves.toBe('unknown');
+  });
+
+  it('returns "unknown" on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('nope', { status: 404 })
+    ));
+    await expect(verifyFilterTilesetVersion(manifestVersion)).resolves.toBe('unknown');
+  });
+
+  it('returns "unknown" when the fetch rejects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+    await expect(verifyFilterTilesetVersion(manifestVersion)).resolves.toBe('unknown');
   });
 });

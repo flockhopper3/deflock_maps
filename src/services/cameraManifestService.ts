@@ -1,4 +1,5 @@
 import type { CameraManifest } from '../types';
+import { CAMERA_FILTER_TILEJSON_URL } from './cameraTilesService';
 
 const DATA_API_URL =
   import.meta.env.VITE_DATA_API_URL || 'https://data.dontgetflocked.com';
@@ -40,6 +41,31 @@ export async function loadCameraManifest(): Promise<CameraManifest> {
     }
   })();
   return inFlight;
+}
+
+/**
+ * Verifies the filter tileset and manifest came from the same pipeline build.
+ * The pipeline stamps the manifest's `version` (16-hex hash of the source
+ * snapshot) into the filter tileset's TileJSON `name`. Returns:
+ *  - 'match'    — stamp found and equals the manifest version
+ *  - 'mismatch' — stamp found and differs (stale pair; filtering would be wrong)
+ *  - 'unknown'  — no stamp / fetch failed (older tileset build; skip the check)
+ */
+export async function verifyFilterTilesetVersion(
+  manifestVersion: string
+): Promise<'match' | 'mismatch' | 'unknown'> {
+  try {
+    const res = await fetch(CAMERA_FILTER_TILEJSON_URL);
+    if (!res.ok) return 'unknown';
+    const tilejson: unknown = await res.json();
+    const name = (tilejson as { name?: unknown }).name;
+    if (typeof name !== 'string') return 'unknown';
+    const stamp = name.match(/\b[0-9a-f]{16}\b/)?.[0];
+    if (!stamp) return 'unknown';
+    return stamp === manifestVersion ? 'match' : 'mismatch';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /** Test hook — not for app code. */

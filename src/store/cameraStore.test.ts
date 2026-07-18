@@ -49,14 +49,36 @@ describe('ensureManifestLoaded', () => {
     expect(useCameraStore.getState().manifestPhase).toBe('error');
   });
 
-  it('is idempotent once ready', async () => {
+  it('is idempotent once ready (no additional manifest fetch on re-invoke)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(validManifest), { status: 200 })
     );
     vi.stubGlobal('fetch', fetchMock);
     await useCameraStore.getState().ensureManifestLoaded();
+    // First call triggers the manifest fetch plus the fire-and-forget
+    // build-skew check (TileJSON fetch) — let it settle before counting.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await useCameraStore.getState().ensureManifestLoaded();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Re-invoking after manifest is ready returns early — no new fetches.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('degrades to the geojson path when the filter tileset build mismatches the manifest', async () => {
+    const versionedManifest = { ...validManifest, version: 'abc123def4567890' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(versionedManifest), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ name: 'cameras-filter 1111111111111111' }), { status: 200 })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    await useCameraStore.getState().ensureManifestLoaded();
+    expect(useCameraStore.getState().filterTilesFailed).toBe(false);
+    await vi.waitFor(() => {
+      expect(useCameraStore.getState().filterTilesFailed).toBe(true);
+    });
   });
 });
 

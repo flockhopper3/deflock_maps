@@ -12,7 +12,7 @@ import {
   getCamerasInBoundsFromGrid,
   type SpatialGrid
 } from '../utils/geo';
-import { loadCameraManifest } from '../services/cameraManifestService';
+import { loadCameraManifest, verifyFilterTilesetVersion } from '../services/cameraManifestService';
 import { brandMatchesSelection, operatorMatchesSelection } from '../lib/brandNormalization';
 
 /** Get the Monday (YYYY-MM-DD) of the ISO week containing the given ISO timestamp */
@@ -180,6 +180,15 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     try {
       const loaded = await loadCameraManifest();
       set({ manifest: loaded, manifestPhase: 'ready' });
+      // Build-scoped ids: if the tileset predates/postdates this manifest,
+      // expressions would select the wrong cameras. Degrade to the geojson
+      // path rather than filter wrongly. 'unknown' (unstamped build) skips.
+      void verifyFilterTilesetVersion(loaded.version).then((verdict) => {
+        if (verdict === 'mismatch') {
+          console.warn('[CameraStore] Filter tileset/manifest build mismatch — using GeoJSON path for filters');
+          set({ filterTilesFailed: true });
+        }
+      });
     } catch (error) {
       console.warn('[CameraStore] Manifest load failed — filters will use the GeoJSON path', error);
       set({ manifestPhase: 'error' });
