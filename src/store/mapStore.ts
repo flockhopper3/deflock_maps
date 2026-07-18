@@ -23,6 +23,10 @@ interface MapStoreState extends MapState {
   /** Approximate camera count in view when rendering from tiles (null = geojson mode). */
   tileViewCameraCount: number | null;
 
+  /** True when the boot URL pinned an explicit viewport (share link).
+   *  Set once by useUrlSync's seeding; never changes afterwards. */
+  urlHadViewport: boolean;
+
   // Actions
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
@@ -62,6 +66,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   flyToCommand: null,
   _timelineTickCallback: null,
   tileViewCameraCount: null,
+  urlHadViewport: false,
   fitBoundsCommand: null,
 
   setCenter: (center: [number, number]) => {

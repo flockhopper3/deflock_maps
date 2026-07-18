@@ -4,6 +4,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer, ArcLayer } from '@deck.gl/layers';
 import { useNetworkStore, classifyArcs } from '../../../store/networkStore';
 import type { NetworkNode, Direction, DirectionalArc } from '../../../store/networkStore';
+import { useMapStore } from '../../../store/mapStore';
 
 const NODE_COLORS: Record<string, [number, number, number]> = {
   pd:      [59, 130, 246],   // blue
@@ -276,7 +277,7 @@ export function NetworkLayers() {
   useEffect(() => {
     if (!mapgl) return;
     const map = mapgl.getMap();
-    const hasViewport = new URLSearchParams(window.location.search).has('lat');
+    const hasViewport = useMapStore.getState().urlHadViewport;
 
     const raf = requestAnimationFrame(() => {
       if (hasViewport) {
