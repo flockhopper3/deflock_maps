@@ -15,47 +15,85 @@ const CAMERA_VIEW_OPTIONS: { id: MapVisualization; label: string; description: s
 ];
 
 // ─── About This Map ─────────────────────────────────────────────────────────
-const ABOUT_ITEMS: { title: string; body: string; link?: { href: string; label: string } }[] = [
-  {
-    title: 'How it works',
-    body: 'Every marker is an automated license plate reader (ALPR) documented by DeFlock and OpenStreetMap contributors. The map refreshes hourly. Zoom in to see individual cameras and the direction they face.',
-  },
-  {
-    title: 'Contribute',
-    body: 'Anyone can add cameras. Spot an ALPR that is not on the map? Add it to OpenStreetMap and it will show up here.',
-    link: { href: 'https://deflock.me', label: 'Learn how to contribute' },
-  },
-  {
-    title: 'Fix a camera',
-    body: 'See a camera that is wrong or has been removed? Open its popup and use the View OSM link to correct it.',
-  },
-  {
-    title: 'About DeFlock',
-    body: 'DeFlock is a volunteer project that maps ALPR surveillance so everyone can see who is watching.',
-    link: { href: 'https://deflock.org', label: 'Visit deflock.org' },
-  },
+const HOW_IT_WORKS_STEPS = [
+  'Someone spots or verifies a camera.',
+  'They add or update it using the DeFlock app.',
+  'The information is saved to OpenStreetMap.',
+  'DeFlock displays the community-contributed data on this map.',
+];
+
+const ABOUT_BUTTONS: { href: string; label: string; primary?: boolean }[] = [
+  { href: 'https://deflock.org/app', label: 'Download the DeFlock App', primary: true },
+  { href: 'https://deflock.me', label: 'Learn How to Contribute' },
+  { href: 'https://www.openstreetmap.org/about', label: 'Learn About OpenStreetMap' },
 ];
 
 function AboutSection() {
   return (
     <Section title="About This Map" defaultOpen>
-      <div className="space-y-3">
-        {ABOUT_ITEMS.map((item) => (
-          <div key={item.title} className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
-            <p className="text-sm text-dark-300 font-medium mb-1">{item.title}</p>
-            <p className="text-xs text-dark-400 leading-relaxed">{item.body}</p>
-            {item.link && (
-              <a
-                href={item.link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block mt-2 text-xs font-medium text-accent hover:underline"
-              >
-                {item.link.label} →
-              </a>
-            )}
-          </div>
-        ))}
+      <div className="space-y-4">
+        <p className="text-xs text-dark-400 leading-relaxed">
+          DeFlock is an open-source, volunteer-powered project that helps people
+          identify and document automated license plate readers in their
+          communities.
+        </p>
+        <p className="text-xs text-dark-400 leading-relaxed">
+          The map is powered by OpenStreetMap, the free and editable map of the
+          world. Camera locations are added and maintained by DeFlock volunteers
+          and the wider OpenStreetMap community, not by a private company or
+          government agency.
+        </p>
+
+        <div className="bg-dark-800/50 rounded-xl p-4 border border-dark-700/50">
+          <p className="text-sm text-dark-300 font-medium mb-1">See something incorrect?</p>
+          <p className="text-xs text-dark-400 leading-relaxed">
+            A camera may be missing, moved, removed, or incorrectly identified.
+            You can help fix it.
+          </p>
+          <p className="text-xs text-dark-400 leading-relaxed mt-2">
+            Download the DeFlock app, sign in with a free OpenStreetMap account,
+            and add or update camera locations directly from your phone. Your
+            contribution becomes part of OpenStreetMap and helps improve the map
+            for everyone.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm text-dark-300 font-medium mb-2">How it works</p>
+          <ol className="space-y-2">
+            {HOW_IT_WORKS_STEPS.map((step, i) => (
+              <li key={step} className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-accent/10 text-accent text-[11px] font-bold flex items-center justify-center flex-shrink-0 tabular-nums">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-dark-400 leading-relaxed">{step}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-dark-500 leading-relaxed mt-3">
+            Every accurate contribution helps make surveillance infrastructure
+            more visible while strengthening OpenStreetMap&rsquo;s open,
+            community-built database.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {ABOUT_BUTTONS.map((btn) => (
+            <a
+              key={btn.label}
+              href={btn.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`block w-full text-center px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                btn.primary
+                  ? 'bg-accent text-white hover:bg-accent/90'
+                  : 'border border-dark-600 text-dark-200 hover:bg-dark-800'
+              }`}
+            >
+              {btn.label}
+            </a>
+          ))}
+        </div>
       </div>
     </Section>
   );
