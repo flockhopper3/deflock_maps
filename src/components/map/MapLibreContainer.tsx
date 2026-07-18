@@ -318,14 +318,19 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   }, [getCamerasInBounds, renderMode]);
 
   // Filter changes re-render tiles without a camera move — refresh the
-  // viewport count once the map has settled on the new filter.
+  // viewport count once the map has settled on the new filter. Also covers
+  // renderMode flipping back to plain 'tiles' (e.g. Reset): the effect below
+  // that calls updateVisibleCameras on renderMode change fires immediately,
+  // often before the newly-visible tile layer has actually painted, so its
+  // query can read 0. This idle-triggered refresh corrects that once the map
+  // settles, without requiring a user pan/zoom.
   useEffect(() => {
-    if (!isFilterTilesMode || !mapRef.current) return;
+    if (!(isFilterTilesMode || isTilesMode) || !mapRef.current) return;
     const map = mapRef.current.getMap();
     const onIdle = () => updateVisibleCameras();
     map.once('idle', onIdle);
     return () => { map.off('idle', onIdle); };
-  }, [isFilterTilesMode, tileFilterExpr, updateVisibleCameras]);
+  }, [isFilterTilesMode, isTilesMode, tileFilterExpr, updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
