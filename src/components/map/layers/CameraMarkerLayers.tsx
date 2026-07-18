@@ -55,14 +55,18 @@ const geojsonGlowLayer: maplibregl.LayerSpecification = {
       'interpolate', ['linear'], ['zoom'],
       8, 2,
       9, 5,
+      10, 9,
+      11, 10,
       12, 16,
     ],
-    // One gentle ramp to the full halo at z12 — matches camera-tile-glow
-    // (steeper mid-ramps read as flicker under wheel-kick zooming)
+    // Held subtle through the dense z9–11.5 band, full halo by z12 —
+    // matches camera-tile-glow (overlapping-halo shimmer scales with halo
+    // coverage, measured identical on both render paths)
     'circle-opacity': [
       'interpolate', ['linear'], ['zoom'],
       8, 0,
-      9, 0.25,
+      9, 0.15,
+      11, 0.15,
       12, 0.4,
     ],
     'circle-blur': 0.5,

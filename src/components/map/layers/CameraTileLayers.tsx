@@ -51,24 +51,28 @@ function buildLayerSpecs(
     minzoom: 8,
     paint: {
       'circle-color': '#4DA6FF',
-      // Stays just behind the mark it sits under — at z9 it is barely wider than
-      // the r≈4.3 dot, then blooms on ONE uniform slope to the full r=16 at
-      // z12. A steeper mid-ramp (5→10 over z9–10) made every wheel kick in
-      // the handoff band jump the whole halo field at once, which read as
-      // flicker — measured 2026-07-18, MapLibre wheel zoom advances in
-      // kick-then-pause sawtooths, so steep ramps render as steps.
+      // Held subtle through z9–11.5: thousands of overlapping translucent
+      // halos re-composite every frame while zooming over a dense metro, and
+      // the resulting shimmer was measured identically on the tile and
+      // geojson paths (2026-07-18) — it scales with halo coverage, not data
+      // source. Blooms to the full master r=16 by z12, where markers have
+      // separated and the field renders clean.
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
         8, 2,
         9, 5,
+        10, 9,
+        11, 10,
         12, 16,
       ],
-      // One gentle ramp to the full master-strength halo (0.4) at z12 — the
-      // bright glow is the signature DeFlock look, restored 2026-07-18.
+      // Low in the dense band, then up to the full master-strength halo
+      // (0.4) at z12 — the bright glow is the signature DeFlock look,
+      // restored 2026-07-18.
       'circle-opacity': [
         'interpolate', ['linear'], ['zoom'],
         8, 0,
-        9, 0.25,
+        9, 0.15,
+        11, 0.15,
         12, 0.4,
       ],
       'circle-blur': 0.5,
