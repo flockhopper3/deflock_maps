@@ -58,15 +58,15 @@ function buildLayerSpecs(
         10, 10,
         12, 16,
       ],
-      // Peaks during the handoff (it carries continuity there), then relaxes
-      // once points stand on their own — full-strength halos on every mark
-      // at close zoom is the main "too bright" offender.
+      // Ramps up through the handoff and holds the full master-strength halo
+      // (0.4) from z12 — the bright glow is the signature DeFlock look,
+      // restored 2026-07-18 from the pre-tiles design.
       'circle-opacity': [
         'interpolate', ['linear'], ['zoom'],
         8, 0,
         9, 0.25,
         10, 0.35,
-        12, 0.2,
+        12, 0.4,
       ],
       'circle-blur': 0.5,
       'circle-stroke-width': 0,
@@ -114,19 +114,19 @@ function buildLayerSpecs(
     // points at/above it — the two layers overlap on [9, 10).
     minzoom: CAMERA_POINTS_MINZOOM,
     paint: {
-      // Same blue as the density dots — the handoff changes mark anatomy
-      // (stroke, size), never hue, so zooming reads as one continuous layer.
-      'circle-color': '#4DA6FF',
+      // Enters in the dots' blue so the handoff never changes hue mid-fade,
+      // then deepens into the master dark fill by z10, where the light ring
+      // has reached full width and carries the contrast.
+      'circle-color': ['interpolate', ['linear'], ['zoom'], 9, '#4DA6FF', 10, '#0080BC'],
       // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
       // it holds past z10. The stroke widens 0→2 over the same span: at full
       // width from the start it would bolt 2px of outer radius on the instant
       // the point appears, which is a pop of its own.
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
       'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 2],
-      // Dark ring, not light: the light fill carries the identity, the ring
-      // just gives it an edge — a lighter-than-fill ring stacks three tiers
-      // of brightness (glow + fill + ring) and goes neon at close zoom.
-      'circle-stroke-color': '#0B5B93',
+      // Light near-white ring on a dark fill — the signature master look
+      // (glow + dark core + bright ring), restored 2026-07-18.
+      'circle-stroke-color': '#93CBFF',
       // Fully opaque by z9.6 — the dots above hold 0.75 until then, so the
       // combined mark never goes translucent enough for the basemap to bleed
       // through mid-handoff (the "green murk" failure mode).
