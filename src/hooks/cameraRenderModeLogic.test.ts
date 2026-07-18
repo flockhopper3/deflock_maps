@@ -4,7 +4,6 @@ import { resolveCameraRenderMode, type RenderModeInputs } from './cameraRenderMo
 const base: RenderModeInputs = {
   tilesFailed: false,
   filterTilesFailed: false,
-  country: 'us',
   attributeFiltersActive: false,
   timelineActive: false,
   appMode: 'map',
@@ -64,11 +63,10 @@ describe('resolveCameraRenderMode', () => {
     expect(r.renderMode).toBe('geojson');
   });
 
-  it('explore, heatmap, canada, and tilesFailed force geojson', () => {
+  it('explore, heatmap, and tilesFailed force geojson', () => {
     for (const patch of [
       { appMode: 'explore' },
       { mapModeViz: 'heatmap' },
-      { country: 'ca' },
       { tilesFailed: true },
     ] as Partial<RenderModeInputs>[]) {
       const r = resolveCameraRenderMode({ ...base, ...patch, geojsonReady: true });

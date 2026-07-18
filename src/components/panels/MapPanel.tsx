@@ -249,8 +249,10 @@ export function MapPanelContent() {
 
   // Warm the few-KB manifest so the nationwide brand breakdown (and the
   // filter button's option lists) are ready without any dataset download.
+  // Country switches reset manifestPhase, so the country dep re-warms with
+  // the new country's dictionary.
   useEffect(() => {
-    if (country === 'us') void ensureManifestLoaded();
+    void ensureManifestLoaded();
   }, [country, ensureManifestLoaded]);
 
   // Brand rows, best available source:
@@ -286,7 +288,7 @@ export function MapPanelContent() {
         total: viewportStats.count || 1,
       };
     }
-    if (country === 'us' && manifest) {
+    if (manifest) {
       const named = manifest.brands.map((b) => ({ name: b.label, count: b.count }));
       const namedTotal = named.reduce((s, b) => s + b.count, 0);
       return {

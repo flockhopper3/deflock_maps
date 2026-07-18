@@ -16,7 +16,6 @@ export function useCameraRenderMode(): {
   renderMode: CameraRenderMode;
   needsGeojson: boolean;
 } {
-  const country = useCameraStore(s => s.country);
   const filters = useCameraStore(s => s.filters);
   const isInitialized = useCameraStore(s => s.isInitialized);
   const tilesFailed = useCameraStore(s => s.tilesFailed);
@@ -28,7 +27,6 @@ export function useCameraRenderMode(): {
   const { renderMode, needsGeojson, needsManifest } = resolveCameraRenderMode({
     tilesFailed,
     filterTilesFailed,
-    country,
     attributeFiltersActive: !filters.showAll,
     timelineActive: !!filters.timelineDate,
     appMode,

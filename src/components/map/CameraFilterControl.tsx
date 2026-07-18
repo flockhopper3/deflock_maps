@@ -398,21 +398,14 @@ export function CameraFilterControl() {
   const applyPendingFilters = useCameraStore((s) => s.applyPendingFilters);
   const resetAllFilters = useCameraStore((s) => s.resetAllFilters);
   const manifest = useCameraStore((s) => s.manifest);
-  const country = useCameraStore((s) => s.country);
 
   const brandOptions = useMemo(
-    () =>
-      country === 'us' && manifest
-        ? manifest.brands.map((b) => b.label)
-        : availableBrands,
-    [country, manifest, availableBrands]
+    () => (manifest ? manifest.brands.map((b) => b.label) : availableBrands),
+    [manifest, availableBrands]
   );
   const operatorOptions = useMemo(
-    () =>
-      country === 'us' && manifest
-        ? manifest.operators.map((o) => o.label)
-        : availableOperators,
-    [country, manifest, availableOperators]
+    () => (manifest ? manifest.operators.map((o) => o.label) : availableOperators),
+    [manifest, availableOperators]
   );
 
   // Re-stage pending filters from the applied set each time the UI opens

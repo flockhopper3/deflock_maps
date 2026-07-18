@@ -3,7 +3,6 @@ export type CameraRenderMode = 'tiles' | 'filter-tiles' | 'geojson';
 export interface RenderModeInputs {
   tilesFailed: boolean;
   filterTilesFailed: boolean;
-  country: string;
   /** Any brand/operator/zone/mount filter applied (filters.showAll === false). */
   attributeFiltersActive: boolean;
   /** Timeline date cutoff set — needs per-camera timestamps (GeoJSON only). */
@@ -24,7 +23,8 @@ export interface RenderModeResult {
 /**
  * Decides the camera rendering path. Precedence:
  * 1. Anything needing per-camera data at all zooms that tiles can't provide
- *    (Explore, heatmap, timeline, Canada, main-tiles failure) → geojson.
+ *    (Explore, heatmap, timeline, main-tiles failure) → geojson. Both US and
+ *    Canada have hourly tile archives, so country no longer forces geojson.
  * 2. Attribute filters → filter-tiles when manifest + filter tileset are
  *    healthy; degrade to geojson when either failed; hold plain tiles while
  *    the manifest is still loading.
@@ -35,7 +35,6 @@ export interface RenderModeResult {
 export function resolveCameraRenderMode(i: RenderModeInputs): RenderModeResult {
   const needsGeojsonBase =
     i.tilesFailed ||
-    i.country === 'ca' ||
     i.timelineActive ||
     i.appMode === 'explore' ||
     (i.appMode === 'map' && i.mapModeViz === 'heatmap');

@@ -69,7 +69,7 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_METADATA_MINZOOM, CAMERA_FILTER_TILES_URL } from '../../services/cameraTilesService';
+import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_METADATA_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
 import { normalizeBrand } from '../../lib/brandNormalization';
 import { loadStateGeometry } from '../../services/stateFilterService';
 import type { TileViewBrandStats } from '../../store/mapStore';
@@ -188,6 +188,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const { setViewState, setBounds, clearFlyToCommand } = useMapStore.getState();
   const filteredCameras = useCameraStore(s => s.filteredCameras);
   const cameras = useCameraStore(s => s.cameras);
+  const country = useCameraStore(s => s.country);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const dataVersion = useCameraStore(s => s.dataVersion);
   const appMode = useAppModeStore(s => s.appMode);
@@ -394,6 +395,19 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     map.once('idle', onIdle);
     return () => { map.off('idle', onIdle); };
   }, [isFilterTilesMode, isTilesMode, tileFilterExpr, filterTilesReady, updateVisibleCameras]);
+
+  // moveend's count query races tile loading — a flyTo (e.g. search jump)
+  // lands and counts before the destination's tiles arrive, reading a stale 0
+  // that nothing corrects until the next gesture (verified: search-fly to
+  // Houston held "0 cameras in view" through 9s of idle; a 10px nudge read
+  // 1,583). Counting again on the next idle picks up the settled tiles.
+  const handleMoveEnd = useCallback(() => {
+    updateVisibleCameras();
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    map.off('idle', updateVisibleCameras);
+    map.once('idle', updateVisibleCameras);
+  }, [updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -1168,7 +1182,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       style={{ width: '100%', height: '100%' }}
       mapStyle={mapStyle}
       onMove={onMove}
-      onMoveEnd={updateVisibleCameras}
+      onMoveEnd={handleMoveEnd}
       onLoad={onLoad}
       // Bound at map creation — camera-tile readiness must not wait for `load`.
       onSourceData={handleTileSourceData}
@@ -1204,10 +1218,14 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       {isMapMode && <BoundaryOverlayLayers />}
 
       {/* Camera tiles — the default rendering path. Always mounted; hidden
-          when the geojson path (filters/timeline/heatmap/CA) is active. Kept
+          when the geojson path (filters/timeline/heatmap) is active. Kept
           visible through filter-tiles warmup (until filterTilesReady) so the
-          camera layer never blanks while the filtered source streams in. */}
+          camera layer never blanks while the filtered source streams in.
+          Keyed by country so a switch remounts source + layers cleanly on the
+          other country's archive. */}
       <CameraTileLayers
+        key={country}
+        sourceUrl={cameraTilesUrl(country)}
         visible={
           (isTilesMode || (isFilterTilesMode && !filterTilesReady)) &&
           showCameraMarkers && showCameraLayer
@@ -1218,9 +1236,10 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
           Users who never filter never mount this source. */}
       {filterLayersMounted && (
         <CameraTileLayers
+          key={`filtered-${country}`}
           visible={isFilterTilesMode && showCameraMarkers && showCameraLayer}
           sourceId="camera-tiles-filtered"
-          sourceUrl={CAMERA_FILTER_TILES_URL}
+          sourceUrl={cameraFilterTilesUrl(country)}
           idSuffix="-filtered"
           filter={tileFilterExpr}
         />

@@ -6,28 +6,41 @@ import { Protocol } from 'pmtiles';
  * flockhopper-tiles worker (R2-backed, Range requests).
  *
  * Archive facts (from its TileJSON):
- * - source-layer: 'cameras', zooms 0-14
- * - z0-10 tiles are geometry-only (built with --exclude-all)
- * - z11+ tiles carry full attributes for popups/cones
+ * - source-layer: 'cameras', zooms 0-14, rebuilt hourly
+ * - z0-8 tiles are geometry-only (built with --exclude-all)
+ * - z9+ tiles carry full attributes for popups/cones
+ * - zero tile buffer — no duplicated points along tile seams, so
+ *   translucent circle layers never double-blend
  */
 export const CAMERA_TILES_HOST = 'https://tiles.dontgetflocked.com';
-export const CAMERA_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras.pmtiles`;
-export const CAMERA_TILES_URL = `pmtiles://${CAMERA_TILES_ARCHIVE}`;
+
+/** Countries with hourly tile archives (both main + filter companions). */
+export type CameraTileCountry = 'us' | 'ca';
+
+export const cameraTilesUrl = (country: CameraTileCountry) =>
+  `pmtiles://${CAMERA_TILES_HOST}/cameras-${country}-hourly.pmtiles`;
 /**
  * Filter-enabled companion archive: same points, but with integer filter
- * codes (b/o/z/m) at ALL zooms — z11+ additionally carries the full
+ * codes (b/o/z/m) at ALL zooms — z9+ additionally carries the full
  * attributes, mirroring the main archive. Only attached to the map once a
  * filter activates; idle users never fetch it.
  */
-export const CAMERA_FILTER_TILES_ARCHIVE = `${CAMERA_TILES_HOST}/cameras-us-hourly-filter.pmtiles`;
-export const CAMERA_FILTER_TILES_URL = `pmtiles://${CAMERA_FILTER_TILES_ARCHIVE}`;
+export const cameraFilterTilesUrl = (country: CameraTileCountry) =>
+  `pmtiles://${CAMERA_TILES_HOST}/cameras-${country}-hourly-filter.pmtiles`;
 /** TileJSON endpoint for the filter archive — used to verify the manifest and
  *  tileset came from the same pipeline build (build-scoped ids). */
-export const CAMERA_FILTER_TILEJSON_URL = `${CAMERA_TILES_HOST}/cameras-us-hourly-filter.json`;
+export const cameraFilterTileJsonUrl = (country: CameraTileCountry) =>
+  `${CAMERA_TILES_HOST}/cameras-${country}-hourly-filter.json`;
+/** Filter dictionary paired with the filter archive — ids are build-scoped,
+ *  so it is served alongside the tiles and must be fetched fresh with them. */
+export const cameraManifestUrl = (country: CameraTileCountry) =>
+  `${CAMERA_TILES_HOST}/cameras-${country}-hourly-manifest.json`;
+
+export const CAMERA_TILES_URL = cameraTilesUrl('us');
 export const CAMERA_TILES_SOURCE_LAYER = 'cameras';
 export const CAMERA_TILES_MAXZOOM = 14;
 /** Below this zoom, tile features have no attributes (no osmId, no direction). */
-export const CAMERA_METADATA_MINZOOM = 11;
+export const CAMERA_METADATA_MINZOOM = 9;
 /**
  * Zoom at which the full camera points layer takes over from the density dots.
  * The dots layer runs to maxzoom 12, so the two overlap on [11, 12).

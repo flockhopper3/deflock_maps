@@ -176,7 +176,8 @@ export function CameraTileLayers({
       filter,
     });
 
-    // Tiles duplicate features in buffers — dedupe by osmId (present at z11+)
+    // Dedupe by osmId (present at z9+) — zero-buffer tiles shouldn't duplicate
+    // features, but querySourceFeatures can still return one per tile+zoom copy
     const seen = new Set<number>();
     const features: GeoJSON.Feature[] = [];
     for (const f of rendered) {

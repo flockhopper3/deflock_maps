@@ -3,7 +3,7 @@ import { useAppModeStore } from '@/store/appModeStore';
 import { useCameraStore } from '@/store/cameraStore';
 import type { AppMode } from '@/store/appModeStore';
 import type { CameraCountry } from '@/services/cameraDataService';
-import { normalizeStateCode } from '@/services/stateFilterService';
+import { normalizeStateCode, stateSlug } from '@/services/stateFilterService';
 
 interface ViewportParams {
   lat: number;
@@ -63,12 +63,11 @@ export function writeViewportParams(params: URLSearchParams): URLSearchParams {
     params.delete('country');
   }
 
-  // State filter (map mode) — makes filtered views shareable: ?state=TX
-  if (filters.state && appMode === 'map') {
-    params.set('state', filters.state);
-  } else {
-    params.delete('state');
-  }
+  // The state filter lives in the PATH (/state/texas — see MapPage's
+  // canonical-path effect), so the legacy ?state= param is always cleared
+  // to avoid double-encoding. parseStateFromURL still accepts it as input.
+  void filters;
+  params.delete('state');
 
   return params;
 }
@@ -96,7 +95,11 @@ export function parseCountryFromURL(searchParams: URLSearchParams): CameraCountr
  */
 export function buildShareURL(): string {
   const { appMode } = useAppModeStore.getState();
-  const path = MODE_PATHS[appMode] ?? '/';
+  const { filters } = useCameraStore.getState();
+  const path =
+    appMode === 'map' && filters.state
+      ? `/state/${stateSlug(filters.state)}`
+      : MODE_PATHS[appMode] ?? '/';
   const params = writeViewportParams(new URLSearchParams());
   return `${window.location.origin}${path}?${params.toString()}`;
 }

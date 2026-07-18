@@ -12,7 +12,7 @@ import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
 import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
 import { parseViewportFromURL, parseCountryFromURL, parseStateFromURL, writeViewportParams } from '@/utils/urlParams';
-import { loadStateGeometry, getStateBounds } from '@/services/stateFilterService';
+import { loadStateGeometry, getStateBounds, stateFromSlug, stateSlug, getStateName } from '@/services/stateFilterService';
 import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
@@ -86,28 +86,59 @@ export function MapPage() {
     }
   });
 
-  // Deep link: ?state=TX applies the state filter and frames the state
-  // (unless the URL also pins an explicit viewport). Runs once on mount.
+  // Deep link: /state/texas (or /state/tx, or legacy ?state=TX) applies the
+  // state filter and frames the state (unless the URL also pins an explicit
+  // viewport). Runs once on mount.
+  const stateBootDone = useRef(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const state = parseStateFromURL(params);
-    if (!state) return;
+    const pathMatch = window.location.pathname.match(/^\/state\/([^/]+)\/?$/);
+    const state = stateFromSlug(pathMatch?.[1]) ?? parseStateFromURL(params);
+    if (!state) {
+      stateBootDone.current = true;
+      return;
+    }
     const hasExplicitViewport = parseViewportFromURL(params) !== null;
     let cancelled = false;
-    void loadStateGeometry(state).then((feature) => {
-      if (cancelled || !feature) return;
-      useCameraStore.getState().setFilters({ state, showAll: false });
-      if (!hasExplicitViewport) {
-        useMapStore.getState().requestFitBounds(getStateBounds(feature));
-      }
-    });
+    void loadStateGeometry(state)
+      .then((feature) => {
+        if (cancelled) return;
+        if (feature) {
+          useCameraStore.getState().setFilters({ state, showAll: false });
+          if (!hasExplicitViewport) {
+            useMapStore.getState().requestFitBounds(getStateBounds(feature));
+          }
+        }
+        stateBootDone.current = true;
+      })
+      .catch(() => { stateBootDone.current = true; });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Canonical state path: in map mode the pathname mirrors the state filter
+  // (/state/texas ↔ filter set, / ↔ cleared). Never fights other modes'
+  // paths — only rewrites when already on a map-mode path.
+  const stateFilter = useCameraStore(s => s.filters.state);
+  useEffect(() => {
+    if (appMode !== 'map') return;
+    const path = window.location.pathname;
+    const onMapPath = path === '/' || path === '/map' || path.startsWith('/state/');
+    if (!onMapPath) return;
+    // A valid /state/... path whose filter hasn't applied yet means the boot
+    // effect is still loading the boundary — don't strip the path from under
+    // it (StrictMode re-runs the boot effect and would re-read a bare '/').
+    // Once boot settles, a filterless state path is a cleared filter → '/'.
+    const pathState = stateFromSlug(path.match(/^\/state\/([^/]+)\/?$/)?.[1]);
+    if (pathState && !stateFilter && !stateBootDone.current) return;
+    const desired = stateFilter ? `/state/${stateSlug(stateFilter)}` : '/';
+    if (path !== desired) {
+      navigate({ pathname: desired, search: window.location.search }, { replace: true });
+    }
+  }, [appMode, stateFilter, navigate]);
+
   // Debounced live URL sync: mirrors whatever buildShareURL would produce,
   // so copying the address bar equals clicking Share.
-  const stateFilter = useCameraStore(s => s.filters.state);
   useEffect(() => {
     const t = setTimeout(() => {
       setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
@@ -307,8 +338,13 @@ export function MapPage() {
   // The pill covers GeoJSON loads with no visible panel to host a skeleton:
   // mobile, and any non-explore desktop context (heatmap/filters/Canada).
   // Desktop Timeline gets an in-panel skeleton instead (ExplorePanel).
+  // Deliberately NOT gated on !camerasReady: camerasReady flips true in the
+  // same atomic store commit as loadPhase → 'ready', so gating on it here
+  // would unmount the pill before it can render its own "N cameras ready"
+  // completion flash. The pill owns its own visibility (idle/ready-without-
+  // flash → null) so it's safe to keep mounted through the ready transition.
   const showCameraPill =
-    needsGeojson && !camerasReady && !mapInitError &&
+    needsGeojson && !mapInitError &&
     (isMobile || appMode !== 'explore');
 
   // /timeline path: auto-play dot density animation once map is ready
@@ -323,7 +359,13 @@ export function MapPage() {
     }
   }, [isTimelinePath, isFullyReady, updateTimelineSettings]);
 
-  const seo = (
+  const seo = stateFilter ? (
+    <Seo
+      title={`${getStateName(stateFilter)} ALPR Cameras | DeFlock Maps`}
+      description={`Map of known ALPR (license plate reader) cameras in ${getStateName(stateFilter)}, with brand breakdowns and privacy-optimized routing.`}
+      path={`/state/${stateSlug(stateFilter)}`}
+    />
+  ) : (
     <Seo
       title="DeFlock Maps | ALPR Camera Map & Privacy Routes"
       description="Explore the national ALPR camera map and compare direct routes with privacy-optimized alternatives."

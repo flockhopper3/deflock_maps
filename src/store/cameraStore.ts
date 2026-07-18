@@ -180,16 +180,16 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   // Never rejects — failure is a state ('error'), consumed by the render-mode
   // fallback. Re-invoking after an error retries (service clears in-flight).
   ensureManifestLoaded: async () => {
-    const { manifest, manifestPhase } = get();
+    const { manifest, manifestPhase, country } = get();
     if (manifest || manifestPhase === 'loading') return;
     set({ manifestPhase: 'loading' });
     try {
-      const loaded = await loadCameraManifest();
+      const loaded = await loadCameraManifest(country);
       set({ manifest: loaded, manifestPhase: 'ready' });
       // Build-scoped ids: if the tileset predates/postdates this manifest,
       // expressions would select the wrong cameras. Degrade to the geojson
       // path rather than filter wrongly. 'unknown' (unstamped build) skips.
-      void verifyFilterTilesetVersion(loaded.version).then((verdict) => {
+      void verifyFilterTilesetVersion(loaded.version, country).then((verdict) => {
         if (verdict === 'mismatch') {
           console.warn('[CameraStore] Filter tileset/manifest build mismatch — using GeoJSON path for filters');
           set({ filterTilesFailed: true });
@@ -406,6 +406,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
           mountTypes: [],
           state: null,
         },
+        // Manifest ids are country- and build-scoped: drop the old country's
+        // dictionary and any tile-failure verdicts so the new country's
+        // archives get a clean attempt.
+        manifest: null,
+        manifestPhase: 'idle',
+        filterTilesFailed: false,
+        tilesFailed: false,
         isCountrySwitching: false,
         isLoading: false,
         isInitialized: true,

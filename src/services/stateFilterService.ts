@@ -82,6 +82,22 @@ export function getStateName(postal: string): string {
   return stateByPostal.get(postal)?.name ?? postal;
 }
 
+/** URL path slug for a state: kebab-case full name ("new-hampshire"). */
+export function stateSlug(postal: string): string {
+  return getStateName(postal).toLowerCase().replace(/\s+/g, '-');
+}
+
+/** Resolves a /state/:slug path segment — accepts the kebab-case name
+ *  ("texas", "new-hampshire") or a postal code ("tx"). Null if unknown. */
+export function stateFromSlug(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  const lower = slug.toLowerCase();
+  const byPostal = normalizeStateCode(lower);
+  if (byPostal) return byPostal;
+  const match = US_STATES.find((s) => s.name.toLowerCase().replace(/\s+/g, '-') === lower);
+  return match ? match.postal : null;
+}
+
 type StateFeature = GeoJSON.Feature<
   GeoJSON.Polygon | GeoJSON.MultiPolygon,
   { GEOID: string; name: string; cameraCount?: number }

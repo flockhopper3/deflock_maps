@@ -75,6 +75,7 @@ createRoot(document.getElementById('root')!).render(
             <Routes>
               <Route path="/" element={<MapPage />} />
               <Route path="/map" element={<MapPage />} />
+              <Route path="/state/:stateSlug" element={<MapPage />} />
               <Route path="/explore" element={<MapPage />} />
               <Route path="/timeline" element={<MapPage />} />
               <Route path="/analysis" element={<MapPage />} />
