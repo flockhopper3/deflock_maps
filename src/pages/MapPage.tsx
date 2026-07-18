@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { MapLibreView, MapSearch, FloatingRouteCard, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
 import { HeaderCameraCount } from '@/components/map/HeaderCameraCount';
 import { RoutePanel } from '@/components/panels';
@@ -13,20 +12,19 @@ import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
 import { NetworkLoadingPill } from '@/components/map/NetworkLoadingPill';
 import { DensityLoadingPill } from '@/components/map/DensityLoadingPill';
 import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
-import { parseViewportFromURL, parseCountryFromURL, parseStateFromURL, writeViewportParams } from '@/utils/urlParams';
-import { loadStateGeometry, getStateBounds, stateFromSlug, stateSlug, getStateName } from '@/services/stateFilterService';
-import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
+import { stateSlug, getStateName } from '@/services/stateFilterService';
+import { isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { removeBootSplash } from '@/utils/bootSplash';
-import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
+import { useCameraStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useUrlSync } from '@/hooks/useUrlSync';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { CameraFilterControl } from '@/components/map/CameraFilterControl';
 import { MapThemeControl } from '@/components/map/MapThemeControl';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
-import { TIMELINE_START } from '@/modes/timeline/timelineUtils';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
 import { Route, Compass, BarChart3, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
@@ -49,175 +47,31 @@ export function MapPage() {
     cameras,
     country,
   } = useCameraStore();
-  const center = useMapStore(s => s.center);
-  const zoom = useMapStore(s => s.zoom);
   const appMode = useAppModeStore(s => s.appMode);
-  const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const setAppMode = useAppModeStore(s => s.setAppMode);
-  const isEmbed = useEmbedMode();
+  const enterTimeline = useAppModeStore(s => s.enterTimeline);
   const updateTimelineSettings = useAppModeStore(s => s.updateTimelineSettings);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const isExplorePath = location.pathname === '/explore';
-  const isTimelinePath = location.pathname === '/timeline';
-  const isAnalysisPath = location.pathname === '/analysis';
-  const isNetworkPath = location.pathname === '/network';
-  const isRoutePath = location.pathname === '/route';
+  const isEmbed = useEmbedMode();
   const isExploreMode = appMode === 'explore';
   const hasAutoPlayed = useRef(false);
 
-  // Seed map viewport + country from URL params once, before MapLibreContainer
-  // mounts and before the camera load starts (so a ?country=ca link fetches
-  // the Canadian dataset directly and never downloads the US one).
-  // useState initializer runs once — sets stores synchronously.
-  useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlCountry = parseCountryFromURL(params);
-    if (urlCountry) {
-      useCameraStore.setState({ country: urlCountry });
-    }
-    const viewport = parseViewportFromURL(params);
-    if (viewport) {
-      useMapStore.setState({ center: [viewport.lat, viewport.lng], zoom: viewport.zoom });
-    } else if (urlCountry) {
-      // No explicit viewport — start on the linked country instead of the US default
-      useMapStore.setState({
-        center: COUNTRIES[urlCountry].center,
-        zoom: countryZoomForViewport(urlCountry),
-      });
-    }
-  });
+  // Single URL↔state bridge: seeds stores from the boot URL (viewport,
+  // country, mode, state filter) and mirrors store changes back into the
+  // address bar. All URL logic lives in useUrlSync/urlState.
+  useUrlSync();
 
-  // Deep link: /state/texas (or /state/tx, or legacy ?state=TX) applies the
-  // state filter and frames the state (unless the URL also pins an explicit
-  // viewport). Runs once on mount.
-  const stateBootDone = useRef(false);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const pathMatch = window.location.pathname.match(/^\/state\/([^/]+)\/?$/);
-    const state = stateFromSlug(pathMatch?.[1]) ?? parseStateFromURL(params);
-    if (!state) {
-      stateBootDone.current = true;
-      return;
-    }
-    const hasExplicitViewport = parseViewportFromURL(params) !== null;
-    let cancelled = false;
-    void loadStateGeometry(state)
-      .then((feature) => {
-        if (cancelled) return;
-        if (feature) {
-          useCameraStore.getState().setFilters({ state, showAll: false });
-          if (!hasExplicitViewport) {
-            useMapStore.getState().requestFitBounds(getStateBounds(feature));
-          }
-        }
-        stateBootDone.current = true;
-      })
-      .catch(() => { stateBootDone.current = true; });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Canonical state path: in map mode the pathname mirrors the state filter
-  // (/state/texas ↔ filter set, / ↔ cleared). Never fights other modes'
-  // paths — only rewrites when already on a map-mode path.
   const stateFilter = useCameraStore(s => s.filters.state);
-  useEffect(() => {
-    if (appMode !== 'map') return;
-    const path = window.location.pathname;
-    const onMapPath = path === '/' || path === '/map' || path.startsWith('/state/');
-    if (!onMapPath) return;
-    // A valid /state/... path whose filter hasn't applied yet means the boot
-    // effect is still loading the boundary — don't strip the path from under
-    // it (StrictMode re-runs the boot effect and would re-read a bare '/').
-    // Once boot settles, a filterless state path is a cleared filter → '/'.
-    const pathState = stateFromSlug(path.match(/^\/state\/([^/]+)\/?$/)?.[1]);
-    if (pathState && !stateFilter && !stateBootDone.current) return;
-    const desired = stateFilter ? `/state/${stateSlug(stateFilter)}` : '/';
-    if (path !== desired) {
-      navigate({ pathname: desired, search: window.location.search }, { replace: true });
-    }
-  }, [appMode, stateFilter, navigate]);
-
-  // Debounced live URL sync: mirrors whatever buildShareURL would produce,
-  // so copying the address bar equals clicking Share.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [center, zoom, appMode, mapVisualization, country, stateFilter, setSearchParams]);
-
   const isMobile = useIsMobile();
 
-  // Sync URL params with app mode on mount
-  useEffect(() => {
-    const vizParam = searchParams.get('viz');
-    const viz = vizParam === 'heatmap' ? 'heatmap' : 'dots';
-
-    if (isAnalysisPath) {
-      setAppMode('density');
-    } else if (isExplorePath || isTimelinePath) {
-      useAppModeStore.setState({
-        appMode: 'explore',
-        mapVisualization: viz,
-        timelineSettings: {
-          currentDate: isTimelinePath ? TIMELINE_START : new Date().toISOString().slice(0, 10),
-          isPlaying: false,
-          playSpeed: 45,
-        },
-      });
-    } else if (isNetworkPath) {
-      setAppMode('network');
-    } else if (isRoutePath) {
-      setAppMode('route');
-    } else {
-      const urlMode = searchParams.get('mode');
-      if (urlMode === 'route') {
-        setAppMode('route');
-      } else if (urlMode === 'explore') {
-        setAppMode('explore');
-      } else if (urlMode === 'density') {
-        setAppMode('density');
-      } else if (urlMode === 'network') {
-        setAppMode('network');
-      } else {
-        setAppMode('map');
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Update URL when mode changes
+  // Mode switching is a plain store update — the URL follows via useUrlSync.
   const handleSetAppMode = useCallback((mode: AppMode) => {
     if (mode === 'explore') {
-      // Set timeline state directly — bypass setAppMode which defaults to today's date
-      useAppModeStore.setState({
-        appMode: 'explore',
-        mapVisualization: 'dots',
-        timelineSettings: {
-          currentDate: TIMELINE_START,
-          isPlaying: false,
-          playSpeed: 45,
-        },
-      });
+      enterTimeline();
       hasAutoPlayed.current = false;
-      navigate('/timeline', { replace: true });
-    } else if (mode === 'map') {
+    } else {
       setAppMode(mode);
-      setSearchParams({}, { replace: true });
-    } else if (mode === 'route') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'route' }, { replace: true });
-    } else if (mode === 'density') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'density' }, { replace: true });
-    } else if (mode === 'network') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'network' }, { replace: true });
     }
-  }, [setAppMode, setSearchParams, navigate]);
+  }, [enterTimeline, setAppMode]);
 
   // US-only modes (Route/Analysis/Network): bounce back to Map when Canada
   // is active — covers the country switcher, deep links, and URL edits
@@ -351,9 +205,9 @@ export function MapPage() {
     needsGeojson && !mapInitError &&
     (isMobile || appMode !== 'explore');
 
-  // /timeline path: auto-play dot density animation once map is ready
+  // Timeline entry: auto-play the dot density animation once the map is ready
   useEffect(() => {
-    if (isTimelinePath && isFullyReady && !hasAutoPlayed.current) {
+    if (isExploreMode && isFullyReady && !hasAutoPlayed.current) {
       hasAutoPlayed.current = true;
       // Short delay so TimelineBar mounts and registers the tick callback
       const timer = setTimeout(() => {
@@ -361,7 +215,7 @@ export function MapPage() {
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [isTimelinePath, isFullyReady, updateTimelineSettings]);
+  }, [isExploreMode, isFullyReady, updateTimelineSettings]);
 
   const seo = stateFilter ? (
     <Seo

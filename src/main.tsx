@@ -4,13 +4,15 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { ErrorBoundary } from './components/common';
 import { useCameraStore } from './store/cameraStore';
+import { parseCountryParam } from './utils/urlState';
 import './index.css';
 
 // Seed the camera country from the URL before anything triggers the lazy
 // camera JSON load, so a ?country=ca link downloads only the Canadian dataset.
-// (MapPage seeds it too, but it's lazy-loaded and can mount after this runs.)
-if (new URLSearchParams(window.location.search).get('country') === 'ca') {
-  useCameraStore.setState({ country: 'ca' });
+// (useUrlSync seeds it too, but MapPage is lazy-loaded and can mount later.)
+const bootCountry = parseCountryParam(window.location.search);
+if (bootCountry) {
+  useCameraStore.setState({ country: bootCountry });
 }
 
 // Polyfill for Safari (doesn't support requestIdleCallback)

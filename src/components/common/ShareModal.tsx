@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { X, Link, Code, Download, Check } from 'lucide-react';
-import { buildShareURL } from '@/utils/urlParams';
+import { buildShareURL } from '@/utils/urlState';
 
 interface ShareModalProps {
   onClose: () => void;
