@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouteStore, useMapStore } from '../../store';
 import { smartSearch, toLocation, type GeocodingResult } from '../../services/geocodingService';
+import { RouteScoreboard } from './RouteScoreboard';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 type Field = 'origin' | 'destination';
 type GeoState = 'idle' | 'loading' | 'error';
 
 /**
- * Floating route inputs rendered over the map on the Route tab.
- * Replaces MapSearch there. Two connected rows (start / destination),
- * Enter-to-search with a dropdown below the card, use-my-location on the
- * start row, swap on the divider, and a guided "Choose on map" sequence
- * button under the card.
+ * Floating route inputs and results card rendered over the map on the Route tab.
+ * Two connected rows (start / destination) with swap on the divider.
+ * Enter-to-search dropdown below the card shows use-my-location (origin) and
+ * choose-on-map actions when the focused field is empty.
  * Auto-calculates when both endpoints are set.
+ * On mobile with results present, shows a results scoreboard instead of the inputs
+ * (Edit route brings them back); desktop always shows the input card.
  */
 export function FloatingRouteCard() {
   const {
@@ -24,9 +27,17 @@ export function FloatingRouteCard() {
     isCalculating,
     error: routeError,
     normalRoute,
+    avoidanceRoute,
     startPickingLocation,
   } = useRouteStore();
   const flyTo = useMapStore(s => s.flyTo);
+
+  const isMobile = useIsMobile();
+  /* Results replace the inputs on mobile so screenshots never show the
+     user's addresses; Edit route brings the inputs back. */
+  const [isEditing, setIsEditing] = useState(false);
+  const hasRoutes = !!(normalRoute && avoidanceRoute);
+  const showScoreboard = isMobile && hasRoutes && !isEditing;
 
   const [originQuery, setOriginQuery] = useState('');
   const [destQuery, setDestQuery] = useState('');
@@ -47,6 +58,11 @@ export function FloatingRouteCard() {
   useEffect(() => {
     setDestQuery(destination?.name ?? '');
   }, [destination]);
+
+  /* Fresh results end an editing session. */
+  useEffect(() => {
+    if (normalRoute) setIsEditing(false);
+  }, [normalRoute]);
 
   /* Uncommitted text must not outlive the dropdown: closing without a
      selection reverts inputs to the committed store values. */
@@ -211,8 +227,12 @@ export function FloatingRouteCard() {
       ref={containerRef}
       className="absolute top-3 left-3 right-3 lg:top-4 lg:left-4 lg:right-auto z-40 lg:w-96"
     >
-      {/* Card */}
-      <div className="relative bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl backdrop-blur-sm">
+      {showScoreboard ? (
+        <RouteScoreboard onEdit={() => setIsEditing(true)} />
+      ) : (
+        <>
+          {/* Card */}
+          <div className="relative bg-dark-900/95 border border-dark-600 rounded-xl shadow-2xl backdrop-blur-sm">
         {/* Dotted rail connecting the two rows */}
         <div className="absolute left-[21px] top-[30px] bottom-[30px] w-px border-l border-dashed border-dark-500 pointer-events-none" />
 
@@ -294,7 +314,29 @@ export function FloatingRouteCard() {
             </button>
           )}
         </div>
-      </div>
+          </div>
+
+          {/* Back to results while editing with results still present */}
+          {isEditing && hasRoutes && (
+            <button
+              onClick={() => {
+                revertQueries();
+                setActiveField(null);
+                setResults([]);
+                setSearchError(null);
+                setIsEditing(false);
+              }}
+              type="button"
+              className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-900/95 border border-dark-600 text-xs text-dark-300 hover:text-white hover:border-dark-500 transition-colors backdrop-blur-sm"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+              </svg>
+              Back to results
+            </button>
+          )}
+        </>
+      )}
 
       {/* Status banner: calculating, or error with retry */}
       {isCalculating && (
