@@ -46,7 +46,11 @@ export function LoadingPill() {
   if (loadPhase === 'error' && error) {
     return (
       <button
-        onClick={() => { void retryCameraLoad(); }}
+        role="status"
+        onClick={() => {
+          // store owns the error state
+          retryCameraLoad().catch(() => {});
+        }}
         className={`${PILL_BASE} border border-danger/40 hover:border-danger transition-colors`}
       >
         <span className="w-2 h-2 rounded-full bg-danger shrink-0" />

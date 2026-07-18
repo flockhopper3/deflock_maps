@@ -372,9 +372,21 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
             </div>
           ) : (
             <>
-              <StopSheetDrag>
-                <div className="h-20"><TimelineBar bare showCount /></div>
-              </StopSheetDrag>
+              {cameraIsInitialized ? (
+                <StopSheetDrag>
+                  <div className="h-20"><TimelineBar bare showCount /></div>
+                </StopSheetDrag>
+              ) : (
+                // Placeholder keeps the h-20 scrubber row's height stable while
+                // the camera GeoJSON is still loading — avoids an empty
+                // sparkline, "· 0" count, and a dead play button (mirrors the
+                // desktop gate: isExploreMode && !isMobile && isInitialized).
+                <div className="h-20 flex items-center gap-2 lg:gap-3" aria-hidden="true">
+                  <Skeleton className="w-11 h-11 rounded-full flex-shrink-0" />
+                  <Skeleton className="flex-1 h-8 rounded-sm" />
+                  <Skeleton className="w-[150px] h-4 flex-shrink-0" />
+                </div>
+              )}
               <p className="text-2xs text-dark-500 uppercase mt-1">Cameras over time</p>
             </>
           )}
@@ -469,7 +481,10 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
                 <p className="text-sm text-red-400 mb-2">Failed to load camera data</p>
                 <p className="text-xs text-dark-500 mb-3">{cameraError}</p>
                 <button
-                  onClick={() => { void retryCameraLoad(); }}
+                  onClick={() => {
+                    // store owns the error state
+                    retryCameraLoad().catch(() => {});
+                  }}
                   className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
                 >
                   Retry

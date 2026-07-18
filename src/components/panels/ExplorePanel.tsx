@@ -53,7 +53,10 @@ export function ExplorePanel() {
           <p className="text-sm text-red-400 mb-2">Failed to load camera data</p>
           <p className="text-xs text-dark-500 mb-3">{cameraError}</p>
           <button
-            onClick={() => { void retryCameraLoad(); }}
+            onClick={() => {
+              // store owns the error state
+              retryCameraLoad().catch(() => {});
+            }}
             className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
           >
             Retry
