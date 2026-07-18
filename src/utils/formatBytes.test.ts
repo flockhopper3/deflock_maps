@@ -10,5 +10,6 @@ describe('formatBytes', () => {
   it('formats MB sizes with one decimal', () => {
     expect(formatBytes(2_100_000)).toBe('2.1 MB');
     expect(formatBytes(9_000_000)).toBe('9.0 MB');
+    expect(formatBytes(999_700)).toBe('1.0 MB');
   });
 });
