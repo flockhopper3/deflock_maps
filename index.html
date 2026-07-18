@@ -6,6 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0f" />
 
+    <!-- Critical inline style: paint the app's dark ground before any external
+         CSS/JS arrives, so slow connections never see a white screen. The
+         built stylesheet loads later and overrides as normal. -->
+    <style>
+      html { background-color: #0a0a0f; color-scheme: dark; }
+    </style>
+
     <!-- DNS Prefetch for external resources -->
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
 
