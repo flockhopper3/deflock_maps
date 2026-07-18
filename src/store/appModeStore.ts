@@ -85,6 +85,9 @@ interface AppModeState {
   exploreFeature: ExploreFeature;
   mapVisualization: MapVisualizationType;
   setAppMode: (mode: AppMode) => void;
+  /** Enter Timeline (explore) at the animation start date. The only
+   *  entry point for explore mode — deep links and tab clicks both. */
+  enterTimeline: (viz?: MapVisualizationType) => void;
   setExploreFeature: (feature: ExploreFeature) => void;
   setMapVisualization: (type: MapVisualizationType) => void;
 
@@ -108,25 +111,17 @@ export const useAppModeStore = create<AppModeState>((set) => ({
   appMode: 'map',
   exploreFeature: 'heatmap',
   mapVisualization: 'heatmap',
-  setAppMode: (mode) => {
-    if (mode === 'explore') {
-      // Default to today so all cameras are visible (no timeline filtering).
-      // The /timeline route explicitly overrides this to TIMELINE_START.
-      set({
-        appMode: mode,
-        timelineSettings: {
-          currentDate: new Date().toISOString().slice(0, 10),
-          isPlaying: false,
-          playSpeed: DEFAULT_TIMELINE_SETTINGS.playSpeed,
-        },
-      });
-    } else {
-      set((state) => ({
-        appMode: mode,
-        timelineSettings: { ...state.timelineSettings, isPlaying: false },
-      }));
-    }
-  },
+  setAppMode: (mode) =>
+    set((state) => ({
+      appMode: mode,
+      timelineSettings: { ...state.timelineSettings, isPlaying: false },
+    })),
+  enterTimeline: (viz = 'dots') =>
+    set({
+      appMode: 'explore',
+      mapVisualization: viz,
+      timelineSettings: { ...DEFAULT_TIMELINE_SETTINGS },
+    }),
   setExploreFeature: (feature) => set({ exploreFeature: feature }),
   setMapVisualization: (type) => set((state) => ({
     mapVisualization: type,
