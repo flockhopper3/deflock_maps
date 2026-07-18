@@ -1,14 +1,6 @@
 import { create } from 'zustand';
 import type { MapState, MapBounds } from '../types';
 
-/** Brand breakdown aggregated from rendered tile features. */
-export interface TileViewBrandStats {
-  /** Named canonical brands, sorted by count descending. */
-  brands: { name: string; count: number }[];
-  /** Cameras in view with no recognizable brand tag. */
-  unknownCount: number;
-}
-
 interface FlyToCommand {
   center: [number, number];
   zoom?: number;
@@ -31,11 +23,6 @@ interface MapStoreState extends MapState {
   /** Approximate camera count in view when rendering from tiles (null = geojson mode). */
   tileViewCameraCount: number | null;
 
-  /** Viewport brand breakdown from rendered tile attributes. Available in
-   *  filter-tiles mode at every zoom (integer codes) and in plain tiles mode
-   *  at z11+ (attribute tiles); null below z11 unfiltered and in geojson mode. */
-  tileViewBrandStats: TileViewBrandStats | null;
-
   // Actions
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
@@ -51,7 +38,6 @@ interface MapStoreState extends MapState {
   fitBounds: (bounds: MapBounds) => void;
   setTimelineTickCallback: (cb: ((dateStr: string) => void) | null) => void;
   setTileViewCameraCount: (count: number | null) => void;
-  setTileViewBrandStats: (stats: TileViewBrandStats | null) => void;
 
   /** One-shot command consumed by MapLibreContainer — frames the given
    *  bounds with the map's real projection/aspect (unlike flyTo's guess). */
@@ -76,7 +62,6 @@ export const useMapStore = create<MapStoreState>((set) => ({
   flyToCommand: null,
   _timelineTickCallback: null,
   tileViewCameraCount: null,
-  tileViewBrandStats: null,
   fitBoundsCommand: null,
 
   setCenter: (center: [number, number]) => {
@@ -133,7 +118,5 @@ export const useMapStore = create<MapStoreState>((set) => ({
   setTimelineTickCallback: (cb) => set({ _timelineTickCallback: cb }),
 
   setTileViewCameraCount: (count) => set({ tileViewCameraCount: count }),
-
-  setTileViewBrandStats: (stats) => set({ tileViewBrandStats: stats }),
 }));
 

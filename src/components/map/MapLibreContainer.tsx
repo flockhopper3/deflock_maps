@@ -69,10 +69,8 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, CAMERA_METADATA_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
-import { normalizeBrand } from '../../lib/brandNormalization';
+import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
 import { loadStateGeometry } from '../../services/stateFilterService';
-import type { TileViewBrandStats } from '../../store/mapStore';
 import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
 const TILES_URL = 'https://tiles.dontgetflocked.com';
@@ -294,8 +292,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // Exact viewport count, straight from the rendered tiles — no dedup.
       //
       // Dedup used to be the whole game here, and it was the bug. The old key
-      // was osmId when present, else lng/lat; z0–10 tiles are built
-      // --exclude-all so below z11 there are no properties and it fell back to
+      // was osmId when present, else lng/lat; low-zoom tiles carry no
+      // attributes (metadata starts at z9) so it fell back to
       // coordinates. Tile geometry is quantised (~600m per unit at z4), so
       // distinct cameras share a key and were merged away: 99k in view were
       // reported as ~64.6k, a 35% undercount.
@@ -303,10 +301,10 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // No dedup is needed, because neither source of duplication survives:
       //  - Tile buffers repeat neighbours' features, but MapLibre clips each
       //    query to the tile's own bounds, so a buffer copy is never returned.
-      //  - The dots (z0–12) and points (z11+) layers OVERLAP at z11–12, and
+      //  - The dots (z0–10) and points (z9+) layers OVERLAP on [9, 10), and
       //    queryRenderedFeatures ignores paint opacity — querying both there
-      //    returns every camera twice (measured: +102.8% at z11). Querying the
-      //    single layer that covers this zoom yields each camera exactly once.
+      //    returns every camera twice. Querying the single layer that covers
+      //    this zoom yields each camera exactly once.
       //
       // Verified against the dataset: z4 +0.21%, z9 −0.03%, z10.5 +2.0%. The
       // small excess is real — a camera whose dot overlaps the viewport edge is
@@ -318,48 +316,6 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
           : `camera-tile-dots${suffix}`;
         const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
         useMapStore.getState().setTileViewCameraCount(feats.length);
-
-        // Brand breakdown from the same rendered features: the filter tileset
-        // carries integer brand codes (`b`) at every zoom; the main tileset
-        // carries `brand` strings at z11+ only. Below z11 unfiltered → null
-        // (the panel falls back to the manifest's nationwide breakdown).
-        // (`Map` is shadowed by react-map-gl's component in this module —
-        // plain records instead of a Map keep the aggregation unambiguous.)
-        const toStats = (counts: Record<string, number>, unknownCount: number): TileViewBrandStats => ({
-          brands: Object.entries(counts)
-            .map(([name, count]) => ({ name, count }))
-            .sort((a, b) => b.count - a.count),
-          unknownCount,
-        });
-
-        let brandStats: TileViewBrandStats | null = null;
-        if (renderMode === 'filter-tiles') {
-          const manifest = useCameraStore.getState().manifest;
-          if (manifest) {
-            const labelById: Record<number, string> = {};
-            for (const b of manifest.brands) labelById[b.id] = b.label;
-            const counts: Record<string, number> = {};
-            let unknownCount = 0;
-            for (const f of feats) {
-              const code = f.properties?.b;
-              const label = typeof code === 'number' && code > 0 ? labelById[code] : undefined;
-              if (label) counts[label] = (counts[label] ?? 0) + 1;
-              else unknownCount++;
-            }
-            brandStats = toStats(counts, unknownCount);
-          }
-        } else if (map.getZoom() >= CAMERA_METADATA_MINZOOM) {
-          const counts: Record<string, number> = {};
-          let unknownCount = 0;
-          for (const f of feats) {
-            const raw = f.properties?.brand;
-            const label = typeof raw === 'string' && raw ? normalizeBrand(raw) : null;
-            if (label) counts[label] = (counts[label] ?? 0) + 1;
-            else unknownCount++;
-          }
-          brandStats = toStats(counts, unknownCount);
-        }
-        useMapStore.getState().setTileViewBrandStats(brandStats);
       } catch {
         // layers not ready yet
       }
@@ -367,7 +323,6 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
 
     useMapStore.getState().setTileViewCameraCount(null);
-    useMapStore.getState().setTileViewBrandStats(null);
     const bounds = map.getBounds();
     getCamerasInBounds(
       bounds.getNorth(),
