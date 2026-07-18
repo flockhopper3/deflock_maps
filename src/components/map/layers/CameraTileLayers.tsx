@@ -10,23 +10,27 @@ import {
 } from '../../../services/cameraTilesService';
 import { createDirectionCone, parseDirections } from './cameraGeometry';
 
-/** Zoom where cones start being built (slightly before their minzoom 12). */
-const CONE_BUILD_MINZOOM = 11.5;
+/** Zoom where cones start being built (slightly before their minzoom 10). */
+const CONE_BUILD_MINZOOM = 9.5;
 const CONE_FEATURE_CAP = 4000;
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 /**
  * Camera rendering straight from vector tiles — no client-side dataset.
  * Three zoom bands, one source:
- *  z0–11:  density dots (tiny, semi-transparent; overlaps read as density)
- *  z11–12: dots crossfade out, full camera points fade in
- *  z12+:   direction cones (built client-side from tile attributes)
+ *  z0–9:  density dots (tiny, semi-transparent; overlaps read as density)
+ *  z9–10: dots crossfade out, full camera points fade in
+ *  z10+:  direction cones (built client-side from tile attributes)
  *
- * A zoom-scaled glow underlies both marks from z10 up. It carries the visual
- * mass continuously through the z11–12 handoff, so the dot→point swap reads as
- * a zoom rather than a pop, and it restores the pre-tiles camera aura at z12+.
- * Starts at z10 (not z0): blurred circles are fill-rate bound, and glowing
- * ~114k features at country zoom would blob dense metros into featureless mass.
+ * The hourly archives carry full attributes from z9, so the identity handoff
+ * (points, popups, cones) starts two zooms earlier than the original z11–12
+ * design — approved from the 2026-07-18 side-by-side prototype.
+ *
+ * A zoom-scaled glow underlies both marks from z8 up. It carries the visual
+ * mass continuously through the z9–10 handoff, so the dot→point swap reads as
+ * a zoom rather than a pop. Starts at z8 (not z0): blurred circles are
+ * fill-rate bound, and glowing ~114k features at country zoom would blob
+ * dense metros into featureless mass.
  */
 function buildLayerSpecs(
   sourceId: string,
@@ -41,24 +45,28 @@ function buildLayerSpecs(
     type: 'circle',
     source: sourceId,
     'source-layer': CAMERA_TILES_SOURCE_LAYER,
-    minzoom: 10,
+    minzoom: 8,
     paint: {
       'circle-color': '#4DA6FF',
-      // Stays just behind the mark it sits under — at z11 it is barely wider than
-      // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
+      // Stays just behind the mark it sits under — at z9 it is barely wider than
+      // the r≈4.3 dot. Blooms to the full r=16 only at z12+, where cameras
       // have separated and the halo has room to read as presence, not as bulk.
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
-        10, 2,
-        11, 5,
-        12, 10,
-        14, 16,
+        8, 2,
+        9, 5,
+        10, 10,
+        12, 16,
       ],
+      // Peaks during the handoff (it carries continuity there), then relaxes
+      // once points stand on their own — full-strength halos on every mark
+      // at close zoom is the main "too bright" offender.
       'circle-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        10, 0,
-        11, 0.25,
-        12, 0.4,
+        8, 0,
+        9, 0.25,
+        10, 0.35,
+        12, 0.2,
       ],
       'circle-blur': 0.5,
       'circle-stroke-width': 0,
@@ -70,7 +78,7 @@ function buildLayerSpecs(
     type: 'circle',
     source: sourceId,
     'source-layer': CAMERA_TILES_SOURCE_LAYER,
-    maxzoom: 12,
+    maxzoom: 10,
     paint: {
       'circle-color': '#4DA6FF',
       'circle-radius': [
@@ -78,16 +86,20 @@ function buildLayerSpecs(
         0, 1,
         4, 1.5,
         7, 2.2,
-        10, 3.5,
-        11.9, 5,
+        8, 3.5,
+        9.9, 5,
       ],
+      // Holds full strength until the points layer has fully faded in (z9.6),
+      // THEN drops out. Fading both marks simultaneously leaves every mark
+      // ~30% transparent mid-band — the basemap's olive land bleeds through
+      // the cyan and the whole metro reads as murky green during the handoff.
       'circle-opacity': [
         'interpolate', ['linear'], ['zoom'],
         0, 0.5,
-        8, 0.6,
-        10.5, 0.75,
-        11, 0.75,
-        12, 0,
+        6, 0.6,
+        8.5, 0.75,
+        9.6, 0.75,
+        10, 0,
       ],
       'circle-stroke-width': 0,
     },
@@ -99,19 +111,27 @@ function buildLayerSpecs(
     source: sourceId,
     'source-layer': CAMERA_TILES_SOURCE_LAYER,
     // Shared with the viewport count, which queries dots below this zoom and
-    // points at/above it — the two layers overlap on [11, 12).
+    // points at/above it — the two layers overlap on [9, 10).
     minzoom: CAMERA_POINTS_MINZOOM,
     paint: {
-      'circle-color': '#0080BC',
-      // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
-      // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
-      // at full width from the start it would bolt 2px of outer radius on the
-      // instant the point appears, which is a pop of its own.
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
-      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
-      'circle-stroke-color': '#93CBFF',
-      'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-      'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+      // Same blue as the density dots — the handoff changes mark anatomy
+      // (stroke, size), never hue, so zooming reads as one continuous layer.
+      'circle-color': '#4DA6FF',
+      // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
+      // it holds past z10. The stroke widens 0→2 over the same span: at full
+      // width from the start it would bolt 2px of outer radius on the instant
+      // the point appears, which is a pop of its own.
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 2],
+      // Dark ring, not light: the light fill carries the identity, the ring
+      // just gives it an edge — a lighter-than-fill ring stacks three tiers
+      // of brightness (glow + fill + ring) and goes neon at close zoom.
+      'circle-stroke-color': '#0B5B93',
+      // Fully opaque by z9.6 — the dots above hold 0.75 until then, so the
+      // combined mark never goes translucent enough for the basemap to bleed
+      // through mid-handoff (the "green murk" failure mode).
+      'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
+      'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
     },
   });
 
@@ -119,7 +139,7 @@ function buildLayerSpecs(
     id: `camera-tile-cones${idSuffix}`,
     type: 'fill',
     source: `camera-tile-cones${idSuffix}`,
-    minzoom: 12,
+    minzoom: 10,
     paint: { 'fill-color': '#4DA6FF', 'fill-opacity': 0.35 },
   };
 
@@ -127,7 +147,7 @@ function buildLayerSpecs(
     id: `camera-tile-cones-outline${idSuffix}`,
     type: 'line',
     source: `camera-tile-cones${idSuffix}`,
-    minzoom: 12,
+    minzoom: 10,
     paint: { 'line-color': '#0080BC', 'line-width': 2, 'line-opacity': 0.7 },
   };
 

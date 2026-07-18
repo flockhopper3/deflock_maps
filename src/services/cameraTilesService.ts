@@ -43,14 +43,15 @@ export const CAMERA_TILES_MAXZOOM = 14;
 export const CAMERA_METADATA_MINZOOM = 9;
 /**
  * Zoom at which the full camera points layer takes over from the density dots.
- * The dots layer runs to maxzoom 12, so the two overlap on [11, 12).
+ * The dots layer runs to maxzoom 10, so the two overlap on [9, 10).
  *
  * Shared so the viewport count can query whichever single layer covers the
  * current zoom: queryRenderedFeatures ignores paint opacity, so querying both
- * across the overlap returns every camera twice (measured +102.8% at z11).
- * Keep this equal to the points layer's minzoom in CameraTileLayers.
+ * across the overlap returns every camera twice (measured +102.8% back when
+ * the overlap sat at z11). Keep this equal to the points layer's minzoom in
+ * CameraTileLayers.
  */
-export const CAMERA_POINTS_MINZOOM = 11;
+export const CAMERA_POINTS_MINZOOM = 9;
 
 let _protocol: Protocol | null = null;
 

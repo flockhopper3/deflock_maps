@@ -38,43 +38,44 @@ function camerasToGeoJSON(cameras: ALPRCamera[]): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features };
 }
 
-// Zoom-scaled glow from z10 — matches camera-tile-glow so mode swaps are seamless.
-// Carries visual mass continuously through the z11–12 dot→point handoff and
-// restores the pre-tiles camera aura at z12+.
+// Zoom-scaled glow from z8 — matches camera-tile-glow so mode swaps are seamless.
+// Carries visual mass continuously through the z9–10 dot→point handoff.
 const geojsonGlowLayer: maplibregl.LayerSpecification = {
   id: 'cameras-glow',
   type: 'circle',
   source: 'cameras',
-  minzoom: 10,
+  minzoom: 8,
   paint: {
     'circle-color': '#4DA6FF',
-    // Stays just behind the mark it sits under — at z11 it is barely wider than
-    // the r≈4.3 dot. Blooms to the pre-tiles r=16 only at z13+, where cameras
+    // Stays just behind the mark it sits under — at z9 it is barely wider than
+    // the r≈4.3 dot. Blooms to the full r=16 only at z12+, where cameras
     // have separated and the halo has room to read as presence, not as bulk.
     'circle-radius': [
       'interpolate', ['linear'], ['zoom'],
-      10, 2,
-      11, 5,
-      12, 10,
-      14, 16,
+      8, 2,
+      9, 5,
+      10, 10,
+      12, 16,
     ],
+    // Peaks during the handoff, relaxes at close zoom — matches camera-tile-glow
     'circle-opacity': [
       'interpolate', ['linear'], ['zoom'],
-      10, 0,
-      11, 0.25,
-      12, 0.4,
+      8, 0,
+      9, 0.25,
+      10, 0.35,
+      12, 0.2,
     ],
     'circle-blur': 0.5,
     'circle-stroke-width': 0,
   },
 };
 
-// Density dots below z12 — matches camera-tile-dots so mode swaps are seamless
+// Density dots below z10 — matches camera-tile-dots so mode swaps are seamless
 const geojsonDotLayer: maplibregl.LayerSpecification = {
   id: 'cameras-dots-lowzoom',
   type: 'circle',
   source: 'cameras',
-  maxzoom: 12,
+  maxzoom: 10,
   paint: {
     'circle-color': '#4DA6FF',
     'circle-radius': [
@@ -82,16 +83,18 @@ const geojsonDotLayer: maplibregl.LayerSpecification = {
       0, 1,
       4, 1.5,
       7, 2.2,
-      10, 3.5,
-      11.9, 5,
+      8, 3.5,
+      9.9, 5,
     ],
+    // Holds full strength until points finish fading in at z9.6 — matches
+    // camera-tile-dots (see CameraTileLayers for the green-murk rationale).
     'circle-opacity': [
       'interpolate', ['linear'], ['zoom'],
       0, 0.5,
-      8, 0.6,
-      10.5, 0.75,
-      11, 0.75,
-      12, 0,
+      6, 0.6,
+      8.5, 0.75,
+      9.6, 0.75,
+      10, 0,
     ],
     'circle-stroke-width': 0,
   },
@@ -101,18 +104,20 @@ const unclusteredPointLayer: maplibregl.LayerSpecification = {
   id: 'unclustered-point',
   type: 'circle',
   source: 'cameras',
-  minzoom: 11,
+  minzoom: 9,
   paint: {
-    'circle-color': '#0080BC',
-    // Enters at exactly the dot's z11 radius (4.3) and grows into the pre-tiles
-    // r=6, which it holds past z12. The stroke widens 0→2 over the same span:
-    // at full width from the start it would bolt 2px of outer radius on the
-    // instant the point appears, which is a pop of its own.
-    'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.3, 12, 6],
-    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 2],
-    'circle-stroke-color': '#93CBFF',
-    'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
-    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+    // Same blue as the density dots — matches camera-tile-points
+    'circle-color': '#4DA6FF',
+    // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
+    // it holds past z10. The stroke widens 0→2 over the same span: at full
+    // width from the start it would bolt 2px of outer radius on the instant
+    // the point appears, which is a pop of its own.
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
+    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 10, 2],
+    'circle-stroke-color': '#0B5B93', // dark ring — matches camera-tile-points
+    // Fully opaque by z9.6 — matches camera-tile-points (green-murk fix)
+    'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
+    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
   },
 };
 
@@ -121,7 +126,7 @@ const directionConeLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones',
   type: 'fill',
   source: 'direction-cones',
-  minzoom: 12, // Matches unclustered-point's zoom-in fade threshold
+  minzoom: 10, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'fill-color': '#4DA6FF',
     'fill-opacity': 0.35,
@@ -133,7 +138,7 @@ const directionConeOutlineLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones-outline',
   type: 'line',
   source: 'direction-cones',
-  minzoom: 12, // Matches unclustered-point's zoom-in fade threshold
+  minzoom: 10, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'line-color': '#0080BC',
     'line-width': 2,

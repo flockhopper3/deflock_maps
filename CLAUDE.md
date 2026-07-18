@@ -31,12 +31,16 @@ npm run preview   # Preview production build
 
 ### Key Data Flow
 
-1. **Camera Rendering**: Default path renders straight from PMTiles vector
-   tiles (`tiles.dontgetflocked.com/cameras.pmtiles`, source-layer `cameras`,
-   attributes at z11+ only) via the client-side pmtiles protocol — no dataset
-   download. The full GeoJSON (`cameraStore`) loads lazily only when filters,
-   Explore/timeline, heatmap, or Canada need per-camera attributes
-   (`useCameraRenderMode` decides which path is visible).
+1. **Camera Rendering**: Default path renders straight from per-country hourly
+   PMTiles archives (`tiles.dontgetflocked.com/cameras-{us,ca}-hourly.pmtiles`,
+   source-layer `cameras`, attributes at z9+, zero tile buffer) via the
+   client-side pmtiles protocol — no dataset download. Both US and Canada use
+   tiles; the full GeoJSON (`cameraStore`) loads lazily only when Explore/
+   timeline or heatmap need per-camera attributes at all zooms, or as the
+   filter fallback (`useCameraRenderMode` decides which path is visible).
+   The dots→points handoff runs over z9–10 (approved 2026-07-18); cones from
+   z10. Filter archives + manifests are per-country and build-paired
+   (`cameras-{us,ca}-hourly-filter.pmtiles`, `cameras-{us,ca}-hourly-manifest.json`).
 
 2. **Route Calculation** (`src/services/apiClient.ts`): Calls `api.dontgetflocked.com/api/v1/route` with origin, destination, and options. API handles all camera-aware routing. Returns both normal and avoidance routes with comparison metrics.
 
@@ -130,7 +134,7 @@ Vite splits bundles by vendor: react-vendor, map-vendor, motion, geo-utils, stat
 
 ## Data Sources
 
-- **Camera Tiles**: `tiles.dontgetflocked.com/cameras.pmtiles` — PMTiles archive, Range requests via `flockhopper-tiles` worker
+- **Camera Tiles**: `tiles.dontgetflocked.com/cameras-{us,ca}-hourly.pmtiles` (+ `-filter` companions and `-manifest.json` dictionaries) — hourly PMTiles archives, Range requests via `flockhopper-tiles` worker
 - **Camera Data (attributes)**: `data.dontgetflocked.com/cameras.geojson.gz` — lazy-loaded for filters/timeline/heatmap/Canada; ~114k (July 2026) cameras
 - **ZIP Codes**: `/public/zipcodes-us.json` — local lookup, no API needed
 - **Map Tiles**: Protomaps vector tiles via `VITE_TILES_URL`
