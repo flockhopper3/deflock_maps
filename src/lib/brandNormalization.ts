@@ -1,8 +1,8 @@
 /**
  * Canonicalizes raw OSM `brand` tags (typos, sub-brands, casing) into
- * display names. Shared by the filter matching, viewport stats, and —
- * conceptually — the tile pipeline's manifest generator, which ports
- * these same rules. Keep the two in sync when editing.
+ * display names. Shared by the filter matching and — conceptually — the
+ * tile pipeline's manifest generator, which ports these same rules.
+ * Keep the two in sync when editing.
  */
 export const normalizeBrand = (raw: string): string | null => {
   const lower = raw.toLowerCase().trim();

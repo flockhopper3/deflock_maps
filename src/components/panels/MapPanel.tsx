@@ -235,7 +235,7 @@ export function MapPanelContent() {
   }, [bounds, filteredCameras]);
 
   // In tiles mode (default render path), filteredCameras is empty until the
-  // GeoJSON dataset lazy-loads, so viewportStats.count reads 0. Prefer the
+  // GeoJSON dataset lazy-loads, so viewportCount reads 0. Prefer the
   // tile-rendered viewport count when available — same pattern as CameraStats.tsx.
   const heroViewCount = tileViewCameraCount !== null ? tileViewCameraCount : viewportCount;
 

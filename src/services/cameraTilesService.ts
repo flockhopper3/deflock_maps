@@ -39,7 +39,8 @@ export const cameraManifestUrl = (country: CameraTileCountry) =>
 export const CAMERA_TILES_URL = cameraTilesUrl('us');
 export const CAMERA_TILES_SOURCE_LAYER = 'cameras';
 export const CAMERA_TILES_MAXZOOM = 14;
-/** Below this zoom, tile features have no attributes (no osmId, no direction). */
+/** Documents the published tile archives' attribute threshold: attributes exist
+ * in tiles from z9 up. Retained as the single named constant for the pipeline contract. */
 export const CAMERA_METADATA_MINZOOM = 9;
 /**
  * Zoom at which the full camera points layer takes over from the density dots.
