@@ -15,6 +15,7 @@ import { parseViewportFromURL, parseCountryFromURL, parseStateFromURL, writeView
 import { loadStateGeometry, getStateBounds, stateFromSlug, stateSlug, getStateName } from '@/services/stateFilterService';
 import { COUNTRIES, countryZoomForViewport, isModeAvailable } from '@/services/cameraDataService';
 import { isWebGLAvailable } from '@/utils/webgl';
+import { removeBootSplash } from '@/utils/bootSplash';
 import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
 import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
@@ -242,6 +243,7 @@ export function MapPage() {
       console.log('[MapPage] Component mounted');
     }
 
+    removeBootSplash();
     setMarkersReady(false);
     setMapInitError(null);
 
