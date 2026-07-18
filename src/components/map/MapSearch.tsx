@@ -220,10 +220,10 @@ export function MapSearch() {
             if (results.length > 0) setIsOpen(true);
           }}
           onBlur={() => setIsFocused(false)}
-          placeholder="Search address, city, or zip..."
+          placeholder="Search zip, city, or address..."
           autoComplete="off"
           aria-label="Search locations"
-          className="w-full pl-12 pr-24 py-3.5 bg-dark-900/90 backdrop-blur border border-hairline rounded-lg text-white placeholder-dark-500 text-base text-left focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 transition-all"
+          className="w-full pl-12 pr-24 py-3.5 bg-dark-900/90 backdrop-blur border border-hairline rounded-lg text-white placeholder-dark-500 text-base text-left focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
         />
 
         {/* Right side: Search button, Loading, Clear */}
