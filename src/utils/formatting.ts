@@ -62,3 +62,11 @@ export function formatAddress(displayName: string): string {
   return displayName;
 }
 
+/**
+ * Human-readable size for streamed downloads: "640 KB", "2.1 MB"
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1000))} KB`;
+}
+

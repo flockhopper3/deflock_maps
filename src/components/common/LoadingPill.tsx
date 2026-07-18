@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useCameraStore } from '@/store';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
-
-const PILL_BASE =
-  'absolute bottom-[calc(var(--drawer-height,80px)+12px)] lg:bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 ' +
-  'bg-dark-800/95 backdrop-blur rounded-full pl-3 pr-4 py-2 text-sm text-dark-100 whitespace-nowrap';
+import { PILL_BASE } from './StatusPill';
 
 /**
  * Non-blocking indicator for the lazy camera GeoJSON download, floating over
