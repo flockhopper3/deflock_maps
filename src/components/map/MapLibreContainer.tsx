@@ -57,6 +57,7 @@ import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
 import { CameraTileLayers } from './layers/CameraTileLayers';
 import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
+import { MOBILE_BREAKPOINT } from '../../hooks/useIsMobile';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
 
@@ -1092,9 +1093,35 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         { minLng: Infinity, maxLng: -Infinity, minLat: Infinity, maxLat: -Infinity }
       );
 
+      // On mobile the results scoreboard is pinned across the top of the map
+      // and the tab drawer rests across the bottom. A uniform inset would
+      // center the route in the whole viewport, tucking its middle behind
+      // them — so pad the fit to the actual free band: clear the measured
+      // scoreboard up top and the drawer's resting height below. Desktop
+      // (results live in the side panel, not over the map) keeps the uniform
+      // inset.
+      let padding: number | { top: number; bottom: number; left: number; right: number } = 80;
+      if (window.innerWidth < MOBILE_BREAKPOINT && useAppModeStore.getState().appMode === 'route') {
+        const mapPage = document.querySelector<HTMLElement>('.map-page');
+        const drawerHeight = mapPage
+          ? parseFloat(getComputedStyle(mapPage).getPropertyValue('--drawer-height')) || 0
+          : 0;
+        const scoreboard = document.querySelector<HTMLElement>('[data-route-scoreboard]');
+        const container = mapRef.current.getContainer();
+        const topInset = scoreboard && container
+          ? scoreboard.getBoundingClientRect().bottom - container.getBoundingClientRect().top + 16
+          : 130;
+        padding = {
+          top: Math.round(topInset),
+          bottom: Math.round(drawerHeight) + 24,
+          left: 36,
+          right: 36,
+        };
+      }
+
       mapRef.current.fitBounds(
         [[bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat]],
-        { padding: 80, duration: 1000 }
+        { padding, duration: 1000 }
       );
     }
   }, [normalRoute, avoidanceRoute, activeRoute]);
