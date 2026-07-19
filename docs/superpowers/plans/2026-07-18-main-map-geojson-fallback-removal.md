@@ -664,7 +664,182 @@ If any E2E step surfaced a fix, commit it with a scoped `git add` and a descript
 
 ---
 
+### Task 6: Reliable pmtiles archive-failure detection (added after E2E)
+
+E2E on the branch found the retry pill never appears on a real tile failure: a
+blocked or 404 camera PMTiles archive presents to MapLibre as a loaded-but-empty
+source (`isSourceLoaded` fires true after a single failed request), so
+MapLibre's error events never reach the 3-strike `tilesFailed` threshold. The
+no-GeoJSON guarantee held in every scenario; only the failure UX was silent.
+Fix: detect archive-load failure at the pmtiles protocol layer, and make the
+retry genuinely re-fetch (the pmtiles header cache caches a rejected fetch for
+the app's lifetime).
+
+**Files:**
+- Modify: `src/services/cameraTilesService.ts`
+- Modify: `src/components/map/MapLibreContainer.tsx` (module-level wiring near the `ensurePMTilesProtocol()` call, ~line 86)
+- Modify: `src/pages/MapPage.tsx` (`handleRetryWithRemount`, ~lines 159-189)
+- Test: `src/services/cameraTilesService.test.ts` (new)
+
+**Interfaces produced:**
+- `archiveKey(url: string): string | null` — the camera-archive filename a pmtiles URL targets, or null.
+- `setPMTilesFailureHandler(fn: ((kind: 'main' | 'filter') => void) | null): void` — decouples the service from the store (avoids the store↔service import cycle: `cameraStore → cameraManifestService → cameraTilesService`).
+- `resetPMTilesProtocol(): void` — re-registers a fresh pmtiles protocol, discarding the header cache.
+
+- [ ] **Step 1: Write the failing test for `archiveKey`**
+
+Create `src/services/cameraTilesService.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { archiveKey } from './cameraTilesService';
+
+describe('archiveKey', () => {
+  it('matches the main US/CA camera archives', () => {
+    expect(archiveKey('pmtiles://tiles.dontgetflocked.com/cameras-us-hourly.pmtiles/9/1/2'))
+      .toBe('cameras-us-hourly.pmtiles');
+    expect(archiveKey('pmtiles://tiles.dontgetflocked.com/cameras-ca-hourly.pmtiles'))
+      .toBe('cameras-ca-hourly.pmtiles');
+  });
+  it('matches the filter companions', () => {
+    expect(archiveKey('pmtiles://tiles.dontgetflocked.com/cameras-us-hourly-filter.pmtiles/10/5/6'))
+      .toBe('cameras-us-hourly-filter.pmtiles');
+  });
+  it('returns null for non-camera / basemap urls', () => {
+    expect(archiveKey('https://tiles.dontgetflocked.com/planet.json')).toBeNull();
+    expect(archiveKey('pmtiles://example.com/something-else.pmtiles')).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx vitest run src/services/cameraTilesService.test.ts`
+Expected: FAIL — `archiveKey` is not exported.
+
+- [ ] **Step 3: Rewrite the protocol section of `cameraTilesService.ts`**
+
+Replace the current tail of the file (from `let _protocol: Protocol | null = null;` through the end of `ensurePMTilesProtocol`) with:
+
+```ts
+let _protocol: Protocol | null = null;
+const _loadedArchives = new Set<string>();
+
+/** Failure sink wired up by the map composition layer (MapLibreContainer), so
+ *  this service stays decoupled from the store (avoids an import cycle:
+ *  cameraStore -> cameraManifestService -> cameraTilesService). */
+export type PMTilesArchiveKind = 'main' | 'filter';
+let _onArchiveFailure: ((kind: PMTilesArchiveKind) => void) | null = null;
+export function setPMTilesFailureHandler(
+  fn: ((kind: PMTilesArchiveKind) => void) | null,
+): void {
+  _onArchiveFailure = fn;
+}
+
+/** Which camera archive a pmtiles request targets, or null for anything that
+ *  is not a camera archive (the basemap uses the TileJSON route, not pmtiles). */
+export function archiveKey(url: string): string | null {
+  const m = url.match(/cameras-(?:us|ca)-hourly(?:-filter)?\.pmtiles/);
+  return m ? m[0] : null;
+}
+
+/** Register the shared pmtiles protocol exactly once (camera archives only).
+ *  A blocked or 404 archive presents to MapLibre as a loaded-but-empty source,
+ *  so MapLibre error events are not a reliable failure signal. The protocol
+ *  handler is: it reports a load failure that happens before that archive ever
+ *  loaded successfully (ignoring aborts), which the UI turns into a retry pill. */
+export function ensurePMTilesProtocol(): Protocol {
+  if (!_protocol) {
+    _protocol = new Protocol();
+    const tileFn = _protocol.tile.bind(_protocol);
+    maplibregl.addProtocol('pmtiles', async (params, abortController) => {
+      const key = archiveKey(params.url);
+      try {
+        const result = await tileFn(params, abortController);
+        if (key) _loadedArchives.add(key);
+        return result;
+      } catch (err) {
+        const aborted =
+          abortController?.signal?.aborted || (err as Error)?.name === 'AbortError';
+        if (!aborted && key && !_loadedArchives.has(key)) {
+          _onArchiveFailure?.(key.includes('-filter') ? 'filter' : 'main');
+        }
+        throw err;
+      }
+    });
+  }
+  return _protocol;
+}
+
+/** Re-register a FRESH pmtiles protocol, discarding the header cache (pmtiles
+ *  caches a rejected header fetch for the app's lifetime). The retry pill calls
+ *  this so a genuine re-fetch is attempted after an outage clears. */
+export function resetPMTilesProtocol(): void {
+  maplibregl.removeProtocol('pmtiles');
+  _protocol = null;
+  _loadedArchives.clear();
+  ensurePMTilesProtocol();
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `npx vitest run src/services/cameraTilesService.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Wire the failure handler in `MapLibreContainer.tsx`**
+
+Add `setPMTilesFailureHandler` to the existing import from `../../services/cameraTilesService` (currently `import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';`). Then, immediately after the module-level `ensurePMTilesProtocol();` call (~line 86), add:
+
+```ts
+// Wire pmtiles archive-load failures to the store here (not inside the service)
+// to avoid a store<->service import cycle. A failure before an archive ever
+// loaded flips the flag the retry pill reads.
+setPMTilesFailureHandler((kind) => {
+  if (kind === 'filter') useCameraStore.getState().setFilterTilesFailed(true);
+  else useCameraStore.getState().setTilesFailed(true);
+});
+```
+
+(`useCameraStore` is already imported in this file.)
+
+- [ ] **Step 6: Make retry clear the failure and bust the cache in `MapPage.tsx`**
+
+Add `import { resetPMTilesProtocol } from '@/services/cameraTilesService';` near the other service imports. Then in `handleRetryWithRemount`, immediately before `setMapKey(k => k + 1);`, add:
+
+```ts
+    // Clear a prior camera-tile failure and discard the pmtiles header cache so
+    // the remount genuinely re-fetches the archive (the retry pill's point).
+    useCameraStore.getState().setTilesFailed(false);
+    useCameraStore.getState().setFilterTilesFailed(false);
+    resetPMTilesProtocol();
+```
+
+(`useCameraStore` is already imported in MapPage.)
+
+- [ ] **Step 7: Build + lint**
+
+Run: `npm run build` (expect clean) and `npm run lint` (expect zero new).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/services/cameraTilesService.ts src/services/cameraTilesService.test.ts src/components/map/MapLibreContainer.tsx src/pages/MapPage.tsx
+git commit -m "fix: detect camera pmtiles archive failure for the retry pill
+
+A blocked/404 archive presents as a loaded-but-empty source, so MapLibre
+error events never trip the 3-strike tilesFailed threshold. Detect the
+failure at the pmtiles protocol layer instead, and reset the protocol on
+retry so a genuine re-fetch is attempted.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+Note: if the MapPage `handleRetryWithRemount` commit picks up another session's unrelated WIP in the same files, hand-scope the staging to only your hunks (`git add -p` or `git apply --cached`).
+
+---
+
 ## Notes / accepted limitations
 
-- **Silent camera-tile stall (basemap up, camera archive hangs with no error):** `tilesFailed` only flips on error events, so a silent stall does not trigger the reveal effect and still hits the 15s full-screen watchdog. This matches pre-change behavior and is out of scope; the tiles host serves both the basemap and camera archive, so a basemap that streams almost always means the camera archive resolves or errors rather than hanging.
+- **Silent camera-tile stall (basemap up, camera archive hangs with no error, never rejecting):** Task 6 catches archive fetch *failures* (rejections/404/abort-of-network) at the protocol layer, which covers blocked/missing archives. A request that hangs indefinitely without rejecting would still not surface the pill; this is a rarer case than a blocked archive and remains out of scope.
 - **Lost resilience:** if the camera tile archive is broken but `data.dontgetflocked.com` is healthy, the map now shows the retry pill instead of recovering via GeoJSON. Accepted per the spec — the GeoJSON recovery pegs CPU, and an explicit retry is preferable to a silent CPU-pegging degrade.
