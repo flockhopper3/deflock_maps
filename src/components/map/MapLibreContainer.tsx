@@ -356,13 +356,31 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // that nothing corrects until the next gesture (verified: search-fly to
   // Houston held "0 cameras in view" through 9s of idle; a 10px nudge read
   // 1,583). Counting again on the next idle picks up the settled tiles.
-  const handleMoveEnd = useCallback(() => {
-    updateVisibleCameras();
+  const handleMoveEnd = useCallback((evt: ViewStateChangeEvent) => {
     const map = mapRef.current?.getMap();
+
+    // Mirror the settled viewport into the store once per gesture (URL sync,
+    // header counts, legacy-map link). Per-tick writes lived in onMove and
+    // re-rendered every subscriber each frame; nothing needs live values.
+    if (map) {
+      const bounds = map.getBounds();
+      setViewState(
+        [evt.viewState.latitude, evt.viewState.longitude],
+        evt.viewState.zoom,
+        {
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest(),
+        },
+      );
+    }
+
+    updateVisibleCameras();
     if (!map) return;
     map.off('idle', updateVisibleCameras);
     map.once('idle', updateVisibleCameras);
-  }, [updateVisibleCameras]);
+  }, [setViewState, updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -736,22 +754,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   }, []);
 
   // Handle map move - batch center, zoom, and bounds in a single store update
-  const onMove = useCallback((evt: ViewStateChangeEvent) => {
-    if (mapRef.current) {
-      const map = mapRef.current.getMap();
-      const bounds = map.getBounds();
-      setViewState(
-        [evt.viewState.latitude, evt.viewState.longitude],
-        evt.viewState.zoom,
-        {
-          north: bounds.getNorth(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          west: bounds.getWest(),
-        },
-      );
-    }
-
+  const onMove = useCallback(() => {
+    // The store viewport mirror moved to onMoveEnd: the map is uncontrolled
+    // (initialViewState), so nothing consumes live per-tick values, and a
+    // setViewState per onMove tick re-rendered every mapStore subscriber on
+    // every frame of a drag (measured ~120 React commits per one-second
+    // gesture — the drag hitching on mid-tier devices).
+    //
     // Both tile modes' viewport count is derived from queryRenderedFeatures,
     // which is too hot to run on every onMove tick — it runs once per gesture
     // via onMoveEnd instead (filter-tiles also gets an idle-triggered refresh
@@ -759,7 +768,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (renderMode === 'geojson') {
       updateVisibleCameras();
     }
-  }, [setViewState, updateVisibleCameras, renderMode]);
+  }, [updateVisibleCameras, renderMode]);
 
   // Handle map load
   const onLoad = useCallback(() => {
@@ -950,6 +959,46 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [pickingLocation, cancelPickingLocation]);
+
+  // MapLibre 5.15 ends a mouse drag only on an element-scoped mouseup — its
+  // window-level mouseup is not wired to dragEnd and it takes no pointer
+  // capture — so releasing the button over the side panel left the gesture
+  // armed: no dragend/moveend ever fired and the map kept panning with the
+  // button up. Forward off-map releases to the canvas so the drag ends.
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const container = map.getContainer();
+    let dragging = false;
+    const onStart = () => { dragging = true; };
+    const onEnd = () => { dragging = false; };
+    const forwardRelease = (e: MouseEvent) => {
+      if (!dragging || container.contains(e.target as Node)) return;
+      map.getCanvas().dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        button: e.button,
+        buttons: 0,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        screenX: e.screenX,
+        screenY: e.screenY,
+      }));
+    };
+    map.on('dragstart', onStart);
+    map.on('dragend', onEnd);
+    map.on('rotatestart', onStart);
+    map.on('rotateend', onEnd);
+    window.addEventListener('mouseup', forwardRelease, true);
+    return () => {
+      map.off('dragstart', onStart);
+      map.off('dragend', onEnd);
+      map.off('rotatestart', onStart);
+      map.off('rotateend', onEnd);
+      window.removeEventListener('mouseup', forwardRelease, true);
+    };
+  }, [mapLoaded]);
 
   // Auto mode: update activeView based on zoom level
   useEffect(() => {
