@@ -83,6 +83,26 @@ describe('ensureManifestLoaded', () => {
   });
 });
 
+describe('retryFilterTiles', () => {
+  it('clears filter failure state synchronously and re-requests the manifest', async () => {
+    useCameraStore.setState({ filterTilesFailed: true, manifestPhase: 'error', manifest: null });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(validManifest), { status: 200 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    useCameraStore.getState().retryFilterTiles();
+
+    // Failure flag is cleared immediately (synchronous reset)
+    expect(useCameraStore.getState().filterTilesFailed).toBe(false);
+
+    // The manifest is re-fetched and resolves
+    await vi.waitFor(() => expect(useCameraStore.getState().manifestPhase).toBe('ready'));
+    expect(useCameraStore.getState().manifest).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
 describe('normalized filter matching (GeoJSON fallback path)', () => {
   it('applyPendingFilters matches brand typos against canonical labels', () => {
     useCameraStore.setState({

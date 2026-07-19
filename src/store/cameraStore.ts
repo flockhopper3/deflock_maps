@@ -103,6 +103,9 @@ interface CameraState {
    *  active filters then fall back to the GeoJSON path. */
   filterTilesFailed: boolean;
   setFilterTilesFailed: (failed: boolean) => void;
+  /** Reset filter-tile/manifest failure state and re-request the manifest so
+   *  the filter-tiles path can recover. Never loads GeoJSON. */
+  retryFilterTiles: () => void;
 
   /** Filter dictionary (labels ↔ build-scoped ids). Loaded lazily when the
    *  Filters panel opens or a filter activates. */
@@ -174,11 +177,16 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   setTilesFailed: (failed: boolean) => set({ tilesFailed: failed }),
   filterTilesFailed: false,
   setFilterTilesFailed: (failed: boolean) => set({ filterTilesFailed: failed }),
+  retryFilterTiles: () => {
+    set({ filterTilesFailed: false, manifestPhase: 'idle', manifest: null });
+    void get().ensureManifestLoaded();
+  },
   manifest: null,
   manifestPhase: 'idle',
 
   // Never rejects — failure is a state ('error'), consumed by the render-mode
-  // fallback. Re-invoking after an error retries (service clears in-flight).
+  // logic (degrades to unfiltered tiles, not GeoJSON). Re-invoking after an
+  // error retries (service clears in-flight).
   ensureManifestLoaded: async () => {
     const { manifest, manifestPhase, country } = get();
     if (manifest || manifestPhase === 'loading') return;
@@ -187,16 +195,16 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       const loaded = await loadCameraManifest(country);
       set({ manifest: loaded, manifestPhase: 'ready' });
       // Build-scoped ids: if the tileset predates/postdates this manifest,
-      // expressions would select the wrong cameras. Degrade to the geojson
-      // path rather than filter wrongly. 'unknown' (unstamped build) skips.
+      // expressions would select the wrong cameras. Degrade to unfiltered
+      // tiles rather than filter wrongly. 'unknown' (unstamped build) skips.
       void verifyFilterTilesetVersion(loaded.version, country).then((verdict) => {
         if (verdict === 'mismatch') {
-          console.warn('[CameraStore] Filter tileset/manifest build mismatch — using GeoJSON path for filters');
+          console.warn('[CameraStore] Filter tileset/manifest build mismatch; showing all cameras unfiltered');
           set({ filterTilesFailed: true });
         }
       });
     } catch (error) {
-      console.warn('[CameraStore] Manifest load failed — filters will use the GeoJSON path', error);
+      console.warn('[CameraStore] Manifest load failed; filters degrade to showing all cameras', error);
       set({ manifestPhase: 'error' });
     }
   },
