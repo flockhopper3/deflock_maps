@@ -57,6 +57,7 @@ import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
 import { CameraTileLayers } from './layers/CameraTileLayers';
 import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
+import { ensureCameraIndex, getCameraIndex, countInBounds } from '../../services/cameraIndexService';
 import { MOBILE_BREAKPOINT } from '../../hooks/useIsMobile';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
@@ -180,6 +181,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // Last tile-count query result — lets updateVisibleCameras skip the
   // expensive re-query when a huge count can't have visibly changed.
   const lastTileCountRef = useRef<{ zoom: number; count: number } | null>(null);
+  // Throttle stamp for the live per-tick index count during gestures
+  const liveCountAtRef = useRef(0);
   const lastPickTimeRef = useRef(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [markersReady, setMarkersReady] = useState(false);
@@ -301,6 +304,23 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
 
+    // Unfiltered tiles mode counts from the positions index when it has
+    // loaded: exact at every zoom, sub-millisecond, and immune to the
+    // tile-load races the query path fights below.
+    if (renderMode === 'tiles') {
+      const idx = getCameraIndex(country);
+      if (idx) {
+        const b = map.getBounds();
+        useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
+          north: b.getNorth(),
+          south: b.getSouth(),
+          east: b.getEast(),
+          west: b.getWest(),
+        }));
+        return;
+      }
+    }
+
     if (renderMode === 'tiles' || renderMode === 'filter-tiles') {
       // Exact viewport count, straight from the rendered tiles — no dedup.
       //
@@ -323,6 +343,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // small excess is real — a camera whose dot overlaps the viewport edge is
       // in view — and grows with dot radius at high zoom.
       try {
+        // Fallback path: filter-tiles mode, or plain tiles before the
+        // positions index loads (or when its artifact is unavailable).
         // Zoomed out, the query itself is the jank: deserializing ~112k
         // rendered features blocked the main thread ~280ms per gesture at
         // 6x throttle (measured 2026-07-18), landing mid-drag during rapid
@@ -354,7 +376,39 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       bounds.getEast(),
       bounds.getWest()
     );
-  }, [getCamerasInBounds, renderMode]);
+  }, [getCamerasInBounds, renderMode, country]);
+
+  // Load the positions index in the background once the map is up — boot
+  // never waits on it; until it resolves the query fallback above serves.
+  useEffect(() => {
+    if (!mapLoaded) return;
+    // Once the index is in, counting is sub-millisecond — so recount on
+    // EVERY map idle, persistently. One-shot corrections proved flaky: a
+    // count taken during boot (query fallback against half-loaded tiles,
+    // or bounds read mid-init) could stick for the whole session when no
+    // later trigger fired. A persistent idle recount makes the displayed
+    // value self-healing regardless of what any transient wrote.
+    let attached: { map: maplibregl.Map; fn: () => void } | null = null;
+    const kick = () => {
+      void ensureCameraIndex(country).then((idx) => {
+        if (!idx) return;
+        updateVisibleCameras();
+        const map = mapRef.current?.getMap();
+        if (map && !attached) {
+          attached = { map, fn: () => updateVisibleCameras() };
+          map.on('idle', attached.fn);
+        }
+      });
+    };
+    const ric = typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(kick, { timeout: 5000 })
+      : window.setTimeout(kick, 2000);
+    return () => {
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(ric as number);
+      else window.clearTimeout(ric as number);
+      if (attached) attached.map.off('idle', attached.fn);
+    };
+  }, [mapLoaded, country, updateVisibleCameras]);
 
   // Filter changes re-render tiles without a camera move — refresh the
   // viewport count once the map has settled on the new filter. Also covers
@@ -795,6 +849,28 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
   // Handle map move - batch center, zoom, and bounds in a single store update
   const onMove = useCallback(() => {
+    // Live in-view count while the camera moves — index counting is
+    // sub-millisecond, so the counter tracks the gesture like the old
+    // geojson grid did. Throttled to ~8Hz: only the two small count
+    // consumers re-render, never the map tree.
+    if (renderMode === 'tiles') {
+      const idx = getCameraIndex(country);
+      const now = performance.now();
+      if (idx && now - liveCountAtRef.current > 120) {
+        liveCountAtRef.current = now;
+        const map = mapRef.current?.getMap();
+        if (map) {
+          const b = map.getBounds();
+          useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
+            north: b.getNorth(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            west: b.getWest(),
+          }));
+        }
+      }
+    }
+
     // The store viewport mirror moved to onMoveEnd: the map is uncontrolled
     // (initialViewState), so nothing consumes live per-tick values, and a
     // setViewState per onMove tick re-rendered every mapStore subscriber on
@@ -808,7 +884,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (renderMode === 'geojson') {
       updateVisibleCameras();
     }
-  }, [updateVisibleCameras, renderMode]);
+  }, [updateVisibleCameras, renderMode, country]);
 
   // Handle map load
   const onLoad = useCallback(() => {
