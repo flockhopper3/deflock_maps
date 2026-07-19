@@ -24,6 +24,7 @@ import { useUrlSync } from '@/hooks/useUrlSync';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { CameraFilterControl } from '@/components/map/CameraFilterControl';
 import { MapThemeControl } from '@/components/map/MapThemeControl';
+import { CameraTileStatusPill } from '@/components/map/CameraTileStatusPill';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
 import { Route, Compass, BarChart3, Network, Map as MapIcon } from 'lucide-react';
@@ -344,6 +345,9 @@ export function MapPage() {
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
             <MapStyleControl />
             {showCameraPill && <LoadingPill />}
+            {(appMode === 'map' || appMode === 'route') && (
+              <CameraTileStatusPill onRetryTiles={handleRetryWithRemount} />
+            )}
             {appMode === 'network' && <NetworkLoadingPill />}
             {appMode === 'density' && <DensityLoadingPill />}
             <MapThemeControl />
