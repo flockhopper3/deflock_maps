@@ -197,11 +197,26 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       // Build-scoped ids: if the tileset predates/postdates this manifest,
       // expressions would select the wrong cameras. Degrade to unfiltered
       // tiles rather than filter wrongly. 'unknown' (unstamped build) skips.
-      void verifyFilterTilesetVersion(loaded.version, country).then((verdict) => {
-        if (verdict === 'mismatch') {
-          console.warn('[CameraStore] Filter tileset/manifest build mismatch; showing all cameras unfiltered');
-          set({ filterTilesFailed: true });
+      void verifyFilterTilesetVersion(loaded.version, country).then(async (verdict) => {
+        if (verdict !== 'mismatch') return;
+        // A mismatch is usually CDN cache skew, not a pipeline problem: the
+        // manifest and TileJSON edge entries expire independently, so they
+        // can come from different hourly builds (observed 12.6h vs 2.8h old
+        // on 2026-07-18). Cache-busted refetches pull a coherent pair from
+        // origin; only a fresh pair that STILL mismatches is a real failure.
+        try {
+          const fresh = await loadCameraManifest(country, { fresh: true });
+          const second = await verifyFilterTilesetVersion(fresh.version, country, { fresh: true });
+          if (second !== 'mismatch') {
+            console.warn('[CameraStore] Filter pair was edge-cache skewed; recovered with cache-busted refetch');
+            set({ manifest: fresh });
+            return;
+          }
+        } catch {
+          // fresh refetch failed — fall through to the degraded state
         }
+        console.warn('[CameraStore] Filter tileset/manifest build mismatch; showing all cameras unfiltered');
+        set({ filterTilesFailed: true });
       });
     } catch (error) {
       console.warn('[CameraStore] Manifest load failed; filters degrade to showing all cameras', error);
