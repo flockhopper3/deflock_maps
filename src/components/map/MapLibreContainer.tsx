@@ -176,6 +176,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
   const lastFlyToRef = useRef<number>(0);
+  // Last tile-count query result — lets updateVisibleCameras skip the
+  // expensive re-query when a huge count can't have visibly changed.
+  const lastTileCountRef = useRef<{ zoom: number; count: number } | null>(null);
   const lastPickTimeRef = useRef(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [markersReady, setMarkersReady] = useState(false);
@@ -319,11 +322,22 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // small excess is real — a camera whose dot overlaps the viewport edge is
       // in view — and grows with dot radius at high zoom.
       try {
+        // Zoomed out, the query itself is the jank: deserializing ~112k
+        // rendered features blocked the main thread ~280ms per gesture at
+        // 6x throttle (measured 2026-07-18), landing mid-drag during rapid
+        // panning. When the last count was huge and zoom hasn't moved,
+        // panning can't visibly change a six-digit count — keep it.
+        const zoomNow = map.getZoom();
+        const last = lastTileCountRef.current;
+        if (last && last.count > 30000 && Math.abs(zoomNow - last.zoom) < 0.5) {
+          return;
+        }
         const suffix = renderMode === 'filter-tiles' ? '-filtered' : '';
-        const layerForZoom = map.getZoom() >= CAMERA_POINTS_MINZOOM
+        const layerForZoom = zoomNow >= CAMERA_POINTS_MINZOOM
           ? `camera-tile-points${suffix}`
           : `camera-tile-dots${suffix}`;
         const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
+        lastTileCountRef.current = { zoom: zoomNow, count: feats.length };
         useMapStore.getState().setTileViewCameraCount(feats.length);
       } catch {
         // layers not ready yet
@@ -354,6 +368,9 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   // re-run (not just the idle listener) is needed to correct it.
   useEffect(() => {
     if (!(isFilterTilesMode || isTilesMode) || !mapRef.current) return;
+    // Filter/mode changes alter what's rendered at the same zoom — any
+    // cached count is wrong now, so the skip heuristic must not keep it.
+    lastTileCountRef.current = null;
     const map = mapRef.current.getMap();
     const onIdle = () => updateVisibleCameras();
     map.once('idle', onIdle);
@@ -385,7 +402,10 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       );
     }
 
-    updateVisibleCameras();
+    // Count once on the next idle only. The old immediate query here was
+    // always followed by the idle one (see comment above), so it double-paid
+    // — at national zoom that's ~112k features deserialized twice per
+    // gesture, blocking the main thread mid-wiggle on mobile-class CPUs.
     if (!map) return;
     map.off('idle', updateVisibleCameras);
     map.once('idle', updateVisibleCameras);
