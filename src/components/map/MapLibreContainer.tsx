@@ -778,7 +778,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       if (tileLoadSeenRef.current) return;
       tileErrorCountRef.current += 1;
       if (tileErrorCountRef.current >= 3) {
-        console.warn('[MapLibre] Camera tiles failing — falling back to GeoJSON path');
+        console.warn('[MapLibre] Camera tiles failing; surfacing the retry pill');
         useCameraStore.getState().setTilesFailed(true);
       }
       return;
@@ -787,7 +787,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       if (filterTileLoadSeenRef.current) return;
       filterTileErrorCountRef.current += 1;
       if (filterTileErrorCountRef.current >= 3) {
-        console.warn('[MapLibre] Filter tiles failing — filters fall back to GeoJSON path');
+        console.warn('[MapLibre] Filter tiles failing; showing all cameras unfiltered');
         useCameraStore.getState().setFilterTilesFailed(true);
       }
     }

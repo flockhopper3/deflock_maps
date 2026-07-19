@@ -10,8 +10,8 @@ interface CameraTileStatusPillProps {
  * Non-blocking failure pill for the map/route views. Those views never load
  * GeoJSON, so a camera-tile or filter-tile failure surfaces here as a
  * tap-to-retry pill rather than a blank map or a full-screen error.
- * Precedence: a full camera-tile failure wins over a filter-only failure —
- * if no cameras load at all, the filter notice is moot.
+ * Precedence: a full camera-tile failure wins over a filter-only failure.
+ * If no cameras load at all, the filter notice is moot.
  */
 export function CameraTileStatusPill({ onRetryTiles }: CameraTileStatusPillProps) {
   const tilesFailed = useCameraStore(s => s.tilesFailed);

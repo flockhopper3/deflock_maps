@@ -351,7 +351,7 @@ export function MapPage() {
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
             <MapStyleControl />
             {showCameraPill && <LoadingPill />}
-            {(appMode === 'map' || appMode === 'route') && (
+            {(appMode === 'map' || appMode === 'route') && !needsGeojson && (
               <CameraTileStatusPill onRetryTiles={handleRetryWithRemount} />
             )}
             {appMode === 'network' && <NetworkLoadingPill />}

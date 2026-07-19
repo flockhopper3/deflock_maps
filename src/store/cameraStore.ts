@@ -95,12 +95,12 @@ interface CameraState {
   // Active country dataset — Canada is fetched lazily on first selection
   country: CameraCountry;
   isCountrySwitching: boolean;
-  /** Set when the camera tile source fails repeatedly before ever loading —
-   *  forces the legacy GeoJSON rendering path as a fallback. */
+  /** Set when the camera tile source fails before ever loading; reveals the
+   *  basemap and surfaces the retry pill. Never loads GeoJSON. */
   tilesFailed: boolean;
   setTilesFailed: (failed: boolean) => void;
-  /** Set when the FILTER tile source fails repeatedly before ever loading —
-   *  active filters then fall back to the GeoJSON path. */
+  /** Set when the FILTER tile source fails before ever loading; active filters
+   *  then degrade to showing all cameras unfiltered. Never loads GeoJSON. */
   filterTilesFailed: boolean;
   setFilterTilesFailed: (failed: boolean) => void;
   /** Reset filter-tile/manifest failure state and re-request the manifest so
