@@ -189,6 +189,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const country = useCameraStore(s => s.country);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const dataVersion = useCameraStore(s => s.dataVersion);
+  const tilesFailed = useCameraStore(s => s.tilesFailed);
   const appMode = useAppModeStore(s => s.appMode);
   const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const heatmapSettings = useAppModeStore(s => s.heatmapSettings);
@@ -408,6 +409,16 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   useEffect(() => {
     onMarkersReady?.(markersReady);
   }, [markersReady, onMarkersReady]);
+
+  // Reveal the basemap on a camera-tile failure. markersReady normally waits
+  // for the camera source to load, which never happens when tiles fail — so
+  // without this the map stays hidden and the 15s watchdog fires a full-screen
+  // error even though the basemap is fine. Once the basemap is up and tiles
+  // have given up, reveal the interactive map; the retry pill carries the
+  // camera-tile failure instead. GeoJSON is never loaded on this path.
+  useEffect(() => {
+    if (mapLoaded && tilesFailed) setMarkersReady(true);
+  }, [mapLoaded, tilesFailed]);
 
   // --- Timeline filter handler (imperative setFilter, no GeoJSON rebuild) ---
   const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'cameras-dots-lowzoom'], []);
@@ -694,7 +705,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   }, [mapLoaded, dataVersion, geojsonData]);
 
   // Tiles mode readiness: first successful camera-tiles load ⇒ markers ready.
-  // Repeated failures before any load ⇒ flip tilesFailed (geojson fallback).
+  // Repeated failures before any load ⇒ flip tilesFailed (surfaces the retry pill).
   //
   // Deliberately NOT gated on `mapLoaded`. That flag comes from the map's
   // `load` event, which by definition waits for the first visually complete
