@@ -14,6 +14,7 @@ import { DensityLoadingPill } from '@/components/map/DensityLoadingPill';
 import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
 import { stateSlug, getStateName } from '@/services/stateFilterService';
 import { isModeAvailable } from '@/services/cameraDataService';
+import { resetPMTilesProtocol } from '@/services/cameraTilesService';
 import { isWebGLAvailable } from '@/utils/webgl';
 import { removeBootSplash } from '@/utils/bootSplash';
 import { useCameraStore, useAppModeStore } from '@/store';
@@ -177,6 +178,11 @@ export function MapPage() {
     // path for a stalled tile source. The (multi-MB) GeoJSON refetch only
     // helps when a feature actually needs it (filters/timeline/heatmap/Canada);
     // skip it in tiles mode where the remount alone drives recovery.
+    // Clear a prior camera-tile failure and discard the pmtiles header cache so
+    // the remount genuinely re-fetches the archive (the retry pill's point).
+    useCameraStore.getState().setTilesFailed(false);
+    useCameraStore.getState().setFilterTilesFailed(false);
+    resetPMTilesProtocol();
     setMapKey(k => k + 1);
 
     if (needsGeojson) {

@@ -69,7 +69,7 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { ensurePMTilesProtocol, CAMERA_POINTS_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
+import { ensurePMTilesProtocol, setPMTilesFailureHandler, CAMERA_POINTS_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
 import { loadStateGeometry } from '../../services/stateFilterService';
 import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
@@ -83,6 +83,14 @@ const CAMERA_POINT_LAYER_IDS = ['camera-tile-points', 'camera-tile-points-filter
 // Camera tiles still use the pmtiles:// protocol (raw archive + Range); only the
 // basemap moved back to the per-tile TileJSON route.
 ensurePMTilesProtocol();
+
+// Wire pmtiles archive-load failures to the store here (not inside the service)
+// to avoid a store<->service import cycle. A failure before an archive ever
+// loaded flips the flag the retry pill reads.
+setPMTilesFailureHandler((kind) => {
+  if (kind === 'filter') useCameraStore.getState().setFilterTilesFailed(true);
+  else useCameraStore.getState().setTilesFailed(true);
+});
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
 const FLAVOR_MAP: Record<MapTileStyleId, string> = {

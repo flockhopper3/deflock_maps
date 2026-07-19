@@ -55,12 +55,60 @@ export const CAMERA_METADATA_MINZOOM = 9;
 export const CAMERA_POINTS_MINZOOM = 9;
 
 let _protocol: Protocol | null = null;
+const _loadedArchives = new Set<string>();
 
-/** Register the shared pmtiles protocol exactly once (basemap + camera tiles). */
+/** Failure sink wired up by the map composition layer (MapLibreContainer), so
+ *  this service stays decoupled from the store (avoids an import cycle:
+ *  cameraStore -> cameraManifestService -> cameraTilesService). */
+export type PMTilesArchiveKind = 'main' | 'filter';
+let _onArchiveFailure: ((kind: PMTilesArchiveKind) => void) | null = null;
+export function setPMTilesFailureHandler(
+  fn: ((kind: PMTilesArchiveKind) => void) | null,
+): void {
+  _onArchiveFailure = fn;
+}
+
+/** Which camera archive a pmtiles request targets, or null for anything that
+ *  is not a camera archive (the basemap uses the TileJSON route, not pmtiles). */
+export function archiveKey(url: string): string | null {
+  const m = url.match(/cameras-(?:us|ca)-hourly(?:-filter)?\.pmtiles/);
+  return m ? m[0] : null;
+}
+
+/** Register the shared pmtiles protocol exactly once (camera archives only).
+ *  A blocked or 404 archive presents to MapLibre as a loaded-but-empty source,
+ *  so MapLibre error events are not a reliable failure signal. The protocol
+ *  handler is: it reports a load failure that happens before that archive ever
+ *  loaded successfully (ignoring aborts), which the UI turns into a retry pill. */
 export function ensurePMTilesProtocol(): Protocol {
   if (!_protocol) {
     _protocol = new Protocol();
-    maplibregl.addProtocol('pmtiles', _protocol.tile.bind(_protocol));
+    const tileFn = _protocol.tile.bind(_protocol);
+    maplibregl.addProtocol('pmtiles', async (params, abortController) => {
+      const key = archiveKey(params.url);
+      try {
+        const result = await tileFn(params, abortController);
+        if (key) _loadedArchives.add(key);
+        return result;
+      } catch (err) {
+        const aborted =
+          abortController?.signal?.aborted || (err as Error)?.name === 'AbortError';
+        if (!aborted && key && !_loadedArchives.has(key)) {
+          _onArchiveFailure?.(key.includes('-filter') ? 'filter' : 'main');
+        }
+        throw err;
+      }
+    });
   }
   return _protocol;
+}
+
+/** Re-register a FRESH pmtiles protocol, discarding the header cache (pmtiles
+ *  caches a rejected header fetch for the app's lifetime). The retry pill calls
+ *  this so a genuine re-fetch is attempted after an outage clears. */
+export function resetPMTilesProtocol(): void {
+  maplibregl.removeProtocol('pmtiles');
+  _protocol = null;
+  _loadedArchives.clear();
+  ensurePMTilesProtocol();
 }
