@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { resolveCameraRenderMode, type RenderModeInputs } from './cameraRenderModeLogic';
+import { resolveCameraRenderMode, isGeojsonMode, type RenderModeInputs } from './cameraRenderModeLogic';
 
 const base: RenderModeInputs = {
-  tilesFailed: false,
   filterTilesFailed: false,
   attributeFiltersActive: false,
   timelineActive: false,
@@ -11,6 +10,21 @@ const base: RenderModeInputs = {
   manifestPhase: 'idle',
   geojsonReady: false,
 };
+
+describe('isGeojsonMode', () => {
+  it('is true only for explore, heatmap, and timeline', () => {
+    expect(isGeojsonMode({ appMode: 'explore', mapModeViz: 'dots', timelineActive: false })).toBe(true);
+    expect(isGeojsonMode({ appMode: 'map', mapModeViz: 'heatmap', timelineActive: false })).toBe(true);
+    expect(isGeojsonMode({ appMode: 'map', mapModeViz: 'dots', timelineActive: true })).toBe(true);
+  });
+
+  it('is false for plain map and route views', () => {
+    expect(isGeojsonMode({ appMode: 'map', mapModeViz: 'dots', timelineActive: false })).toBe(false);
+    expect(isGeojsonMode({ appMode: 'route', mapModeViz: 'dots', timelineActive: false })).toBe(false);
+    // heatmap viz forces geojson only in map mode, not route
+    expect(isGeojsonMode({ appMode: 'route', mapModeViz: 'heatmap', timelineActive: false })).toBe(false);
+  });
+});
 
 describe('resolveCameraRenderMode', () => {
   it('defaults to tiles', () => {
@@ -31,29 +45,17 @@ describe('resolveCameraRenderMode', () => {
     })).toEqual({ renderMode: 'tiles', needsGeojson: false, needsManifest: true });
   });
 
-  it('falls back to geojson when manifest errored', () => {
-    const r = resolveCameraRenderMode({
+  it('degrades to unfiltered tiles (never geojson) when manifest errored', () => {
+    expect(resolveCameraRenderMode({
       ...base, attributeFiltersActive: true, manifestPhase: 'error', geojsonReady: true,
-    });
-    expect(r.renderMode).toBe('geojson');
-    expect(r.needsGeojson).toBe(true);
+    })).toEqual({ renderMode: 'tiles', needsGeojson: false, needsManifest: false });
   });
 
-  it('falls back to geojson when filter tiles failed', () => {
-    const r = resolveCameraRenderMode({
+  it('degrades to unfiltered tiles (never geojson) when filter tiles failed', () => {
+    expect(resolveCameraRenderMode({
       ...base, attributeFiltersActive: true, manifestPhase: 'ready',
       filterTilesFailed: true, geojsonReady: true,
-    });
-    expect(r.renderMode).toBe('geojson');
-    expect(r.needsGeojson).toBe(true);
-  });
-
-  it('holds tiles during geojson fallback hydration (never blanks the map)', () => {
-    const r = resolveCameraRenderMode({
-      ...base, attributeFiltersActive: true, manifestPhase: 'error', geojsonReady: false,
-    });
-    expect(r.renderMode).toBe('tiles');
-    expect(r.needsGeojson).toBe(true);
+    })).toEqual({ renderMode: 'tiles', needsGeojson: false, needsManifest: false });
   });
 
   it('timeline date forces geojson even with manifest ready', () => {
@@ -61,17 +63,23 @@ describe('resolveCameraRenderMode', () => {
       ...base, timelineActive: true, manifestPhase: 'ready', geojsonReady: true,
     });
     expect(r.renderMode).toBe('geojson');
+    expect(r.needsGeojson).toBe(true);
   });
 
-  it('explore, heatmap, and tilesFailed force geojson', () => {
+  it('explore and heatmap force geojson', () => {
     for (const patch of [
       { appMode: 'explore' },
       { mapModeViz: 'heatmap' },
-      { tilesFailed: true },
     ] as Partial<RenderModeInputs>[]) {
       const r = resolveCameraRenderMode({ ...base, ...patch, geojsonReady: true });
       expect(r.renderMode).toBe('geojson');
       expect(r.needsGeojson).toBe(true);
     }
+  });
+
+  it('holds tiles until geojson hydrates for a genuine geojson mode', () => {
+    const r = resolveCameraRenderMode({ ...base, appMode: 'explore', geojsonReady: false });
+    expect(r.renderMode).toBe('tiles');
+    expect(r.needsGeojson).toBe(true);
   });
 });
