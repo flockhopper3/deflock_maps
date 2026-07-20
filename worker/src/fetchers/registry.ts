@@ -1,32 +1,17 @@
-import { fetchCameras, fetchCamerasCA } from './cameras';
-import type { GeoJSON } from '../types';
+import { fetchCameras } from './cameras';
+import type { Dataset, FetchOptions } from '../types';
 
-interface RegisteredFetcher {
+export interface RegisteredFetcher {
   name: string;
-  r2Key: string;
-  source: string;
-  fetch(): Promise<{ featureCollection: GeoJSON.FeatureCollection; featureCount: number }>;
+  /** Runs one fetch pass and returns one or more per-country datasets. */
+  fetch(opts?: FetchOptions): Promise<Dataset[]>;
 }
 
 const fetchers: RegisteredFetcher[] = [
-  {
-    name: 'cameras',
-    r2Key: 'cameras.geojson.gz',
-    source: 'overpass',
-    fetch: fetchCameras,
-  },
-  {
-    name: 'cameras-ca',
-    r2Key: 'cameras-ca.geojson.gz',
-    source: 'overpass',
-    fetch: fetchCamerasCA,
-  },
+  { name: 'cameras', fetch: fetchCameras },
 ];
 
-/**
- * Get all fetchers that should run for a given cron schedule.
- * For now, all fetchers run on every cron trigger (daily).
- */
+/** Get all fetchers that should run for a given cron schedule (all, for now). */
 export function getFetchersForSchedule(_cron: string): RegisteredFetcher[] {
   return fetchers;
 }

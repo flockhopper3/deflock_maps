@@ -1,5 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Mock Cloudflare Cache API (not available in test environment)
+const mockCache = {
+  match: vi.fn(async () => null),
+  put: vi.fn(async () => {}),
+};
+(globalThis as Record<string, unknown>).caches = { default: mockCache };
+
+// Mock cloudflare:email module
+vi.mock('cloudflare:email', () => ({
+  EmailMessage: class MockEmailMessage {
+    constructor(public from: string, public to: string, public raw: ReadableStream | string) {}
+  },
+}));
+
 // Mock R2 bucket
 function createMockBucket(objects: Record<string, { body: string; etag: string; metadata: Record<string, string> }>) {
   return {
@@ -43,17 +57,18 @@ describe('HTTP handler', () => {
   const mockBucket = createMockBucket({
     'cameras.geojson.gz': {
       body: 'gzipped-data',
-      etag: '"abc123"',
+      etag: 'abc123',
       metadata: { 'x-last-updated': '2026-03-20T08:00:00Z', 'x-feature-count': '62000' },
-    },
-    'cameras-us-hourly.geojson.gz': {
-      body: 'hourly-data',
-      etag: '"hourly1"',
-      metadata: { 'x-last-updated': '2026-07-17T14:05:00Z', 'x-feature-count': '114000' },
     },
   });
 
-  const env = { DATA_BUCKET: mockBucket as unknown as R2Bucket, ENVIRONMENT: 'production' };
+  const mockSend = vi.fn(async () => {});
+  const env = {
+    DATA_BUCKET: mockBucket as unknown as R2Bucket,
+    ENVIRONMENT: 'production',
+    TRIGGER_SECRET: 'test-secret-123',
+    EMAIL: { send: mockSend } as unknown as import('../src/types').Env['EMAIL'],
+  };
 
   it('serves dataset from R2 with correct headers', async () => {
     const req = new Request('https://data.dontgetflocked.com/cameras.geojson.gz', {
@@ -66,19 +81,8 @@ describe('HTTP handler', () => {
     expect(res.headers.get('Content-Type')).toBe('application/geo+json');
     // Content-Encoding is handled by Cloudflare's edge, not the Worker
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600, s-maxage=86400');
-    expect(res.headers.get('ETag')).toBe('"abc123"');
+    expect(res.headers.get('ETag')).toBe('"abc123"'); // Worker wraps R2's unquoted etag
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://dontgetflocked.com');
-  });
-
-  it('serves hourly datasets with a short cache TTL', async () => {
-    const req = new Request('https://data.dontgetflocked.com/cameras-us-hourly.geojson.gz', {
-      headers: { Origin: 'https://dontgetflocked.com' },
-    });
-
-    const res = await handleFetchRequest(req, env);
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Cache-Control')).toBe('public, max-age=300, s-maxage=3600');
   });
 
   it('returns 404 for unknown paths', async () => {
@@ -105,11 +109,8 @@ describe('HTTP handler', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.datasets).toHaveLength(2);
-    expect(body.datasets.map((d: { name: string }) => d.name).sort()).toEqual([
-      'cameras',
-      'cameras-us-hourly',
-    ]);
+    expect((body as { datasets: Array<{ name: string }> }).datasets).toHaveLength(1);
+    expect((body as { datasets: Array<{ name: string }> }).datasets[0].name).toBe('cameras');
   });
 
   it('handles CORS preflight', async () => {
@@ -121,5 +122,22 @@ describe('HTTP handler', () => {
     const res = await handleFetchRequest(req, env);
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://dontgetflocked.com');
+  });
+
+  it('returns 401 on trigger without auth', async () => {
+    const req = new Request('https://data.dontgetflocked.com/trigger', {
+      method: 'POST',
+    });
+    const res = await handleFetchRequest(req, env);
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 401 on trigger with wrong secret', async () => {
+    const req = new Request('https://data.dontgetflocked.com/trigger', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer wrong-secret' },
+    });
+    const res = await handleFetchRequest(req, env);
+    expect(res.status).toBe(401);
   });
 });
