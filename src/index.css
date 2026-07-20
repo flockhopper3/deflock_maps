@@ -394,6 +394,11 @@ input[type="range"]::-moz-range-thumb {
 
 /* Left column: country button on top, filter button below it, both above
    the attribution line and beside the legend chip */
+.map-page .map-layers-control {
+  bottom: 120px; /* 72px (country slot) + 40px (country button) + 8px gap */
+  left: 16px;
+}
+
 .map-page .map-style-control {
   bottom: 72px; /* 24px (filter slot) + 40px (filter button) + 8px gap */
   left: 16px;
@@ -445,8 +450,18 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 
-  /* Left column: country above filter, above the attribution line.
-     Offsets track --drawer-height. */
+  /* Left column: layers above country above filter, above the attribution
+     line. Offsets track --drawer-height. */
+  .map-page .map-layers-control {
+    bottom: calc(var(--drawer-height, 80px) + 122px); /* 76px (country slot) + 38px button + 8px gap */
+    left: 12px;
+  }
+
+  .map-page .map-layers-control .layers-trigger {
+    width: 38px;
+    height: 38px;
+  }
+
   .map-page .map-style-control {
     bottom: calc(var(--drawer-height, 80px) + 76px); /* 30px (filter slot) + 38px button + 8px gap */
     left: 12px;

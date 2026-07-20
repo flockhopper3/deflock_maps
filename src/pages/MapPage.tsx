@@ -24,6 +24,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { useUrlSync } from '@/hooks/useUrlSync';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
 import { CameraFilterControl } from '@/components/map/CameraFilterControl';
+import { BoundaryControl } from '@/components/map/BoundaryControl';
+import { BoundaryFeaturePopup } from '@/components/map/BoundaryFeaturePopup';
 import { MapThemeControl } from '@/components/map/MapThemeControl';
 import { CameraTileStatusPill } from '@/components/map/CameraTileStatusPill';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
@@ -358,6 +360,8 @@ export function MapPage() {
             {appMode === 'density' && <DensityLoadingPill />}
             <MapThemeControl />
             <CameraFilterControl />
+            {appMode === 'map' && <BoundaryControl />}
+            {appMode === 'map' && <BoundaryFeaturePopup />}
 
             {/* Density feature popup — floating stats card */}
             {appMode === 'density' && <DensityFeaturePopup />}
