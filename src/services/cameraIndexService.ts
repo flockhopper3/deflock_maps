@@ -207,6 +207,94 @@ export function countInBounds(
   );
 }
 
+export interface BrandTally {
+  total: number;
+  /** Count per brandId (index = brandId, 0 = unknown). Length 256. */
+  counts: Uint32Array;
+}
+
+/** Like countRange, but tallies brandIds. Interior cells skip the bounds
+ *  comparisons but still iterate members to read each brandId. */
+function tallyRange(
+  idx: CameraIndex,
+  southM: number,
+  northM: number,
+  westM: number,
+  eastM: number,
+  counts: Uint32Array
+): number {
+  const y0 = Math.max(0, Math.floor((southM + 90_000_000) / CELL_MICRO));
+  const y1 = Math.min(CELLS_Y - 1, Math.floor((northM + 90_000_000) / CELL_MICRO));
+  const x0 = Math.max(0, Math.floor((westM + 180_000_000) / CELL_MICRO));
+  const x1 = Math.min(CELLS_X - 1, Math.floor((eastM + 180_000_000) / CELL_MICRO));
+  const { cellKeys, cellStarts, order, latMicro, lngMicro, brandIds } = idx;
+
+  let total = 0;
+  for (let y = y0; y <= y1; y++) {
+    const rowInteriorLat =
+      y * CELL_MICRO - 90_000_000 >= southM && (y + 1) * CELL_MICRO - 90_000_000 <= northM;
+    const from = lowerBound(cellKeys, y * CELLS_X + x0);
+    const to = lowerBound(cellKeys, y * CELLS_X + x1 + 1);
+    for (let s = from; s < to; s++) {
+      const x = cellKeys[s] - y * CELLS_X;
+      const interior =
+        rowInteriorLat &&
+        x * CELL_MICRO - 180_000_000 >= westM &&
+        (x + 1) * CELL_MICRO - 180_000_000 <= eastM;
+      if (interior) {
+        for (let k = cellStarts[s]; k < cellStarts[s + 1]; k++) counts[brandIds[order[k]]]++;
+        total += cellStarts[s + 1] - cellStarts[s];
+        continue;
+      }
+      for (let k = cellStarts[s]; k < cellStarts[s + 1]; k++) {
+        const i = order[k];
+        const lat = latMicro[i];
+        const lng = lngMicro[i];
+        if (lat >= southM && lat <= northM && lng >= westM && lng <= eastM) {
+          counts[brandIds[i]]++;
+          total++;
+        }
+      }
+    }
+  }
+  return total;
+}
+
+/**
+ * Per-brand viewport tally. Bounds semantics are identical to countInBounds
+ * (lat clamped, lng may exceed [-180, 180] or wrap the antimeridian), and
+ * `total` always equals countInBounds for the same bounds.
+ */
+export function tallyInBounds(
+  idx: CameraIndex,
+  bounds: { north: number; south: number; east: number; west: number }
+): BrandTally {
+  const counts = new Uint32Array(256);
+  const southM = Math.round(Math.max(-90, bounds.south) * 1e6);
+  const northM = Math.round(Math.min(90, bounds.north) * 1e6);
+  if (northM < southM) return { total: 0, counts };
+
+  let span = bounds.east - bounds.west;
+  if (span < 0) span += 360;
+  if (span >= 360) {
+    return {
+      total: tallyRange(idx, southM, northM, -180_000_000, 180_000_000, counts),
+      counts,
+    };
+  }
+  const w = ((bounds.west + 180) % 360 + 360) % 360 - 180;
+  const e = w + span;
+  const westM = Math.round(w * 1e6);
+  const eastM = Math.round(e * 1e6);
+  if (eastM <= 180_000_000) {
+    return { total: tallyRange(idx, southM, northM, westM, eastM, counts), counts };
+  }
+  const total =
+    tallyRange(idx, southM, northM, westM, 180_000_000, counts) +
+    tallyRange(idx, southM, northM, -180_000_000, eastM - 360_000_000, counts);
+  return { total, counts };
+}
+
 // ---------------------------------------------------------------------------
 // Fetch orchestration — one background attempt per country per session.
 

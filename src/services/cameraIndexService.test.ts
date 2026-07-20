@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   decodeCameraIndex,
   countInBounds,
+  tallyInBounds,
   type CameraIndexSidecar,
 } from './cameraIndexService';
 
@@ -195,5 +196,81 @@ describe('countInBounds', () => {
     ];
     const pIdx = decodeCameraIndex(makeBin(pair), sidecarFor(pair));
     expect(countInBounds(pIdx, { north: 29.72, south: 29.7, east: -95.0, west: -95.5 })).toBe(1);
+  });
+});
+
+describe('tallyInBounds', () => {
+  const brands = ['unknown', 'Flock Safety', 'Motorola Solutions', 'Genetec'];
+  const cams = [
+    { lat: 29.7604, lng: -95.3698, brand: 1 }, // Houston, Flock
+    { lat: 29.7405, lng: -95.4, brand: 2 },    // Houston, Motorola
+    { lat: 29.75, lng: -95.39, brand: 0 },     // Houston, unknown
+    { lat: 40.7128, lng: -74.006, brand: 3 },  // NYC, Genetec
+    { lat: 61.2181, lng: -149.9003, brand: 1 },// Anchorage, Flock
+  ];
+  const idx = decodeCameraIndex(makeBin(cams), sidecarFor(cams, brands));
+
+  it('tallies per-brand counts for a city viewport', () => {
+    const t = tallyInBounds(idx, { north: 30.2, south: 29.3, east: -94.9, west: -95.9 });
+    expect(t.total).toBe(3);
+    expect(t.counts[0]).toBe(1); // unknown
+    expect(t.counts[1]).toBe(1); // Flock
+    expect(t.counts[2]).toBe(1); // Motorola
+    expect(t.counts[3]).toBe(0); // Genetec (NYC, out of view)
+  });
+
+  it('total always equals countInBounds for identical bounds', () => {
+    const boxes = [
+      { north: 30.2, south: 29.3, east: -94.9, west: -95.9 },
+      { north: 90, south: -90, east: 250, west: -250 },   // whole world
+      { north: 60, south: 45, east: -175, west: 175 },    // antimeridian wrap
+      { north: 45, south: 20, east: -60, west: -200 },    // out-of-range lng
+      { north: 0, south: 10, east: 10, west: 0 },         // inverted lat
+    ];
+    for (const b of boxes) {
+      const t = tallyInBounds(idx, b);
+      expect(t.total, JSON.stringify(b)).toBe(countInBounds(idx, b));
+      let sum = 0;
+      for (let i = 0; i < 256; i++) sum += t.counts[i];
+      expect(sum, JSON.stringify(b)).toBe(t.total);
+    }
+  });
+
+  it('interior-cell fast path tallies brands exactly (cell fully inside bounds)', () => {
+    // Cluster fills one 0.5-degree cell; bounds cover the whole cell plus margin.
+    const cluster = [
+      { lat: 29.6, lng: -95.4, brand: 1 },
+      { lat: 29.7, lng: -95.3, brand: 1 },
+      { lat: 29.8, lng: -95.2, brand: 2 },
+    ];
+    const cIdx = decodeCameraIndex(makeBin(cluster), sidecarFor(cluster, brands));
+    const t = tallyInBounds(cIdx, { north: 35, south: 25, east: -90, west: -100 });
+    expect(t.total).toBe(3);
+    expect(t.counts[1]).toBe(2);
+    expect(t.counts[2]).toBe(1);
+  });
+
+  it('matches per-brand brute force on 200 random viewports over 2000 random cameras', () => {
+    const rnd = mulberry32(1337);
+    const records = Array.from({ length: 2000 }, () => ({
+      lat: rnd() * 180 - 90,
+      lng: rnd() * 360 - 180,
+      brand: Math.floor(rnd() * 5),
+    }));
+    const names = ['unknown', 'A', 'B', 'C', 'D'];
+    const rIdx = decodeCameraIndex(makeBin(records), sidecarFor(records, names));
+    for (let i = 0; i < 200; i++) {
+      const south = rnd() * 170 - 90;
+      const north = south + rnd() * (90 - south);
+      const west = rnd() * 400 - 220;
+      const east = west + rnd() * 380;
+      const b = { north, south, east, west };
+      const t = tallyInBounds(rIdx, b);
+      for (let brand = 0; brand < 5; brand++) {
+        const expected = bruteForce(records.filter((r) => r.brand === brand), b);
+        expect(t.counts[brand], `brand ${brand} ${JSON.stringify(b)}`).toBe(expected);
+      }
+      expect(t.total).toBe(countInBounds(rIdx, b));
+    }
   });
 });
