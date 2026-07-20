@@ -136,18 +136,24 @@ function DensityPeekLegend() {
 function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onClear: () => void }) {
   const node = useNetworkStore(s => s.selectedNode);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const inferredConnectionsEnabled = useNetworkStore(s => s.inferredConnectionsEnabled);
   if (!node) return null;
   const connections = adjacency[node.id]?.length ?? node.connectionCount;
+  const gated = !node.isPortal && !inferredConnectionsEnabled;
   return (
     <div className="mt-11 animate-fade-in">
       <div className="flex items-start gap-3">
         <button onClick={onExpand} className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={`${node.name} — open details`}>
           <p className="text-[15px] font-display font-semibold text-white leading-snug truncate">{node.name}</p>
           <p className="text-2xs text-dark-400 uppercase mt-0.5">{TYPE_LABELS[node.type]} · {node.state}</p>
-          <p className="text-xs text-dark-400 mt-1.5 tabular-nums">
-            {connections.toLocaleString()} connection{connections !== 1 ? 's' : ''}
-            {node.isPortal && node.cameras > 0 && <> · {node.cameras.toLocaleString()} cameras</>}
-          </p>
+          {gated ? (
+            <p className="text-xs text-amber-400/90 mt-1.5">No transparency portal</p>
+          ) : (
+            <p className="text-xs text-dark-400 mt-1.5 tabular-nums">
+              {connections.toLocaleString()} connection{connections !== 1 ? 's' : ''}
+              {node.isPortal && node.cameras > 0 && <> · {node.cameras.toLocaleString()} cameras</>}
+            </p>
+          )}
         </button>
         <button
           onClick={onClear}
