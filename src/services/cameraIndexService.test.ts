@@ -4,6 +4,7 @@ import {
   countInBounds,
   tallyInBounds,
   deriveBrandStats,
+  brandStatsEqual,
   type CameraIndexSidecar,
 } from './cameraIndexService';
 
@@ -321,5 +322,52 @@ describe('deriveBrandStats', () => {
     const s = deriveBrandStats(tallyOf([[2, 5], [1, 5], [3, 5], [4, 5], [5, 5]]), brands);
     expect(s.top.map((t) => t.label)).toEqual(['Flock Safety', 'Motorola Solutions', 'Genetec', 'Leonardo']);
     expect(s.otherBrands).toBe(1);
+  });
+});
+
+describe('brandStatsEqual', () => {
+  const brands = ['unknown', 'Flock Safety', 'Motorola Solutions'];
+
+  function tallyOf(pairs: Array<[number, number]>): { total: number; counts: Uint32Array } {
+    const counts = new Uint32Array(256);
+    let total = 0;
+    for (const [id, c] of pairs) { counts[id] = c; total += c; }
+    return { total, counts };
+  }
+
+  it('treats two independently derived identical stats as equal', () => {
+    const a = deriveBrandStats(tallyOf([[1, 985], [0, 409], [2, 289]]), brands);
+    const b = deriveBrandStats(tallyOf([[1, 985], [0, 409], [2, 289]]), brands);
+    expect(a).not.toBe(b); // fresh objects
+    expect(brandStatsEqual(a, b)).toBe(true);
+  });
+
+  it('detects a count change', () => {
+    const a = deriveBrandStats(tallyOf([[1, 985], [2, 289]]), brands);
+    const b = deriveBrandStats(tallyOf([[1, 984], [2, 289]]), brands);
+    expect(brandStatsEqual(a, b)).toBe(false);
+  });
+
+  it('detects a ranking change', () => {
+    const a = deriveBrandStats(tallyOf([[1, 10], [2, 5]]), brands);
+    const b = deriveBrandStats(tallyOf([[1, 5], [2, 10]]), brands);
+    expect(brandStatsEqual(a, b)).toBe(false);
+  });
+
+  it('detects other-bucket changes and differing top lengths', () => {
+    const a = deriveBrandStats(tallyOf([[1, 9], [2, 8], [3, 7], [4, 6], [5, 5]]), brands);
+    const b = deriveBrandStats(tallyOf([[1, 9], [2, 8], [3, 7], [4, 6]]), brands);
+    expect(brandStatsEqual(a, b)).toBe(false);
+    const c = deriveBrandStats(tallyOf([[1, 9]]), brands);
+    const d = deriveBrandStats(tallyOf([[1, 9], [2, 1]]), brands);
+    expect(brandStatsEqual(c, d)).toBe(false);
+  });
+
+  it('handles null on either side', () => {
+    const a = deriveBrandStats(tallyOf([[1, 9]]), brands);
+    expect(brandStatsEqual(null, null)).toBe(true);
+    expect(brandStatsEqual(a, null)).toBe(false);
+    expect(brandStatsEqual(null, a)).toBe(false);
+    expect(brandStatsEqual(a, a)).toBe(true);
   });
 });

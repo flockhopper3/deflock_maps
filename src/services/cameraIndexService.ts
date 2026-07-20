@@ -327,6 +327,34 @@ export function deriveBrandStats(tally: BrandTally, brands: string[]): TileViewB
   return { total: tally.total, top, otherCount, otherBrands: Math.max(0, entries.length - 4) };
 }
 
+/**
+ * Value equality for derived brand stats. deriveBrandStats returns a fresh
+ * object each call, so store writes must be gated on this — otherwise every
+ * map idle event re-renders every subscriber with identical data (the exact
+ * per-gesture commit storm the 2026-07-18 drag fix removed).
+ */
+export function brandStatsEqual(
+  a: TileViewBrandStats | null,
+  b: TileViewBrandStats | null
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (
+    a.total !== b.total ||
+    a.otherCount !== b.otherCount ||
+    a.otherBrands !== b.otherBrands ||
+    a.top.length !== b.top.length
+  ) {
+    return false;
+  }
+  for (let i = 0; i < a.top.length; i++) {
+    const x = a.top[i];
+    const y = b.top[i];
+    if (x.count !== y.count || x.label !== y.label || x.unknown !== y.unknown) return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch orchestration — one background attempt per country per session.
 

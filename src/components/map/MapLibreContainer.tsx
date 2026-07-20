@@ -57,7 +57,7 @@ import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
 import { CameraTileLayers } from './layers/CameraTileLayers';
 import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
-import { ensureCameraIndex, getCameraIndex, tallyInBounds, deriveBrandStats } from '../../services/cameraIndexService';
+import { ensureCameraIndex, getCameraIndex, countInBounds, tallyInBounds, deriveBrandStats, brandStatsEqual } from '../../services/cameraIndexService';
 import { MOBILE_BREAKPOINT } from '../../hooks/useIsMobile';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
@@ -319,7 +319,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         });
         const store = useMapStore.getState();
         store.setTileViewCameraCount(tally.total);
-        store.setTileViewBrandStats(deriveBrandStats(tally, idx.brands));
+        // Equality-gated: idle fires after every tile load/repaint, and an
+        // ungated write of a fresh object re-rendered the panel + strip on
+        // each one. Identical stats must never cause a React commit.
+        const stats = deriveBrandStats(tally, idx.brands);
+        if (!brandStatsEqual(stats, store.tileViewBrandStats)) {
+          store.setTileViewBrandStats(stats);
+        }
         return;
       }
     }
@@ -859,6 +865,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     // sub-millisecond, so the counter tracks the gesture like the old
     // geojson grid did. Throttled to ~8Hz: only the two small count
     // consumers re-render, never the map tree.
+    //
+    // Count ONLY on the gesture path. countInBounds sums interior cells in
+    // O(1); the per-brand tally iterates every member (~117k at national
+    // zoom) and allocates, so brand stats are computed exclusively in the
+    // idle recount — the breakdown lags the gesture by design, never
+    // costs it.
     if (renderMode === 'tiles') {
       const idx = getCameraIndex(country);
       const now = performance.now();
@@ -867,15 +879,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         const map = mapRef.current?.getMap();
         if (map) {
           const b = map.getBounds();
-          const tally = tallyInBounds(idx, {
+          useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
             north: b.getNorth(),
             south: b.getSouth(),
             east: b.getEast(),
             west: b.getWest(),
-          });
-          const store = useMapStore.getState();
-          store.setTileViewCameraCount(tally.total);
-          store.setTileViewBrandStats(deriveBrandStats(tally, idx.brands));
+          }));
         }
       }
     }
