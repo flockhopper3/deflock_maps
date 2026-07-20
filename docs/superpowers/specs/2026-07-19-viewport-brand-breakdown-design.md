@@ -123,7 +123,7 @@ position), "others" last.
 
 Copy is plain and declarative, no em dashes (user rule). Labels come straight
 from the sidecar `brands[]` (already canonical display names); brandId 0
-renders as "Unknown brand" in the legend and "Unknown" where space is tight.
+renders as "Unknown" everywhere (matches the approved form-B mockup).
 
 ## 3. Desktop placement (left panel)
 
