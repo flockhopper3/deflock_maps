@@ -57,7 +57,7 @@ import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
 import { CameraTileLayers } from './layers/CameraTileLayers';
 import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
-import { ensureCameraIndex, getCameraIndex, countInBounds } from '../../services/cameraIndexService';
+import { ensureCameraIndex, getCameraIndex, tallyInBounds, deriveBrandStats } from '../../services/cameraIndexService';
 import { MOBILE_BREAKPOINT } from '../../hooks/useIsMobile';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
@@ -311,12 +311,15 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       const idx = getCameraIndex(country);
       if (idx) {
         const b = map.getBounds();
-        useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
+        const tally = tallyInBounds(idx, {
           north: b.getNorth(),
           south: b.getSouth(),
           east: b.getEast(),
           west: b.getWest(),
-        }));
+        });
+        const store = useMapStore.getState();
+        store.setTileViewCameraCount(tally.total);
+        store.setTileViewBrandStats(deriveBrandStats(tally, idx.brands));
         return;
       }
     }
@@ -362,6 +365,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
         lastTileCountRef.current = { zoom: zoomNow, count: feats.length };
         useMapStore.getState().setTileViewCameraCount(feats.length);
+        // Query counts carry no brand data; hide the breakdown.
+        useMapStore.getState().setTileViewBrandStats(null);
       } catch {
         // layers not ready yet
       }
@@ -369,6 +374,7 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
 
     useMapStore.getState().setTileViewCameraCount(null);
+    useMapStore.getState().setTileViewBrandStats(null);
     const bounds = map.getBounds();
     getCamerasInBounds(
       bounds.getNorth(),
@@ -861,12 +867,15 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         const map = mapRef.current?.getMap();
         if (map) {
           const b = map.getBounds();
-          useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
+          const tally = tallyInBounds(idx, {
             north: b.getNorth(),
             south: b.getSouth(),
             east: b.getEast(),
             west: b.getWest(),
-          }));
+          });
+          const store = useMapStore.getState();
+          store.setTileViewCameraCount(tally.total);
+          store.setTileViewBrandStats(deriveBrandStats(tally, idx.brands));
         }
       }
     }

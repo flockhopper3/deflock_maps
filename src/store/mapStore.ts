@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MapState, MapBounds } from '../types';
+import type { TileViewBrandStats } from '../services/cameraIndexService';
 
 interface FlyToCommand {
   center: [number, number];
@@ -23,6 +24,10 @@ interface MapStoreState extends MapState {
   /** Approximate camera count in view when rendering from tiles (null = geojson mode). */
   tileViewCameraCount: number | null;
 
+  /** Top-4 brand mix in view. Non-null only when rendering unfiltered tiles
+   *  with the positions index loaded; null hides the breakdown UI. */
+  tileViewBrandStats: TileViewBrandStats | null;
+
   /** True when the boot URL pinned an explicit viewport (share link).
    *  Set once by useUrlSync's seeding; never changes afterwards. */
   urlHadViewport: boolean;
@@ -42,6 +47,7 @@ interface MapStoreState extends MapState {
   fitBounds: (bounds: MapBounds) => void;
   setTimelineTickCallback: (cb: ((dateStr: string) => void) | null) => void;
   setTileViewCameraCount: (count: number | null) => void;
+  setTileViewBrandStats: (stats: TileViewBrandStats | null) => void;
 
   /** One-shot command consumed by MapLibreContainer — frames the given
    *  bounds with the map's real projection/aspect (unlike flyTo's guess). */
@@ -66,6 +72,7 @@ export const useMapStore = create<MapStoreState>((set) => ({
   flyToCommand: null,
   _timelineTickCallback: null,
   tileViewCameraCount: null,
+  tileViewBrandStats: null,
   urlHadViewport: false,
   fitBoundsCommand: null,
 
@@ -123,5 +130,6 @@ export const useMapStore = create<MapStoreState>((set) => ({
   setTimelineTickCallback: (cb) => set({ _timelineTickCallback: cb }),
 
   setTileViewCameraCount: (count) => set({ tileViewCameraCount: count }),
+  setTileViewBrandStats: (stats) => set({ tileViewBrandStats: stats }),
 }));
 
