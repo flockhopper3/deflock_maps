@@ -3,6 +3,7 @@ import {
   decodeCameraIndex,
   countInBounds,
   tallyInBounds,
+  deriveBrandStats,
   type CameraIndexSidecar,
 } from './cameraIndexService';
 
@@ -272,5 +273,53 @@ describe('tallyInBounds', () => {
       }
       expect(t.total).toBe(countInBounds(rIdx, b));
     }
+  });
+});
+
+describe('deriveBrandStats', () => {
+  const brands = ['unknown', 'Flock Safety', 'Motorola Solutions', 'Genetec', 'Leonardo', 'Ekin', 'Rekor'];
+
+  function tallyOf(pairs: Array<[number, number]>): { total: number; counts: Uint32Array } {
+    const counts = new Uint32Array(256);
+    let total = 0;
+    for (const [id, c] of pairs) { counts[id] = c; total += c; }
+    return { total, counts };
+  }
+
+  it('ranks top 4 by count and folds the rest into other', () => {
+    const s = deriveBrandStats(
+      tallyOf([[1, 985], [0, 409], [2, 289], [3, 35], [4, 9], [5, 5], [6, 2]]),
+      brands
+    );
+    expect(s.total).toBe(1734);
+    expect(s.top.map((t) => t.label)).toEqual(['Flock Safety', 'Unknown', 'Motorola Solutions', 'Genetec']);
+    expect(s.top.map((t) => t.count)).toEqual([985, 409, 289, 35]);
+    expect(s.top[1].unknown).toBe(true);
+    expect(s.top[0].unknown).toBe(false);
+    expect(s.otherCount).toBe(16);
+    expect(s.otherBrands).toBe(3);
+  });
+
+  it('handles fewer than 4 brands with no other row', () => {
+    const s = deriveBrandStats(tallyOf([[1, 22], [6, 1]]), brands);
+    expect(s.top).toHaveLength(2);
+    expect(s.otherCount).toBe(0);
+    expect(s.otherBrands).toBe(0);
+  });
+
+  it('labels an id beyond the sidecar as Other and marks it unknown', () => {
+    const s = deriveBrandStats(tallyOf([[200, 7]]), brands);
+    expect(s.top[0]).toEqual({ label: 'Other', count: 7, unknown: true });
+  });
+
+  it('returns an empty shape for an empty tally', () => {
+    const s = deriveBrandStats(tallyOf([]), brands);
+    expect(s).toEqual({ total: 0, top: [], otherCount: 0, otherBrands: 0 });
+  });
+
+  it('breaks count ties by lower brandId for a stable order', () => {
+    const s = deriveBrandStats(tallyOf([[2, 5], [1, 5], [3, 5], [4, 5], [5, 5]]), brands);
+    expect(s.top.map((t) => t.label)).toEqual(['Flock Safety', 'Motorola Solutions', 'Genetec', 'Leonardo']);
+    expect(s.otherBrands).toBe(1);
   });
 });

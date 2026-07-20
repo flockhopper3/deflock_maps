@@ -295,6 +295,38 @@ export function tallyInBounds(
   return { total, counts };
 }
 
+export interface TileViewBrandStats {
+  total: number;
+  /** Top 4 by count. Ties break by lower brandId. */
+  top: { label: string; count: number; unknown: boolean }[];
+  otherCount: number;
+  otherBrands: number;
+}
+
+/**
+ * Fold a raw tally into the compact object the UI renders: top 4 brands plus
+ * an aggregate for the rest. brandId 0 displays as "Unknown"; ids beyond the
+ * sidecar's brands array display as "Other". Both carry unknown: true so the
+ * UI renders them gray in any rank slot.
+ */
+export function deriveBrandStats(tally: BrandTally, brands: string[]): TileViewBrandStats {
+  const entries: { id: number; count: number }[] = [];
+  for (let id = 0; id < 256; id++) {
+    const c = tally.counts[id];
+    if (c > 0) entries.push({ id, count: c });
+  }
+  entries.sort((a, b) => b.count - a.count || a.id - b.id);
+
+  const top = entries.slice(0, 4).map((e) => ({
+    label: e.id === 0 ? 'Unknown' : e.id < brands.length ? brands[e.id] : 'Other',
+    count: e.count,
+    unknown: e.id === 0 || e.id >= brands.length,
+  }));
+  let otherCount = 0;
+  for (const e of entries.slice(4)) otherCount += e.count;
+  return { total: tally.total, top, otherCount, otherBrands: Math.max(0, entries.length - 4) };
+}
+
 // ---------------------------------------------------------------------------
 // Fetch orchestration — one background attempt per country per session.
 
