@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { useCameraStore, useMapStore } from '../../store';
 import { useAppModeStore } from '../../store/appModeStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -388,6 +388,9 @@ export function CameraFilterControl() {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Swipe-down-to-close: drag starts only from the handle/header so the
+  // scrollable body keeps its own touch gestures.
+  const sheetDragControls = useDragControls();
 
   const filters = useCameraStore((s) => s.filters);
   const availableBrands = useCameraStore((s) => s.availableBrands);
@@ -586,9 +589,20 @@ export function CameraFilterControl() {
                   animate={{ y: 0 }}
                   exit={{ y: '100%' }}
                   transition={{ type: 'spring', damping: 32, stiffness: 360 }}
+                  drag="y"
+                  dragListener={false}
+                  dragControls={sheetDragControls}
+                  dragConstraints={{ top: 0, bottom: 0 }}
+                  dragElastic={{ top: 0, bottom: 1 }}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.y > 80 || info.velocity.y > 500) setOpen(false);
+                  }}
                 >
-                  {/* Grab handle + header */}
-                  <div className="flex-shrink-0">
+                  {/* Grab handle + header — dragging here swipes the sheet closed */}
+                  <div
+                    className="flex-shrink-0 touch-none select-none"
+                    onPointerDown={(e) => sheetDragControls.start(e)}
+                  >
                     <div className="flex justify-center pt-2.5 pb-1">
                       <div className="w-9 h-1 rounded-full bg-dark-600" />
                     </div>
