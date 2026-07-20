@@ -36,9 +36,9 @@ function toSegments(stats: TileViewBrandStats): Segment[] {
 function StackedBar({ segments }: { segments: Segment[] }) {
   return (
     <div className="flex h-2 rounded-full overflow-hidden bg-white/[0.06]">
-      {segments.map((s) => (
+      {segments.map((s, i) => (
         <div
-          key={s.label}
+          key={`${s.label}-${i}`}
           style={{ width: `${(100 * s.count) / segments.reduce((a, x) => a + x.count, 0)}%`, background: s.color }}
         />
       ))}
@@ -76,8 +76,8 @@ export function BrandBreakdown({ variant = 'full' }: { variant?: 'full' | 'strip
     <div>
       <StackedBar segments={segments} />
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3">
-        {segments.map((s) => (
-          <div key={s.label} className="flex items-center gap-2 min-w-0">
+        {segments.map((s, i) => (
+          <div key={`${s.label}-${i}`} className="flex items-center gap-2 min-w-0">
             <span
               className="w-2 h-2 rounded-sm flex-shrink-0"
               style={{ background: s.color }}
