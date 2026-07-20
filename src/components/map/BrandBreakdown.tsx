@@ -72,15 +72,6 @@ function LiveTotal() {
   );
 }
 
-/** Uppercase micro-label shown while the breakdown is catching up. */
-function UpdatingPill() {
-  return (
-    <span className="text-2xs text-dark-500 uppercase font-semibold animate-fade-in">
-      Updating
-    </span>
-  );
-}
-
 /**
  * Viewport brand composition from the positions index. Renders nothing when
  * stats are unavailable (filters active, geojson modes, index not loaded).
@@ -100,11 +91,8 @@ export function BrandBreakdown({ variant = 'full' }: { variant?: 'full' | 'strip
       <div className="mt-2.5 animate-fade-in">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-2xs text-dark-500 uppercase">In view by brand</span>
-          <span className="flex items-baseline gap-2">
-            {stale && <UpdatingPill />}
-            <span className={`text-xs text-dark-400 transition-opacity duration-200 ${staleClass}`}>
-              <span className="text-dark-200 font-semibold tabular-nums">{leader.pct}%</span> {leader.label}
-            </span>
+          <span className={`text-xs text-dark-400 transition-opacity duration-200 ${staleClass}`}>
+            <span className="text-dark-200 font-semibold tabular-nums">{leader.pct}%</span> {leader.label}
           </span>
         </div>
         <div className={`transition-opacity duration-200 ${staleClass}`}>
@@ -143,16 +131,12 @@ export function CamerasInViewSection() {
   const hasStats = useMapStore(
     (s) => s.tileViewBrandStats !== null && s.tileViewBrandStats.total > 0
   );
-  const stale = useBrandStatsStale();
   if (!hasStats) return null;
   return (
     <div className="px-6 pt-5 pb-4 border-b border-dark-700/50">
       <div className="flex items-baseline justify-between mb-3">
         <span className="text-2xs text-dark-500 uppercase">Cameras in view</span>
-        <span className="flex items-baseline gap-2">
-          {stale && <UpdatingPill />}
-          <LiveTotal />
-        </span>
+        <LiveTotal />
       </div>
       <BrandBreakdown variant="full" />
     </div>
