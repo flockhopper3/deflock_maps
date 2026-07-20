@@ -47,6 +47,41 @@ function StackedBar({ segments }: { segments: Segment[] }) {
 }
 
 /**
+ * True while the breakdown lags the map: brand stats update only on the idle
+ * recount, so during a gesture the live count diverges from the last derived
+ * total. Boolean selector — flips once at gesture start and once when fresh
+ * stats land; the 8Hz count ticks in between never re-render subscribers.
+ */
+function useBrandStatsStale(): boolean {
+  return useMapStore(
+    (s) =>
+      s.tileViewBrandStats !== null &&
+      s.tileViewCameraCount !== null &&
+      s.tileViewCameraCount !== s.tileViewBrandStats.total
+  );
+}
+
+/** Live in-view total, isolated so its 8Hz gesture updates re-render only
+ *  this span — same pattern as HeaderCameraCount. */
+function LiveTotal() {
+  const count = useMapStore((s) => s.tileViewCameraCount ?? s.tileViewBrandStats?.total ?? 0);
+  return (
+    <span className="text-lg font-display font-bold text-accent tabular-nums">
+      {count.toLocaleString()}
+    </span>
+  );
+}
+
+/** Uppercase micro-label shown while the breakdown is catching up. */
+function UpdatingPill() {
+  return (
+    <span className="text-2xs text-dark-500 uppercase font-semibold animate-fade-in">
+      Updating
+    </span>
+  );
+}
+
+/**
  * Viewport brand composition from the positions index. Renders nothing when
  * stats are unavailable (filters active, geojson modes, index not loaded).
  * variant="full": stacked bar + two-column legend (desktop panel, mobile full sheet).
@@ -54,8 +89,10 @@ function StackedBar({ segments }: { segments: Segment[] }) {
  */
 export function BrandBreakdown({ variant = 'full' }: { variant?: 'full' | 'strip' }) {
   const stats = useMapStore((s) => s.tileViewBrandStats);
+  const stale = useBrandStatsStale();
   if (!stats || stats.total === 0 || stats.top.length === 0) return null;
   const segments = toSegments(stats);
+  const staleClass = stale ? 'opacity-40' : 'opacity-100';
 
   if (variant === 'strip') {
     const leader = segments[0];
@@ -63,17 +100,22 @@ export function BrandBreakdown({ variant = 'full' }: { variant?: 'full' | 'strip
       <div className="mt-2.5 animate-fade-in">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-2xs text-dark-500 uppercase">In view by brand</span>
-          <span className="text-xs text-dark-400">
-            <span className="text-dark-200 font-semibold tabular-nums">{leader.pct}%</span> {leader.label}
+          <span className="flex items-baseline gap-2">
+            {stale && <UpdatingPill />}
+            <span className={`text-xs text-dark-400 transition-opacity duration-200 ${staleClass}`}>
+              <span className="text-dark-200 font-semibold tabular-nums">{leader.pct}%</span> {leader.label}
+            </span>
           </span>
         </div>
-        <StackedBar segments={segments} />
+        <div className={`transition-opacity duration-200 ${staleClass}`}>
+          <StackedBar segments={segments} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className={`transition-opacity duration-200 ${staleClass}`}>
       <StackedBar segments={segments} />
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3">
         {segments.map((s, i) => (
@@ -98,14 +140,18 @@ export function BrandBreakdown({ variant = 'full' }: { variant?: 'full' | 'strip
  * degrades to its current About-first layout.
  */
 export function CamerasInViewSection() {
-  const stats = useMapStore((s) => s.tileViewBrandStats);
-  if (!stats || stats.total === 0 || stats.top.length === 0) return null;
+  const hasStats = useMapStore(
+    (s) => s.tileViewBrandStats !== null && s.tileViewBrandStats.total > 0
+  );
+  const stale = useBrandStatsStale();
+  if (!hasStats) return null;
   return (
     <div className="px-6 pt-5 pb-4 border-b border-dark-700/50">
       <div className="flex items-baseline justify-between mb-3">
         <span className="text-2xs text-dark-500 uppercase">Cameras in view</span>
-        <span className="text-lg font-display font-bold text-accent tabular-nums">
-          {stats.total.toLocaleString()}
+        <span className="flex items-baseline gap-2">
+          {stale && <UpdatingPill />}
+          <LiveTotal />
         </span>
       </div>
       <BrandBreakdown variant="full" />
