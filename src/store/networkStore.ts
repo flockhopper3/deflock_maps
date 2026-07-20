@@ -291,7 +291,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   },
 
   setSelectedNodeId: (id) => {
-    const { nodesMap, adjacency, reverseAdjacency } = get();
+    const { nodesMap } = get();
     if (!id) {
       set({ selectedNodeId: null, selectedNode: null, selectedArcs: [], activeTab: 'all' });
       return;

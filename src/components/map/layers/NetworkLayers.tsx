@@ -47,6 +47,7 @@ export function NetworkLayers() {
   const portalOnly = useNetworkStore(s => s.portalOnly);
   const arcWidth = useNetworkStore(s => s.arcWidth);
   const hoverArcsEnabled = useNetworkStore(s => s.hoverArcsEnabled);
+  const inferredConnectionsEnabled = useNetworkStore(s => s.inferredConnectionsEnabled);
   const activeTab = useNetworkStore(s => s.activeTab);
   const setSelectedNodeId = useNetworkStore(s => s.setSelectedNodeId);
   const setHoveredNode = useNetworkStore(s => s.setHoveredNode);
@@ -71,8 +72,9 @@ export function NetworkLayers() {
       setHoverInfo({ node: info.object, x: info.x, y: info.y });
       setHoveredNode(info.object);
 
-      // Debounced hover arcs — only compute adjacency after pointer settles
-      if (hoverArcsEnabled && !selectedNodeId) {
+      // Debounced hover arcs — only compute adjacency after pointer settles.
+      // Non-portal nodes stay arc-free until inferred connections are enabled.
+      if (hoverArcsEnabled && !selectedNodeId && (info.object.isPortal || inferredConnectionsEnabled)) {
         clearTimeout(hoverDebounceRef.current);
         const node = info.object;
         hoverDebounceRef.current = setTimeout(() => {
@@ -87,7 +89,7 @@ export function NetworkLayers() {
       clearTimeout(hoverDebounceRef.current);
       if (hoveredArcs.length > 0) setHoveredArcs([]);
     }
-  }, [setHoveredNode, hoverArcsEnabled, selectedNodeId, adjacency, reverseAdjacency, nodesMap, hoveredArcs.length]);
+  }, [setHoveredNode, hoverArcsEnabled, inferredConnectionsEnabled, selectedNodeId, adjacency, reverseAdjacency, nodesMap, hoveredArcs.length]);
 
   // Clear hover arcs when a node gets clicked (selected arcs take over)
   useEffect(() => {
