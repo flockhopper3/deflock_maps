@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useCameraStore } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { ChevronLeft, ChevronRight, Map as MapIcon } from 'lucide-react';
+import { CamerasInViewSection } from '../map/BrandBreakdown';
 
 // ─── About This Map ─────────────────────────────────────────────────────────
 const ABOUT_BUTTONS: { href: string; label: string; primary?: boolean }[] = [
@@ -63,7 +64,12 @@ export function MapPanelContent() {
     void ensureManifestLoaded();
   }, [country, ensureManifestLoaded]);
 
-  return <AboutContent />;
+  return (
+    <>
+      <CamerasInViewSection />
+      <AboutContent />
+    </>
+  );
 }
 
 // ─── MapPanel (exported) ────────────────────────────────────────────────────
