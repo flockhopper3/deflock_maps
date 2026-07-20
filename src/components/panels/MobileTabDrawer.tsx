@@ -153,25 +153,27 @@ function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onCle
             </p>
           )}
         </button>
-        <button
-          onClick={onClear}
-          className="flex-shrink-0 w-11 h-8 -mr-2 rounded-lg flex items-center justify-center text-dark-400 active:text-dark-200 transition-colors"
-          aria-label="Clear selected agency"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+          <button
+            onClick={onClear}
+            className="w-11 h-8 -mr-2 rounded-lg flex items-center justify-center text-dark-400 active:text-dark-200 transition-colors"
+            aria-label="Clear selected agency"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          {node.portalSlug && (
+            <a
+              href={`https://transparency.flocksafety.com/${node.portalSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs bg-[#3C7F66] active:bg-[#2C5D4A] text-white px-3.5 py-1.5 rounded-full font-semibold shadow-sm shadow-[#3C7F66]/30 transition-colors"
+            >
+              Flock Portal
+              <ExternalLink className="w-3 h-3" aria-hidden />
+            </a>
+          )}
+        </div>
       </div>
-      {node.portalSlug && (
-        <a
-          href={`https://transparency.flocksafety.com/${node.portalSlug}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 mt-2.5 text-xs bg-[#3C7F66] active:bg-[#2C5D4A] text-white px-3.5 py-1.5 rounded-full font-semibold shadow-sm shadow-[#3C7F66]/30 transition-colors"
-        >
-          Flock Portal
-          <ExternalLink className="w-3 h-3" aria-hidden />
-        </a>
-      )}
     </div>
   );
 }
