@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouteStore, useAppModeStore, useCameraStore } from '../../store';
+import { useRouteStore, useAppModeStore, useCameraStore, useMapStore } from '../../store';
 import { useDensityStore } from '../../store/densityStore';
 import { TYPE_LABELS, useNetworkStore } from '../../store/networkStore';
 import type { AppMode } from '../../store';
@@ -22,6 +22,7 @@ import { MapPanelContent } from './MapPanel';
 import { DENSITY_COLOR_RAMPS } from '../map/layers/DensityLayers';
 import { Skeleton } from '../common';
 import { useDelayedFlag } from '../../hooks/useDelayedFlag';
+import { BrandBreakdown } from '../map/BrandBreakdown';
 
 /* ------------------------------------------------------------------ */
 /*  Tab definitions                                                    */
@@ -198,6 +199,12 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   const cameraError = useCameraStore(s => s.error);
   const retryCameraLoad = useCameraStore(s => s.retryCameraLoad);
 
+  // Presence only: height + strip slot flip together, and per-pan stat
+  // updates re-render just the BrandBreakdown leaf, never this drawer.
+  const hasBrandStrip = useMapStore(
+    (s) => s.tileViewBrandStats !== null && s.tileViewBrandStats.total > 0
+  );
+
   /* ---- load data on mode switch ---- */
   useEffect(() => {
     if (appMode === 'density') loadDensity();
@@ -314,7 +321,12 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   // Map mode's minimized header carries the swipe-up hint row. Explore's
   // floor IS the peek (scrubber always visible), so its minimized height
   // equals the peek height and the lower snap collapses out of the sheet.
-  const minimizedHeight = appMode === 'map' ? 108 : appMode === 'explore' ? UNIFORM_PEEK_HEIGHT : 80;
+  // Map's minimized floor grows to fit the live brand strip when the index
+  // has stats; without them it is exactly the pre-strip layout.
+  const minimizedHeight =
+    appMode === 'map' ? (hasBrandStrip ? 160 : 108)
+    : appMode === 'explore' ? UNIFORM_PEEK_HEIGHT
+    : 80;
 
   // Resting height feeds --drawer-height so map controls/attribution ride
   // above the sheet. Parked at the peek height while 'full' (controls are
@@ -364,10 +376,13 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         })}
       </div>
       {appMode === 'map' && snapPoint === 'minimized' && (
-        <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
-          <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
-          <span className="text-[11px] font-medium">Swipe up to learn about this map</span>
-        </div>
+        <>
+          <BrandBreakdown variant="strip" />
+          <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
+            <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
+            <span className="text-[11px] font-medium">Swipe up to learn about this map</span>
+          </div>
+        </>
       )}
       {appMode === 'explore' && (
         <div className={`mt-3 animate-fade-in ${snapPoint === 'full' ? 'hidden' : ''}`}>
