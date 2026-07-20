@@ -303,11 +303,11 @@ export function MapPage() {
                 })}
               </nav>
 
-              {/* Mobile: live count + share. No count on Timeline/Analysis —
-                  "in view" ignores the timeline date and Analysis shows
-                  choropleths, not cameras. */}
+              {/* Mobile: live count + share. No count on Timeline/Analysis/
+                  Network — "in view" ignores the timeline date, Analysis shows
+                  choropleths not cameras, and Network shows agencies. */}
               <div className="lg:hidden flex items-center gap-2 h-full">
-                {appMode !== 'explore' && appMode !== 'density' && <HeaderCameraCount />}
+                {appMode !== 'explore' && appMode !== 'density' && appMode !== 'network' && <HeaderCameraCount />}
                 <ShareButton variant="icon" className="-mr-2" />
               </div>
 
@@ -351,7 +351,9 @@ export function MapPage() {
                 Timeline's count ignores the scrubbed date; Analysis renders
                 choropleths, not cameras. */}
             {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
-            <MapStyleControl />
+            {/* Country switch only where switching countries is meaningful:
+                camera browse + Explore. Hidden on Route/Analysis/Network. */}
+            {(appMode === 'map' || appMode === 'explore') && <MapStyleControl />}
             {showCameraPill && <LoadingPill />}
             {(appMode === 'map' || appMode === 'route') && !needsGeojson && (
               <CameraTileStatusPill onRetryTiles={handleRetryWithRemount} />
