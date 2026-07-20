@@ -76,6 +76,17 @@ export function classifyArcs(
   return arcs;
 }
 
+/** Arcs for a selection, honoring the inferred-connections gate: non-portal
+ *  agencies have no disclosures of their own, so their arcs (mentions in
+ *  other agencies' portals) stay hidden until the user opts in. */
+function gatedArcs(
+  source: NetworkNode,
+  state: Pick<NetworkState, 'nodesMap' | 'adjacency' | 'reverseAdjacency' | 'inferredConnectionsEnabled'>,
+): DirectionalArc[] {
+  if (!source.isPortal && !state.inferredConnectionsEnabled) return [];
+  return classifyArcs(source, state.nodesMap, state.adjacency, state.reverseAdjacency);
+}
+
 export type NetworkLoadPhase = 'idle' | 'fetching' | 'ready' | 'error';
 
 interface NetworkState {
@@ -99,6 +110,8 @@ interface NetworkState {
   searchQuery: string;
   typeFilter: Set<string>; // empty = show all
   portalOnly: boolean;
+  /** When false, non-portal selections get no arcs (their data is inferred). */
+  inferredConnectionsEnabled: boolean;
   error: string | null;
 
   loadNetworkData: () => Promise<void>;
@@ -111,6 +124,7 @@ interface NetworkState {
   toggleTypeFilter: (type: string) => void;
   clearTypeFilter: () => void;
   togglePortalOnly: () => void;
+  toggleInferredConnections: () => void;
   clearSelection: () => void;
 }
 
@@ -203,7 +217,8 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   arcWidth: 0.5,
   searchQuery: '',
   typeFilter: new Set(),
-  portalOnly: true,
+  portalOnly: false,
+  inferredConnectionsEnabled: false,
   error: null,
 
   loadNetworkData: async () => {
@@ -244,10 +259,12 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
             set({ adjacency, reverseAdjacency, adjacencyReady: true, adjacencyProgress: null });
 
             // Backfill arcs for a selection made while adjacency streamed
-            const { selectedNodeId, nodesMap } = get();
-            const source = selectedNodeId ? nodesMap.get(selectedNodeId) : undefined;
+            const backfillState = get();
+            const source = backfillState.selectedNodeId
+              ? backfillState.nodesMap.get(backfillState.selectedNodeId)
+              : undefined;
             if (source) {
-              set({ selectedArcs: classifyArcs(source, nodesMap, adjacency, reverseAdjacency) });
+              set({ selectedArcs: gatedArcs(source, backfillState) });
             }
           })()
         : Promise.resolve();
@@ -282,7 +299,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     const sourceNode = nodesMap.get(id);
     if (!sourceNode) return;
 
-    const arcs = classifyArcs(sourceNode, nodesMap, adjacency, reverseAdjacency);
+    const arcs = gatedArcs(sourceNode, get());
 
     set({
       selectedNodeId: id,
@@ -314,6 +331,14 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   clearTypeFilter: () => set({ typeFilter: new Set() }),
 
   togglePortalOnly: () => set((s) => ({ portalOnly: !s.portalOnly })),
+
+  toggleInferredConnections: () => {
+    set((s) => ({ inferredConnectionsEnabled: !s.inferredConnectionsEnabled }));
+    const { selectedNode } = get();
+    if (selectedNode) {
+      set({ selectedArcs: gatedArcs(selectedNode, get()) });
+    }
+  },
 
   clearSelection: () => set({ selectedNodeId: null, selectedNode: null, selectedArcs: [], activeTab: 'all' }),
 }));

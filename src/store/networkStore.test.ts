@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useNetworkStore } from './networkStore';
+import { useNetworkStore, type NetworkNode } from './networkStore';
 
 const NODES_URL = '/sharing-network-nodes.geojson';
 const ADJ_URL = '/sharing-network-adjacency.json';
@@ -129,5 +129,93 @@ describe('loadNetworkData progressive commits', () => {
 
     expect(useNetworkStore.getState().loadPhase).toBe('error');
     expect(useNetworkStore.getState().error).toMatch(/Nodes/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Inferred-connection gating                                         */
+/* ------------------------------------------------------------------ */
+
+function makeNode(id: string, isPortal: boolean): NetworkNode {
+  return {
+    id,
+    name: id,
+    city: '',
+    state: 'TX',
+    type: 'pd',
+    isPortal,
+    isInactive: false,
+    isLikelyAggregator: false,
+    portalSlug: isPortal ? id : null,
+    aliases: [],
+    cameras: 0,
+    searches: 0,
+    vehiclesCaptured: 0,
+    connectionCount: 1,
+    population: 0,
+    hotlistHits: 0,
+    geocodeMethod: 'city',
+    coordinates: [-97, 32],
+  };
+}
+
+describe('networkStore defaults', () => {
+  it('shows all agencies by default (portalOnly off)', () => {
+    expect(useNetworkStore.getState().portalOnly).toBe(false);
+  });
+});
+
+describe('inferred-connection gating', () => {
+  const portalA = makeNode('portalA', true);
+  const plainB = makeNode('plainB', false);
+
+  beforeEach(() => {
+    useNetworkStore.setState({
+      nodesMap: new Map([
+        ['portalA', portalA],
+        ['plainB', plainB],
+      ]),
+      nodesArray: [portalA, plainB],
+      adjacency: { portalA: ['plainB'] },
+      reverseAdjacency: { plainB: ['portalA'] },
+      adjacencyReady: true,
+      inferredConnectionsEnabled: false,
+    });
+  });
+
+  it('portal selection yields arcs while the flag is off', () => {
+    useNetworkStore.getState().setSelectedNodeId('portalA');
+    const arcs = useNetworkStore.getState().selectedArcs;
+    expect(arcs).toHaveLength(1);
+    expect(arcs[0].target.id).toBe('plainB');
+  });
+
+  it('non-portal selection yields no arcs while the flag is off', () => {
+    useNetworkStore.getState().setSelectedNodeId('plainB');
+    expect(useNetworkStore.getState().selectedNode?.id).toBe('plainB');
+    expect(useNetworkStore.getState().selectedArcs).toHaveLength(0);
+  });
+
+  it('toggling the flag on populates arcs for the selected non-portal node', () => {
+    useNetworkStore.getState().setSelectedNodeId('plainB');
+    useNetworkStore.getState().toggleInferredConnections();
+    const arcs = useNetworkStore.getState().selectedArcs;
+    expect(useNetworkStore.getState().inferredConnectionsEnabled).toBe(true);
+    expect(arcs).toHaveLength(1);
+    expect(arcs[0].direction).toBe('incoming');
+  });
+
+  it('toggling the flag off clears arcs for the selected non-portal node', () => {
+    useNetworkStore.setState({ inferredConnectionsEnabled: true });
+    useNetworkStore.getState().setSelectedNodeId('plainB');
+    expect(useNetworkStore.getState().selectedArcs).toHaveLength(1);
+    useNetworkStore.getState().toggleInferredConnections();
+    expect(useNetworkStore.getState().selectedArcs).toHaveLength(0);
+  });
+
+  it('toggling the flag leaves a selected portal node untouched', () => {
+    useNetworkStore.getState().setSelectedNodeId('portalA');
+    useNetworkStore.getState().toggleInferredConnections();
+    expect(useNetworkStore.getState().selectedArcs).toHaveLength(1);
   });
 });
