@@ -6,7 +6,7 @@ import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { LegacyMapLink } from '../common/LegacyMapLink';
 import { isModeAvailable } from '../../services/cameraDataService';
-import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, X } from 'lucide-react';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, X, ExternalLink } from 'lucide-react';
 import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
 import { FlockHopperCTA } from './FlockHopperCTA';
@@ -90,8 +90,6 @@ function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () =>
   const cfg = PEEK[mode];
   if (!cfg) return null;
   const Icon = cfg.Icon;
-  // Network trims its own top margin (vs. the shared mt-3) to make room for
-  // the search facade below without touching any other mode's spacing.
   return (
     <div className="mt-3 animate-fade-in">
       <button
@@ -141,7 +139,7 @@ function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onCle
   const connections = adjacency[node.id]?.length ?? node.connectionCount;
   const gated = !node.isPortal && !inferredConnectionsEnabled;
   return (
-    <div className="mt-11 animate-fade-in">
+    <div className="mt-3 animate-fade-in">
       <div className="flex items-start gap-3">
         <button onClick={onExpand} className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={`${node.name} — open details`}>
           <p className="text-[15px] font-display font-semibold text-white leading-snug truncate">{node.name}</p>
@@ -163,6 +161,17 @@ function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onCle
           <X className="w-4 h-4" />
         </button>
       </div>
+      {node.portalSlug && (
+        <a
+          href={`https://transparency.flocksafety.com/${node.portalSlug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 mt-2.5 text-xs bg-[#3C7F66] active:bg-[#2C5D4A] text-white px-3.5 py-1.5 rounded-full font-semibold shadow-sm shadow-[#3C7F66]/30 transition-colors"
+        >
+          Flock Portal
+          <ExternalLink className="w-3 h-3" aria-hidden />
+        </a>
+      )}
     </div>
   );
 }
