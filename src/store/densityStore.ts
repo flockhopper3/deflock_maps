@@ -1,14 +1,20 @@
 import { create } from 'zustand';
 import { loadDensityData } from '../services/densityDataService';
+import type { DownloadProgress } from '../services/cameraDataService';
 import type { DensityFeatureProperties } from '../types';
 
 export type DensityLoadPhase = 'idle' | 'fetching' | 'ready' | 'error';
 
+let _loadPromise: Promise<void> | null = null;
+
 interface DensityState {
+  /** States lifecycle. 'ready' means the states choropleth can render; counties may still be streaming (countiesData null until committed). */
   loadPhase: DensityLoadPhase;
   dataVersion: number;
   statesData: GeoJSON.FeatureCollection | null;
   countiesData: GeoJSON.FeatureCollection | null;
+  statesProgress: DownloadProgress | null;
+  countiesProgress: DownloadProgress | null;
   selectedFeature: DensityFeatureProperties | null;
   hoveredFeatureId: string | null;
   error: string | null;
@@ -25,42 +31,78 @@ export const useDensityStore = create<DensityState>((set, get) => ({
   dataVersion: 0,
   statesData: null,
   countiesData: null,
+  statesProgress: null,
+  countiesProgress: null,
   selectedFeature: null,
   hoveredFeatureId: null,
   error: null,
 
   loadAllLevels: async () => {
-    const { loadPhase, statesData, countiesData } = get();
+    if (_loadPromise) return _loadPromise;
 
-    // Already loaded or loading
-    if (loadPhase === 'fetching') return;
-    if (statesData && countiesData) return;
+    const { statesData, countiesData } = get();
+    const needStates = !statesData;
+    const needCounties = !countiesData;
+    if (!needStates && !needCounties) return;
 
-    set({ loadPhase: 'fetching', error: null });
+    _loadPromise = (async () => {
+      set({ error: null, ...(needStates ? { loadPhase: 'fetching' as const } : {}) });
+
+      // Each level commits as it lands: states (260 KB) unlock the panel and
+      // the choropleth fast; counties (2.7 MB) stream in behind.
+      const statesTask = needStates
+        ? loadDensityData('state', (percent, loadedBytes) => {
+            set({ statesProgress: { percent, loadedBytes } });
+          }).then((states) => {
+            set((state) => ({
+              statesData: states,
+              loadPhase: 'ready',
+              statesProgress: null,
+              dataVersion: state.dataVersion + 1,
+            }));
+          })
+        : Promise.resolve();
+
+      const countiesTask = needCounties
+        ? loadDensityData('county', (percent, loadedBytes) => {
+            set({ countiesProgress: { percent, loadedBytes } });
+          }).then((counties) => {
+            set((state) => ({
+              countiesData: counties,
+              countiesProgress: null,
+              dataVersion: state.dataVersion + 1,
+            }));
+          })
+        : Promise.resolve();
+
+      const [statesResult, countiesResult] = await Promise.allSettled([statesTask, countiesTask]);
+
+      const failure = [statesResult, countiesResult].find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+      if (failure) {
+        console.error('[DensityStore] Failed to load density data:', failure.reason);
+        set((state) => ({
+          error: failure.reason instanceof Error ? failure.reason.message : 'Failed to load density data',
+          // Failed counties after committed states leave the states layer usable
+          loadPhase: statesResult.status === 'rejected' ? 'error' : state.loadPhase,
+          statesProgress: null,
+          countiesProgress: null,
+        }));
+      }
+    })();
 
     try {
-      const [states, counties] = await Promise.all([
-        loadDensityData('state'),
-        loadDensityData('county'),
-      ]);
-
-      set((state) => ({
-        statesData: states,
-        countiesData: counties,
-        loadPhase: 'ready',
-        dataVersion: state.dataVersion + 1,
-      }));
-    } catch (error) {
-      console.error('[DensityStore] Failed to load density data:', error);
-      set({
-        error: error instanceof Error ? error.message : 'Failed to load density data',
-        loadPhase: 'error',
-      });
+      return await _loadPromise;
+    } finally {
+      _loadPromise = null;
     }
   },
 
   retryLoad: async () => {
-    set({ loadPhase: 'idle', error: null, statesData: null, countiesData: null });
+    // Keep whatever committed; the service caches per level, so only the
+    // missing level(s) refetch.
+    set({ loadPhase: get().statesData ? 'ready' : 'idle', error: null });
     return get().loadAllLevels();
   },
 

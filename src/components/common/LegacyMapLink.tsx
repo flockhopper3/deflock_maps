@@ -10,7 +10,10 @@ interface LegacyMapLinkProps {
 }
 
 export function LegacyMapLink({ variant, className = '' }: LegacyMapLinkProps) {
-  const { center, zoom } = useMapStore();
+  // Selector subscriptions — destructuring the whole store re-rendered this
+  // component on every mapStore change, including per-frame drag updates.
+  const center = useMapStore((s) => s.center);
+  const zoom = useMapStore((s) => s.zoom);
   const legacyMapUrl = `${LEGACY_MAP_BASE_URL}#map=${Math.round(zoom)}/${center[0].toFixed(6)}/${center[1].toFixed(6)}`;
   if (variant === 'header') {
     return (

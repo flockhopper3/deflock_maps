@@ -12,4 +12,5 @@ export { MobileTabDrawer } from './MobileTabDrawer';
 export { MapTypeDropdown } from './MapTypeDropdown';
 export { NetworkPanelContent } from './NetworkPanelContent';
 export { MapPanel } from './MapPanel';
+export { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 

@@ -1,16 +1,20 @@
 import { create } from 'zustand';
-import type { ALPRCamera, CameraFilters } from '../types';
-import { 
-  loadBundledCameras, 
+import type { ALPRCamera, CameraFilters, CameraManifest } from '../types';
+import {
+  loadBundledCameras,
   retryLoadCameras,
-  getUniqueOperators, 
-  getUniqueBrands 
+  getUniqueOperators,
+  getUniqueBrands,
+  type CameraCountry,
 } from '../services/cameraDataService';
-import { 
-  buildSpatialGrid, 
-  getCamerasInBoundsFromGrid, 
-  type SpatialGrid 
+import {
+  buildSpatialGrid,
+  getCamerasInBoundsFromGrid,
+  type SpatialGrid
 } from '../utils/geo';
+import { loadCameraManifest, verifyFilterTilesetVersion } from '../services/cameraManifestService';
+import { getCachedStateGeometry, isPointInState } from '../services/stateFilterService';
+import { brandMatchesSelection, operatorMatchesSelection } from '../lib/brandNormalization';
 
 /** Get the Monday (YYYY-MM-DD) of the ISO week containing the given ISO timestamp */
 function getWeekMonday(isoTimestamp: string): string {
@@ -27,14 +31,87 @@ function getWeekMonday(isoTimestamp: string): string {
 // Explicit loading phase for better observability
 export type CameraLoadPhase = 'idle' | 'fetching' | 'hydrating' | 'ready' | 'error';
 
+/** Compute all derived state for a camera dataset: spatial grid, filter
+ *  options, and timeline metadata. Shared by initial load, retry, and
+ *  country switching. */
+function buildCameraDataset(cameras: ALPRCamera[]) {
+  const operators = getUniqueOperators(cameras);
+  const brands = getUniqueBrands(cameras);
+  const spatialGrid = buildSpatialGrid(cameras);
+
+  const monthlyCounts = new Map<string, number>();
+  let minDate = '9999-99';
+  let maxDate = '0000-00';
+  const weeklyCounts = new Map<string, number>();
+  let minWeek = 'z'; // sorts after any date
+  let maxWeek = '';
+  const dailyCounts = new Map<string, number>();
+  let minDay = 'z';
+  let maxDay = '';
+
+  for (let i = 0; i < cameras.length; i++) {
+    const ts = cameras[i].osmTimestamp;
+    if (!ts) continue;
+    const month = ts.slice(0, 7); // YYYY-MM
+    monthlyCounts.set(month, (monthlyCounts.get(month) || 0) + 1);
+    if (month < minDate) minDate = month;
+    if (month > maxDate) maxDate = month;
+    const monday = getWeekMonday(ts);
+    weeklyCounts.set(monday, (weeklyCounts.get(monday) || 0) + 1);
+    if (monday < minWeek) minWeek = monday;
+    if (monday > maxWeek) maxWeek = monday;
+    const day = ts.slice(0, 10); // YYYY-MM-DD
+    dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+    if (day < minDay) minDay = day;
+    if (day > maxDay) maxDay = day;
+  }
+
+  return {
+    cameras,
+    filteredCameras: cameras,
+    spatialGrid,
+    availableOperators: operators,
+    availableBrands: brands,
+    timelineMinDate: minDate === '9999-99' ? '2017-04' : minDate,
+    timelineMaxDate: maxDate === '0000-00' ? '2026-02' : maxDate,
+    timelineMonthlyCounts: monthlyCounts,
+    timelineMinWeek: minWeek === 'z' ? '2017-04-03' : minWeek,
+    timelineMaxWeek: maxWeek === '' ? '2026-02-09' : maxWeek,
+    timelineWeeklyCounts: weeklyCounts,
+    timelineMinDay: minDay === 'z' ? '2017-04-03' : minDay,
+    timelineMaxDay: maxDay === '' ? '2026-02-15' : maxDay,
+    timelineDailyCounts: dailyCounts,
+  };
+}
+
 interface CameraState {
   cameras: ALPRCamera[];
   filteredCameras: ALPRCamera[];
   spatialGrid: SpatialGrid | null;
   isLoading: boolean;
   isInitialized: boolean;
-  isPreloading: boolean;
   error: string | null;
+
+  // Active country dataset — Canada is fetched lazily on first selection
+  country: CameraCountry;
+  isCountrySwitching: boolean;
+  /** Set when the camera tile source fails before ever loading; reveals the
+   *  basemap and surfaces the retry pill. Never loads GeoJSON. */
+  tilesFailed: boolean;
+  setTilesFailed: (failed: boolean) => void;
+  /** Set when the FILTER tile source fails before ever loading; active filters
+   *  then degrade to showing all cameras unfiltered. Never loads GeoJSON. */
+  filterTilesFailed: boolean;
+  setFilterTilesFailed: (failed: boolean) => void;
+  /** Reset filter-tile/manifest failure state and re-request the manifest so
+   *  the filter-tiles path can recover. Never loads GeoJSON. */
+  retryFilterTiles: () => void;
+
+  /** Filter dictionary (labels ↔ build-scoped ids). Loaded lazily when the
+   *  Filters panel opens or a filter activates. */
+  manifest: CameraManifest | null;
+  manifestPhase: 'idle' | 'loading' | 'ready' | 'error';
+  ensureManifestLoaded: () => Promise<void>;
   filters: CameraFilters;
   availableOperators: string[];
   availableBrands: string[];
@@ -52,6 +129,8 @@ interface CameraState {
 
   // Explicit loading phase for UI progress
   loadPhase: CameraLoadPhase;
+  /** GeoJSON download percent (0–100) while fetching; null when indeterminate or idle. */
+  downloadProgress: number | null;
 
   // Data version - increments on every filter/data change for map sync
   dataVersion: number;
@@ -60,10 +139,10 @@ interface CameraState {
   _initPromise: Promise<void> | null;
 
   // Actions
-  preloadCameras: () => void;
   initializeCameras: () => Promise<void>;
   ensureCamerasLoaded: () => Promise<void>;
   retryCameraLoad: () => Promise<void>;
+  setCountry: (country: CameraCountry) => Promise<void>;
   setFilters: (filters: Partial<CameraFilters>) => void;
   clearFilters: () => void;
   getCameraById: (osmId: number) => ALPRCamera | undefined;
@@ -75,8 +154,11 @@ interface CameraState {
     operators: string[];
     surveillanceZones: string[];
     mountTypes: string[];
+    /** US state postal code, or null for all states. */
+    state: string | null;
   };
   togglePendingFilter: (key: 'brands' | 'operators' | 'surveillanceZones' | 'mountTypes', value: string) => void;
+  setPendingState: (state: string | null) => void;
   applyPendingFilters: () => void;
   resetAllFilters: () => void;
   getPendingChangeCount: () => number;
@@ -88,8 +170,59 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   spatialGrid: null,
   isLoading: false,
   isInitialized: false,
-  isPreloading: false,
   error: null,
+  country: 'us',
+  isCountrySwitching: false,
+  tilesFailed: false,
+  setTilesFailed: (failed: boolean) => set({ tilesFailed: failed }),
+  filterTilesFailed: false,
+  setFilterTilesFailed: (failed: boolean) => set({ filterTilesFailed: failed }),
+  retryFilterTiles: () => {
+    set({ filterTilesFailed: false, manifestPhase: 'idle', manifest: null });
+    void get().ensureManifestLoaded();
+  },
+  manifest: null,
+  manifestPhase: 'idle',
+
+  // Never rejects — failure is a state ('error'), consumed by the render-mode
+  // logic (degrades to unfiltered tiles, not GeoJSON). Re-invoking after an
+  // error retries (service clears in-flight).
+  ensureManifestLoaded: async () => {
+    const { manifest, manifestPhase, country } = get();
+    if (manifest || manifestPhase === 'loading') return;
+    set({ manifestPhase: 'loading' });
+    try {
+      const loaded = await loadCameraManifest(country);
+      set({ manifest: loaded, manifestPhase: 'ready' });
+      // Build-scoped ids: if the tileset predates/postdates this manifest,
+      // expressions would select the wrong cameras. Degrade to unfiltered
+      // tiles rather than filter wrongly. 'unknown' (unstamped build) skips.
+      void verifyFilterTilesetVersion(loaded.version, country).then(async (verdict) => {
+        if (verdict !== 'mismatch') return;
+        // A mismatch is usually CDN cache skew, not a pipeline problem: the
+        // manifest and TileJSON edge entries expire independently, so they
+        // can come from different hourly builds (observed 12.6h vs 2.8h old
+        // on 2026-07-18). Cache-busted refetches pull a coherent pair from
+        // origin; only a fresh pair that STILL mismatches is a real failure.
+        try {
+          const fresh = await loadCameraManifest(country, { fresh: true });
+          const second = await verifyFilterTilesetVersion(fresh.version, country, { fresh: true });
+          if (second !== 'mismatch') {
+            console.warn('[CameraStore] Filter pair was edge-cache skewed; recovered with cache-busted refetch');
+            set({ manifest: fresh });
+            return;
+          }
+        } catch {
+          // fresh refetch failed — fall through to the degraded state
+        }
+        console.warn('[CameraStore] Filter tileset/manifest build mismatch; showing all cameras unfiltered');
+        set({ filterTilesFailed: true });
+      });
+    } catch (error) {
+      console.warn('[CameraStore] Manifest load failed; filters degrade to showing all cameras', error);
+      set({ manifestPhase: 'error' });
+    }
+  },
   filters: {
     operators: [],
     brands: [],
@@ -109,6 +242,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   timelineMaxDay: '2026-02-15',
   timelineDailyCounts: new Map(),
   loadPhase: 'idle',
+  downloadProgress: null,
   dataVersion: 0,
   _initPromise: null,
   pendingFilters: {
@@ -116,24 +250,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     operators: [],
     surveillanceZones: [],
     mountTypes: [],
-  },
-
-  // Background preload - starts loading without blocking UI
-  // Called from landing page after initial render completes
-  preloadCameras: () => {
-    const { isInitialized, _initPromise, isPreloading } = get();
-
-    // Skip if already loaded or loading
-    if (isInitialized || _initPromise || isPreloading) return;
-
-    set({ isPreloading: true, loadPhase: 'fetching' });
-
-    // Start loading immediately - the 300ms delay in PreloadManager
-    // already gives the landing page time to render
-    get().initializeCameras().catch(() => {
-      // Errors are handled in initializeCameras, just stop preloading state
-      set({ isPreloading: false, loadPhase: 'idle' });
-    });
+    state: null,
   },
 
   // Load camera data from bundled JSON (fast!)
@@ -156,90 +273,34 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       set({ isLoading: true, error: null, loadPhase: 'fetching' });
 
       try {
-        // Load from bundled JSON file (much faster than Overpass API!)
+        // Load from the data Worker for the active country
+        const country = get().country;
         if (import.meta.env.DEV) {
-          console.log('[CameraStore] Fetching cameras-us.json...');
+          console.log(`[CameraStore] Fetching ${country} cameras...`);
         }
-        const cameras = await loadBundledCameras();
-        
+        const cameras = await loadBundledCameras(country, (percent) => {
+          set({ downloadProgress: percent });
+        });
+
         if (import.meta.env.DEV) {
           console.log(`[CameraStore] Fetch complete: ${cameras.length} cameras. Now hydrating...`);
         }
-        
+
         // Update phase to hydrating while building spatial grid
         set({ loadPhase: 'hydrating' });
-        
-        const operators = getUniqueOperators(cameras);
-        const brands = getUniqueBrands(cameras);
 
-        // Build spatial grid for fast geographic lookups
-        const spatialGrid = buildSpatialGrid(cameras);
-
-        // Compute timeline metadata from osmTimestamp fields
-        const monthlyCounts = new Map<string, number>();
-        let minDate = '9999-99';
-        let maxDate = '0000-00';
-        for (let i = 0; i < cameras.length; i++) {
-          const ts = cameras[i].osmTimestamp;
-          if (ts) {
-            const month = ts.slice(0, 7); // YYYY-MM
-            monthlyCounts.set(month, (monthlyCounts.get(month) || 0) + 1);
-            if (month < minDate) minDate = month;
-            if (month > maxDate) maxDate = month;
-          }
-        }
-        const timelineMinDate = minDate === '9999-99' ? '2017-04' : minDate;
-        const timelineMaxDate = maxDate === '0000-00' ? '2026-02' : maxDate;
-
-        // Compute weekly counts
-        const weeklyCounts = new Map<string, number>();
-        let minWeek = 'z'; // sorts after any date
-        let maxWeek = '';
-        // Compute daily counts
-        const dailyCounts = new Map<string, number>();
-        let minDay = 'z';
-        let maxDay = '';
-        for (let i = 0; i < cameras.length; i++) {
-          const ts = cameras[i].osmTimestamp;
-          if (ts) {
-            const monday = getWeekMonday(ts);
-            weeklyCounts.set(monday, (weeklyCounts.get(monday) || 0) + 1);
-            if (monday < minWeek) minWeek = monday;
-            if (monday > maxWeek) maxWeek = monday;
-            const day = ts.slice(0, 10); // YYYY-MM-DD
-            dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
-            if (day < minDay) minDay = day;
-            if (day > maxDay) maxDay = day;
-          }
-        }
-        const timelineMinWeek = minWeek === 'z' ? '2017-04-03' : minWeek;
-        const timelineMaxWeek = maxWeek === '' ? '2026-02-09' : maxWeek;
-        const timelineMinDay = minDay === 'z' ? '2017-04-03' : minDay;
-        const timelineMaxDay = maxDay === '' ? '2026-02-15' : maxDay;
+        const dataset = buildCameraDataset(cameras);
 
         if (import.meta.env.DEV) {
-          console.log(`[CameraStore] Hydration complete. Timeline: ${timelineMinDate} to ${timelineMaxDate} (${monthlyCounts.size} months, ${weeklyCounts.size} weeks with data)`);
+          console.log(`[CameraStore] Hydration complete. Timeline: ${dataset.timelineMinDate} to ${dataset.timelineMaxDate} (${dataset.timelineMonthlyCounts.size} months, ${dataset.timelineWeeklyCounts.size} weeks with data)`);
         }
 
         set((state) => ({
-          cameras,
-          filteredCameras: cameras,
-          spatialGrid,
-          availableOperators: operators,
-          availableBrands: brands,
-          timelineMinDate,
-          timelineMaxDate,
-          timelineMonthlyCounts: monthlyCounts,
-          timelineMinWeek,
-          timelineMaxWeek,
-          timelineWeeklyCounts: weeklyCounts,
-          timelineMinDay,
-          timelineMaxDay,
-          timelineDailyCounts: dailyCounts,
+          ...dataset,
           isLoading: false,
           isInitialized: true,
-          isPreloading: false,
           loadPhase: 'ready',
+          downloadProgress: null,
           dataVersion: state.dataVersion + 1,
         }));
       } catch (error) {
@@ -247,8 +308,8 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         set({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
-          isPreloading: false,
           loadPhase: 'error',
+          downloadProgress: null,
           _initPromise: null, // Clear promise on error so retry can work
         });
         throw error; // Re-throw so callers know it failed
@@ -280,18 +341,6 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     // Already loading - wait for it
     if (state._initPromise) return state._initPromise;
 
-    // If preloading flag is set but promise not yet, wait briefly (race condition)
-    if (state.isPreloading && !state._initPromise) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const updatedState = get();
-      if (updatedState._initPromise) {
-        return updatedState._initPromise;
-      }
-      if (updatedState.isInitialized && updatedState.cameras.length > 0) {
-        return;
-      }
-    }
-
     if (import.meta.env.DEV) {
       console.log('[CameraStore] ensureCamerasLoaded: starting fresh initialization');
     }
@@ -305,76 +354,28 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     }
     
     // Clear any existing promise to allow fresh retry
-    set({ isLoading: true, error: null, _initPromise: null, isPreloading: false, loadPhase: 'fetching' });
+    set({ isLoading: true, error: null, _initPromise: null, loadPhase: 'fetching' });
 
     const retryPromise = (async () => {
       try {
-        const cameras = await retryLoadCameras();
-        
+        const cameras = await retryLoadCameras(get().country, (percent) => {
+          set({ downloadProgress: percent });
+        });
+
         set({ loadPhase: 'hydrating' });
-        
-        const operators = getUniqueOperators(cameras);
-        const brands = getUniqueBrands(cameras);
-        const spatialGrid = buildSpatialGrid(cameras);
 
-        // Compute timeline metadata
-        const monthlyCounts = new Map<string, number>();
-        let retryMinDate = '9999-99';
-        let retryMaxDate = '0000-00';
-        for (let i = 0; i < cameras.length; i++) {
-          const ts = cameras[i].osmTimestamp;
-          if (ts) {
-            const month = ts.slice(0, 7);
-            monthlyCounts.set(month, (monthlyCounts.get(month) || 0) + 1);
-            if (month < retryMinDate) retryMinDate = month;
-            if (month > retryMaxDate) retryMaxDate = month;
-          }
-        }
-
-        // Compute weekly + daily counts
-        const retryWeeklyCounts = new Map<string, number>();
-        let retryMinWeek = 'z';
-        let retryMaxWeek = '';
-        const retryDailyCounts = new Map<string, number>();
-        let retryMinDay = 'z';
-        let retryMaxDay = '';
-        for (let i = 0; i < cameras.length; i++) {
-          const ts = cameras[i].osmTimestamp;
-          if (ts) {
-            const monday = getWeekMonday(ts);
-            retryWeeklyCounts.set(monday, (retryWeeklyCounts.get(monday) || 0) + 1);
-            if (monday < retryMinWeek) retryMinWeek = monday;
-            if (monday > retryMaxWeek) retryMaxWeek = monday;
-            const day = ts.slice(0, 10);
-            retryDailyCounts.set(day, (retryDailyCounts.get(day) || 0) + 1);
-            if (day < retryMinDay) retryMinDay = day;
-            if (day > retryMaxDay) retryMaxDay = day;
-          }
-        }
+        const dataset = buildCameraDataset(cameras);
 
         if (import.meta.env.DEV) {
           console.log(`[CameraStore] Retry successful: ${cameras.length} cameras`);
         }
 
         set((state) => ({
-          cameras,
-          filteredCameras: cameras,
-          spatialGrid,
-          availableOperators: operators,
-          availableBrands: brands,
-          timelineMinDate: retryMinDate === '9999-99' ? '2017-04' : retryMinDate,
-          timelineMaxDate: retryMaxDate === '0000-00' ? '2026-02' : retryMaxDate,
-          timelineMonthlyCounts: monthlyCounts,
-          timelineMinWeek: retryMinWeek === 'z' ? '2017-04-03' : retryMinWeek,
-          timelineMaxWeek: retryMaxWeek === '' ? '2026-02-09' : retryMaxWeek,
-          timelineWeeklyCounts: retryWeeklyCounts,
-          timelineMinDay: retryMinDay === 'z' ? '2017-04-03' : retryMinDay,
-          timelineMaxDay: retryMaxDay === '' ? '2026-02-15' : retryMaxDay,
-          timelineDailyCounts: retryDailyCounts,
+          ...dataset,
           isLoading: false,
           isInitialized: true,
-          isPreloading: false,
           loadPhase: 'ready',
+          downloadProgress: null,
           dataVersion: state.dataVersion + 1,
         }));
       } catch (error) {
@@ -382,8 +383,8 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         set({
           error: error instanceof Error ? error.message : 'Failed to fetch cameras',
           isLoading: false,
-          isPreloading: false,
           loadPhase: 'error',
+          downloadProgress: null,
           _initPromise: null,
         });
         throw error;
@@ -392,6 +393,61 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     set({ _initPromise: retryPromise });
     return retryPromise;
+  },
+
+  // Switch the active country dataset. Fetches lazily (Canada only downloads
+  // on first selection), keeps the current dataset on screen until the new
+  // one is ready, and resets filters since brand/operator lists differ.
+  setCountry: async (country: CameraCountry) => {
+    const { country: currentCountry, isCountrySwitching } = get();
+    if (country === currentCountry || isCountrySwitching) return;
+
+    set({ isCountrySwitching: true });
+
+    try {
+      const cameras = await loadBundledCameras(country);
+      const dataset = buildCameraDataset(cameras);
+
+      if (import.meta.env.DEV) {
+        console.log(`[CameraStore] Switched to ${country}: ${cameras.length} cameras`);
+      }
+
+      set((state) => ({
+        ...dataset,
+        country,
+        filters: {
+          operators: [],
+          brands: [],
+          surveillanceZones: [],
+          mountTypes: [],
+          showAll: true,
+        },
+        pendingFilters: {
+          brands: [],
+          operators: [],
+          surveillanceZones: [],
+          mountTypes: [],
+          state: null,
+        },
+        // Manifest ids are country- and build-scoped: drop the old country's
+        // dictionary and any tile-failure verdicts so the new country's
+        // archives get a clean attempt.
+        manifest: null,
+        manifestPhase: 'idle',
+        filterTilesFailed: false,
+        tilesFailed: false,
+        isCountrySwitching: false,
+        isLoading: false,
+        isInitialized: true,
+        error: null,
+        loadPhase: 'ready',
+        dataVersion: state.dataVersion + 1,
+      }));
+    } catch (error) {
+      console.error(`[CameraStore] Failed to switch to ${country}:`, error);
+      set({ isCountrySwitching: false });
+      throw error;
+    }
   },
 
   setFilters: (newFilters: Partial<CameraFilters>) => {
@@ -411,14 +467,14 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     if (!updatedFilters.showAll) {
       if (updatedFilters.operators.length > 0) {
-        filtered = filtered.filter(
-          (c) => c.operator && updatedFilters.operators.includes(c.operator)
+        filtered = filtered.filter((c) =>
+          operatorMatchesSelection(c.operator, updatedFilters.operators)
         );
       }
 
       if (updatedFilters.brands.length > 0) {
-        filtered = filtered.filter(
-          (c) => c.brand && updatedFilters.brands.includes(c.brand)
+        filtered = filtered.filter((c) =>
+          brandMatchesSelection(c.brand, updatedFilters.brands)
         );
       }
 
@@ -432,6 +488,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         filtered = filtered.filter(
           (c) => c.mountType && updatedFilters.mountTypes.includes(c.mountType)
         );
+      }
+
+      if (updatedFilters.state) {
+        const stateGeom = getCachedStateGeometry(updatedFilters.state);
+        if (stateGeom) {
+          filtered = filtered.filter((c) => isPointInState(c.lon, c.lat, stateGeom));
+        }
       }
     }
 
@@ -453,6 +516,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         brands: [],
         surveillanceZones: [],
         mountTypes: [],
+        state: undefined,
         showAll: true,
         timelineDate: undefined,
       },
@@ -469,13 +533,18 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     set({ pendingFilters: { ...pendingFilters, [key]: next } });
   },
 
+  setPendingState: (state) => {
+    set((s) => ({ pendingFilters: { ...s.pendingFilters, state } }));
+  },
+
   applyPendingFilters: () => {
     const { pendingFilters, cameras, filters, dataVersion } = get();
     const hasAnyFilter =
       pendingFilters.brands.length > 0 ||
       pendingFilters.operators.length > 0 ||
       pendingFilters.surveillanceZones.length > 0 ||
-      pendingFilters.mountTypes.length > 0;
+      pendingFilters.mountTypes.length > 0 ||
+      pendingFilters.state !== null;
 
     const updatedFilters: CameraFilters = {
       ...filters,
@@ -483,6 +552,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       operators: pendingFilters.operators,
       surveillanceZones: pendingFilters.surveillanceZones,
       mountTypes: pendingFilters.mountTypes,
+      state: pendingFilters.state ?? undefined,
       showAll: !hasAnyFilter,
     };
 
@@ -495,16 +565,22 @@ export const useCameraStore = create<CameraState>((set, get) => ({
 
     if (!updatedFilters.showAll) {
       if (updatedFilters.brands.length > 0) {
-        filtered = filtered.filter((c) => c.brand && updatedFilters.brands.includes(c.brand));
+        filtered = filtered.filter((c) => brandMatchesSelection(c.brand, updatedFilters.brands));
       }
       if (updatedFilters.operators.length > 0) {
-        filtered = filtered.filter((c) => c.operator && updatedFilters.operators.includes(c.operator));
+        filtered = filtered.filter((c) => operatorMatchesSelection(c.operator, updatedFilters.operators));
       }
       if (updatedFilters.surveillanceZones.length > 0) {
         filtered = filtered.filter((c) => c.surveillanceZone && updatedFilters.surveillanceZones.includes(c.surveillanceZone));
       }
       if (updatedFilters.mountTypes.length > 0) {
         filtered = filtered.filter((c) => c.mountType && updatedFilters.mountTypes.includes(c.mountType));
+      }
+      if (updatedFilters.state) {
+        const stateGeom = getCachedStateGeometry(updatedFilters.state);
+        if (stateGeom) {
+          filtered = filtered.filter((c) => isPointInState(c.lon, c.lat, stateGeom));
+        }
       }
     }
 
@@ -519,12 +595,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
   resetAllFilters: () => {
     const { cameras } = get();
     set({
-      pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [] },
+      pendingFilters: { brands: [], operators: [], surveillanceZones: [], mountTypes: [], state: null },
       filters: {
         operators: [],
         brands: [],
         surveillanceZones: [],
         mountTypes: [],
+        state: undefined,
         showAll: true,
         timelineDate: undefined,
       },
@@ -541,6 +618,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
       for (const v of pending) if (!applied.has(v)) count++;
       for (const v of applied) if (!pending.has(v)) count++;
     }
+    if ((pendingFilters.state ?? null) !== (filters.state ?? null)) count++;
     return count;
   },
 

@@ -59,9 +59,13 @@ export async function calculateRoute(
   if (!response.ok) {
     if (response.status === 400) {
       const data = await response.json().catch(() => null);
-      throw new Error(
-        data?.error || 'Invalid route request. Please check your locations.'
-      );
+      const apiError: string = data?.error || '';
+      // The API's distance-limit error is a two-sentence explanation; the
+      // banner only needs the limit itself.
+      if (/exceeds maximum|longer than 300 miles/i.test(apiError)) {
+        throw new Error('Routes longer than 300 miles are not supported at this time.');
+      }
+      throw new Error(apiError || 'Invalid route request. Please check your locations.');
     }
     if (response.status === 502 || response.status === 503) {
       throw new Error(

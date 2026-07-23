@@ -1,14 +1,32 @@
 import type { OverpassResponse } from '../types';
 
 export const OVERPASS_ENDPOINTS = [
+  'https://overpass.deflock.org/api/interpreter',
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-const TIMEOUT_MS = 300_000; // 5 minutes
+// DeFlock's Overpass sits behind a reverse proxy that returns 504 at ~60s of
+// wall-clock, regardless of the [timeout:N] in the query. Abort below that so a
+// stuck request fails fast to the next endpoint instead of hanging the pipeline.
+const TIMEOUT_MS = 55_000;
 
-export async function queryOverpass(query: string): Promise<OverpassResponse> {
+// Overpass mirrors (especially deflock.org) reject or rate-limit requests without
+// a User-Agent that identifies the app and provides a contact channel.
+export const OVERPASS_USER_AGENT =
+  'FlockHopper-Data/1.0 (+https://dontgetflocked.com; alerts@dontgetflocked.com)';
+
+export interface OverpassQueryResult {
+  data: OverpassResponse;
+  endpoint: string;
+}
+
+interface RunOptions {
+  /** Treat an empty `elements` array as a valid result instead of a failure. */
+  allowEmpty?: boolean;
+}
+
+async function runOverpass(query: string, opts: RunOptions = {}): Promise<OverpassQueryResult> {
   const errors: Error[] = [];
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -20,7 +38,8 @@ export async function queryOverpass(query: string): Promise<OverpassResponse> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'FlockHopper/1.0 (ALPR Camera Router)',
+          'User-Agent': OVERPASS_USER_AGENT,
+          Accept: 'application/json',
         },
         body: new URLSearchParams({ data: query }),
         signal: controller.signal,
@@ -34,11 +53,11 @@ export async function queryOverpass(query: string): Promise<OverpassResponse> {
 
       const data: OverpassResponse = await response.json();
 
-      if (!data.elements || data.elements.length === 0) {
+      if (!opts.allowEmpty && (!data.elements || data.elements.length === 0)) {
         throw new Error(`Empty response from ${endpoint}`);
       }
 
-      return data;
+      return { data, endpoint };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       errors.push(err);
@@ -49,4 +68,22 @@ export async function queryOverpass(query: string): Promise<OverpassResponse> {
   throw new Error(
     `All Overpass endpoints failed: ${errors.map((e) => e.message).join('; ')}`
   );
+}
+
+/**
+ * Run an Overpass query, falling back across endpoints. Rejects on an empty
+ * result — use for queries that must return data (a national fetch, a known
+ * non-empty region).
+ */
+export function queryOverpass(query: string): Promise<OverpassQueryResult> {
+  return runOverpass(query);
+}
+
+/**
+ * Run an Overpass query for a single map tile. An empty result is valid here
+ * (ocean / unpopulated tiles legitimately have zero cameras), so it is not
+ * treated as a failure.
+ */
+export function queryOverpassTile(query: string): Promise<OverpassQueryResult> {
+  return runOverpass(query, { allowEmpty: true });
 }

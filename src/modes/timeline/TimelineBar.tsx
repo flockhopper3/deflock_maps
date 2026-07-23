@@ -1,85 +1,40 @@
-import { useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useCameraStore } from '../../store';
-import { useMapStore } from '../../store/mapStore';
 import { useAppModeStore } from '../../store/appModeStore';
 import { Play, Pause } from 'lucide-react';
 import {
   DAY_MS,
+  VISIBLE_START,
+  buildSparklinePath,
   dayIndexToDate,
   dateToDayIndex,
   formatDateFixed,
   totalDays,
 } from './timelineUtils';
+import { TimelineSparkline } from './TimelineSparkline';
+import { useTimelineTicker } from './useTimelineTicker';
+import { useTimelineScrubber } from './useTimelineScrubber';
 
-/** Only show the sparkline from this date forward */
-const VISIBLE_START = '2024-01-01';
+export function TimelineBar({ bare = false, showCount = false }: { bare?: boolean; showCount?: boolean } = {}) {
+  const cameraCount = useCameraStore((s) => s.cameras.length);
+  const timelineMinDay = useCameraStore((s) => s.timelineMinDay);
+  const timelineMaxDay = useCameraStore((s) => s.timelineMaxDay);
+  const timelineDailyCounts = useCameraStore((s) => s.timelineDailyCounts);
+  const timelineWeeklyCounts = useCameraStore((s) => s.timelineWeeklyCounts);
+  const timelineMinWeek = useCameraStore((s) => s.timelineMinWeek);
+  const timelineMaxWeek = useCameraStore((s) => s.timelineMaxWeek);
 
-export function TimelineBar() {
-  const {
-    cameras,
-    timelineMinDay,
-    timelineMaxDay,
-    timelineDailyCounts,
-    timelineWeeklyCounts,
-    timelineMinWeek,
-    timelineMaxWeek,
-  } = useCameraStore();
-  const tickCallback = useMapStore((s) => s._timelineTickCallback);
-  const { timelineSettings, updateTimelineSettings } = useAppModeStore();
-
-  const { currentDate, isPlaying, playSpeed } = timelineSettings;
-
-  // --- Throttle map filter updates to ~12fps while UI stays at 60fps ---
-  const TICK_THROTTLE_MS = 80;
-  const lastMapTickTimeRef = useRef(0);
-  const pendingMapDateRef = useRef<string | null>(null);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const throttledTickCallback = useCallback(
-    (date: string) => {
-      const now = performance.now();
-      const elapsed = now - lastMapTickTimeRef.current;
-
-      if (elapsed >= TICK_THROTTLE_MS) {
-        // Enough time has passed — fire immediately
-        lastMapTickTimeRef.current = now;
-        pendingMapDateRef.current = null;
-        if (flushTimerRef.current) {
-          clearTimeout(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-        tickCallback?.(date);
-      } else {
-        // Too soon — store pending and schedule flush
-        pendingMapDateRef.current = date;
-        if (!flushTimerRef.current) {
-          const remaining = TICK_THROTTLE_MS - elapsed;
-          flushTimerRef.current = setTimeout(() => {
-            flushTimerRef.current = null;
-            if (pendingMapDateRef.current) {
-              lastMapTickTimeRef.current = performance.now();
-              tickCallback?.(pendingMapDateRef.current);
-              pendingMapDateRef.current = null;
-            }
-          }, remaining);
-        }
-      }
-    },
-    [tickCallback]
-  );
-
-  /** Clear throttle state after a direct (non-throttled) tickCallback call */
-  const clearThrottleState = useCallback(() => {
-    pendingMapDateRef.current = null;
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
-  }, []);
+  const currentDate = useAppModeStore((s) => s.timelineSettings.currentDate);
+  const isPlaying = useAppModeStore((s) => s.timelineSettings.isPlaying);
+  const playSpeed = useAppModeStore((s) => s.timelineSettings.playSpeed);
+  const updateTimelineSettings = useAppModeStore((s) => s.updateTimelineSettings);
 
   const maxIndex = totalDays(timelineMinDay, timelineMaxDay);
   const currentIndex = dateToDayIndex(currentDate, timelineMinDay);
   const clampedIndex = Math.max(0, Math.min(currentIndex, maxIndex));
+
+  const ticker = useTimelineTicker({ timelineMinDay, maxIndex, isPlaying, playSpeed });
+  const { flushTick } = ticker;
 
   // Visible range starts at Jan 2024 (or timelineMinDay if later)
   const visibleStartIndex = useMemo(
@@ -120,34 +75,18 @@ export function TimelineBar() {
     return { bars, peak };
   }, [timelineMinWeek, timelineMaxWeek, timelineWeeklyCounts]);
 
-  // Sparkline position mapped to the visible (clipped) bar range
-  const sparklinePosition = useMemo(() => {
+  // Scrubber position as a percentage of the visible (clipped) range
+  const progressPercent = useMemo(() => {
     const visibleRange = maxIndex - visibleStartIndex;
     if (visibleRange <= 0) return 0;
-    const posInVisible = clampedIndex - visibleStartIndex;
-    const ratio = Math.max(0, Math.min(1, posInVisible / visibleRange));
-    return ratio * (sparklineData.bars.length - 1);
-  }, [clampedIndex, visibleStartIndex, maxIndex, sparklineData.bars.length]);
+    const ratio = (clampedIndex - visibleStartIndex) / visibleRange;
+    return Math.max(0, Math.min(1, ratio)) * 100;
+  }, [clampedIndex, visibleStartIndex, maxIndex]);
 
-  // --- Imperative sparkline color updates (avoids React diffing ~110 bars per tick) ---
-  const barsRef = useRef<HTMLDivElement>(null);
-  const prevBpRef = useRef(-1);
-
-  useLayoutEffect(() => {
-    const container = barsRef.current;
-    if (!container) return;
-    const newBp = Math.floor(sparklinePosition);
-    const oldBp = prevBpRef.current;
-    if (newBp === oldBp) return;
-    const bars = container.children;
-    const lo = Math.min(oldBp, newBp) + 1;
-    const hi = Math.max(oldBp, newBp);
-    for (let i = Math.max(0, lo); i <= Math.min(hi, bars.length - 1); i++) {
-      (bars[i] as HTMLElement).style.backgroundColor =
-        i <= newBp ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.1)';
-    }
-    prevBpRef.current = newBp;
-  }, [sparklinePosition]);
+  const sparklinePath = useMemo(
+    () => buildSparklinePath(sparklineData.bars, sparklineData.peak),
+    [sparklineData]
+  );
 
   // Precomputed prefix sum — O(1) lookup instead of O(n) loop per scrub
   const cumulativePrefixSum = useMemo(() => {
@@ -167,89 +106,51 @@ export function TimelineBar() {
     const idx = Math.min(clampedIndex, cumulativePrefixSum.length - 1);
     const countUpToDate = idx >= 0 ? cumulativePrefixSum[idx] : 0;
     const totalWithTimestamps = cumulativePrefixSum[cumulativePrefixSum.length - 1];
-    const noTimestampCount = cameras.length - totalWithTimestamps;
+    const noTimestampCount = cameraCount - totalWithTimestamps;
     return countUpToDate + noTimestampCount;
-  }, [clampedIndex, cumulativePrefixSum, cameras.length]);
+  }, [clampedIndex, cumulativePrefixSum, cameraCount]);
 
-  // --- Scrubber via pointer events (maps to visible range) ---
   const trackRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-  const pendingDateRef = useRef<string | null>(null);
-  const rafRef = useRef<number>(0);
+  const scrubber = useTimelineScrubber({
+    trackRef,
+    timelineMinDay,
+    visibleStartIndex,
+    maxIndex,
+    currentIndex: clampedIndex,
+    ticker,
+  });
 
-  // Cleanup RAF + flush timer on unmount
+  // Bind the scrubber's pointer handlers natively (ref + addEventListener)
+  // instead of as onPointer* JSX props. When TimelineBar renders `bare`
+  // inside the drawer peek, StopSheetDrag (an ancestor) calls native
+  // stopPropagation() on 'pointerdown' so the BottomSheet's own native drag
+  // listener (on the header, further out) never sees it. React's synthetic
+  // dispatch relies on that same event bubbling all the way to the app
+  // root — also further out than StopSheetDrag — so a plain onPointerDown
+  // prop here would silently stop firing too. A listener attached directly
+  // on the track fires at the target, before any ancestor's later
+  // stopPropagation call, so it keeps working regardless.
   useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const onDown = scrubber.onPointerDown as unknown as (e: PointerEvent) => void;
+    const onMove = scrubber.onPointerMove as unknown as (e: PointerEvent) => void;
+    const onUp = scrubber.onPointerUp as unknown as (e: PointerEvent) => void;
+    const onCancel = scrubber.onPointerCancel as unknown as (e: PointerEvent) => void;
+    const onLost = scrubber.onLostPointerCapture as unknown as (e: PointerEvent) => void;
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onCancel);
+    el.addEventListener('lostpointercapture', onLost);
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onCancel);
+      el.removeEventListener('lostpointercapture', onLost);
     };
-  }, []);
-
-  const indexFromPointer = useCallback(
-    (clientX: number) => {
-      const track = trackRef.current;
-      if (!track) return visibleStartIndex;
-      const rect = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      return Math.round(visibleStartIndex + ratio * (maxIndex - visibleStartIndex));
-    },
-    [maxIndex, visibleStartIndex]
-  );
-
-  const applyIndex = useCallback(
-    (index: number) => {
-      const newDate = dayIndexToDate(index, timelineMinDay);
-
-      // Coalesce map filter + React state into a single RAF so both happen
-      // in the same frame. This throttles 120Hz+ pointer events to ~60fps.
-      pendingDateRef.current = newDate;
-      if (!rafRef.current) {
-        rafRef.current = requestAnimationFrame(() => {
-          const date = pendingDateRef.current;
-          if (date) {
-            throttledTickCallback(date);
-            updateTimelineSettings({ currentDate: date });
-            pendingDateRef.current = null;
-          }
-          rafRef.current = 0;
-        });
-      }
-    },
-    [timelineMinDay, updateTimelineSettings, throttledTickCallback]
-  );
-
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      isDraggingRef.current = true;
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      applyIndex(indexFromPointer(e.clientX));
-      if (isPlaying) updateTimelineSettings({ isPlaying: false });
-    },
-    [applyIndex, indexFromPointer, isPlaying, updateTimelineSettings]
-  );
-
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!isDraggingRef.current) return;
-      applyIndex(indexFromPointer(e.clientX));
-    },
-    [applyIndex, indexFromPointer]
-  );
-
-  const onPointerUp = useCallback(() => {
-    isDraggingRef.current = false;
-    // Cancel any pending RAF and flush synchronously so final position is exact
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-    if (pendingDateRef.current) {
-      tickCallback?.(pendingDateRef.current);
-      updateTimelineSettings({ currentDate: pendingDateRef.current });
-      pendingDateRef.current = null;
-    }
-    clearThrottleState();
-  }, [updateTimelineSettings, tickCallback, clearThrottleState]);
+  }, [scrubber.onPointerDown, scrubber.onPointerMove, scrubber.onPointerUp, scrubber.onPointerCancel, scrubber.onLostPointerCapture]);
 
   // Play / pause
   const handlePlayPause = useCallback(() => {
@@ -260,13 +161,12 @@ export function TimelineBar() {
         // Reset to visible start
         const startDate = dayIndexToDate(visibleStartIndex, timelineMinDay);
         updateTimelineSettings({ isPlaying: true, currentDate: startDate });
-        tickCallback?.(startDate);
-        clearThrottleState();
+        flushTick(startDate);
       } else {
         updateTimelineSettings({ isPlaying: true });
       }
     }
-  }, [isPlaying, clampedIndex, maxIndex, visibleStartIndex, timelineMinDay, updateTimelineSettings, tickCallback, clearThrottleState]);
+  }, [isPlaying, clampedIndex, maxIndex, visibleStartIndex, timelineMinDay, updateTimelineSettings, flushTick]);
 
   // Speed cycle (desktop only)
   const handleSpeedCycle = useCallback(() => {
@@ -276,68 +176,14 @@ export function TimelineBar() {
     updateTimelineSettings({ playSpeed: next });
   }, [playSpeed, updateTimelineSettings]);
 
-  // Playback loop
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const msPerTick = 1000 / playSpeed;
-    let lastTickTime = -1; // -1 = uninitialized, set on first frame
-    let rafId: number;
-
-    const tick = (timestamp: number) => {
-      // Initialize on first frame to avoid a giant elapsed delta
-      if (lastTickTime < 0) {
-        lastTickTime = timestamp;
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-
-      const elapsed = timestamp - lastTickTime;
-      if (elapsed >= msPerTick) {
-        // Allow multi-day jumps when frames are slow (e.g. tab backgrounded)
-        const daysToAdvance = Math.floor(elapsed / msPerTick);
-        // Accumulate rather than assign — preserves fractional remainder
-        lastTickTime += daysToAdvance * msPerTick;
-
-        const state = useAppModeStore.getState();
-        const current = dateToDayIndex(state.timelineSettings.currentDate, timelineMinDay);
-        const nextIndex = Math.min(current + daysToAdvance, maxIndex);
-
-        if (nextIndex >= maxIndex) {
-          const finalDate = dayIndexToDate(maxIndex, timelineMinDay);
-          useAppModeStore.getState().updateTimelineSettings({ currentDate: finalDate, isPlaying: false });
-          tickCallback?.(finalDate);
-          clearThrottleState();
-          return;
-        }
-
-        const nextDate = dayIndexToDate(nextIndex, timelineMinDay);
-        useAppModeStore.getState().updateTimelineSettings({ currentDate: nextDate });
-        throttledTickCallback(nextDate);
-      }
-
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, playSpeed, timelineMinDay, maxIndex, tickCallback, throttledTickCallback, clearThrottleState]);
-
-  // Handle position as % of visible range
-  const visibleRange = maxIndex - visibleStartIndex;
-  const handlePercent =
-    visibleRange > 0
-      ? Math.max(0, Math.min(100, ((clampedIndex - visibleStartIndex) / visibleRange) * 100))
-      : 0;
-
   const dateLabel = formatDateFixed(dayIndexToDate(clampedIndex, timelineMinDay));
 
   return (
-    <div className="flex items-center gap-2 lg:gap-3 h-full px-3 lg:px-4 select-none">
+    <div className={`flex items-center gap-2 lg:gap-3 h-full select-none ${bare ? '' : 'px-3 lg:px-4'}`}>
       {/* Play / Pause */}
       <button
         onClick={handlePlayPause}
-        className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 active:bg-white/20 transition-colors"
+        className="flex-shrink-0 flex items-center justify-center w-11 h-11 lg:w-8 lg:h-8 rounded-full bg-white/10 hover:bg-white/15 active:bg-white/20 transition-colors"
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
@@ -350,43 +196,32 @@ export function TimelineBar() {
       {/* Sparkline + Scrubber */}
       <div
         ref={trackRef}
-        className="flex-1 h-8 lg:h-9 flex items-end gap-px relative cursor-pointer"
+        role="slider"
+        tabIndex={0}
+        aria-label="Timeline date"
+        aria-valuemin={visibleStartIndex}
+        aria-valuemax={maxIndex}
+        aria-valuenow={clampedIndex}
+        aria-valuetext={dateLabel}
+        className="flex-1 h-8 lg:h-9 relative cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
         style={{ touchAction: 'none' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onKeyDown={scrubber.onKeyDown}
       >
-        <div ref={barsRef} className="contents">
-          {sparklineData.bars.map((count, i) => {
-            const height =
-              sparklineData.peak > 0 ? (count / sparklineData.peak) * 100 : 0;
-            const isActive = i <= sparklinePosition;
-            return (
-              <div
-                key={i}
-                className="flex-1 min-w-0 rounded-t-[1px]"
-                style={{
-                  height: `${Math.max(height, 2)}%`,
-                  backgroundColor: isActive ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.1)',
-                }}
-              />
-            );
-          })}
-        </div>
+        <TimelineSparkline path={sparklinePath} progressPercent={progressPercent} />
 
         {/* Scrubber handle */}
         <div
           className="absolute top-0 bottom-0 w-px bg-accent/80 pointer-events-none"
-          style={{ left: `${handlePercent}%` }}
+          style={{ left: `${progressPercent}%` }}
         >
-          <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-accent" />
+          <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-accent" />
         </div>
       </div>
 
-      {/* Date · count — single flat line, fixed width to prevent shifting */}
-      <span className="flex-shrink-0 text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap w-[90px] lg:w-[180px] text-right">
+      {/* Date · count — fixed width to prevent shifting as the date changes */}
+      <span className={`flex-shrink-0 text-[11px] sm:text-xs lg:text-sm text-white/90 tabular-nums font-mono tracking-tight whitespace-nowrap text-right ${showCount ? 'w-[150px]' : 'w-[84px] sm:w-[92px]'} lg:w-[180px]`}>
         {dateLabel}
-        <span className="hidden lg:inline text-white/30"> · {cumulativeCount.toLocaleString()}</span>
+        <span className={`${showCount ? 'inline' : 'hidden lg:inline'} text-white/30`}> · {cumulativeCount.toLocaleString()}</span>
       </span>
 
       {/* Speed button — desktop only */}

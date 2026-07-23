@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useRouteStore, useAppModeStore } from '../../store';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouteStore, useAppModeStore, useCameraStore, useMapStore } from '../../store';
 import { useDensityStore } from '../../store/densityStore';
-import { useNetworkStore } from '../../store/networkStore';
+import { TYPE_LABELS, useNetworkStore } from '../../store/networkStore';
 import type { AppMode } from '../../store';
 import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
-import { AlertTriangle } from 'lucide-react';
+import { LegacyMapLink } from '../common/LegacyMapLink';
+import { isModeAvailable } from '../../services/cameraDataService';
+import { AlertTriangle, ChevronUp, BarChart3, Navigation2, Share2, History, X, ExternalLink } from 'lucide-react';
+import { TimelineBar } from '../../modes/timeline/TimelineBar';
 import { RoutePanelContent } from './RoutePanelContent';
-import { MobileRoutePreview } from './MobileRoutePreview';
+import { FlockHopperCTA } from './FlockHopperCTA';
 import { NetworkPanelContent } from './NetworkPanelContent';
 import { MapTypeDropdown } from './MapTypeDropdown';
 import { HeatmapControls } from '../../modes/heatmap/HeatmapControls';
@@ -14,7 +17,12 @@ import { HeatmapLegend } from '../../modes/heatmap/HeatmapLegend';
 import { DotDensityControls } from '../../modes/dots/DotDensityControls';
 import { DensityControls } from '../../modes/density/DensityControls';
 import { DensityLegend } from '../../modes/density/DensityLegend';
+import { DensityFeatureStats } from '../../modes/density/DensityFeatureStats';
 import { MapPanelContent } from './MapPanel';
+import { DENSITY_COLOR_RAMPS } from '../map/layers/DensityLayers';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
+import { BrandBreakdown } from '../map/BrandBreakdown';
 
 /* ------------------------------------------------------------------ */
 /*  Tab definitions                                                    */
@@ -32,6 +40,143 @@ const TABS: TabDef[] = [
   { mode: 'density', label: 'Analysis' },
   { mode: 'network', label: 'Network' },
 ];
+
+/** Shared drawer footer: legacy-map link (its mobile home now that the
+ *  header menu is gone) + attribution. */
+function DrawerFooter() {
+  return (
+    <div className="mt-6 pt-4 border-t border-hairline flex flex-col items-center gap-2">
+      <LegacyMapLink variant="menu-item" className="justify-center !py-1 text-xs" />
+      <p className="text-[10px] text-dark-500 text-center">
+        Maps by{' '}
+        <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
+      </p>
+    </div>
+  );
+}
+
+/** Native pointerdown isolation: children (the timeline scrubber) own their
+ *  pointer gestures; without this the BottomSheet's framer-motion drag
+ *  handler (native listener on the header) would also move the sheet. */
+function StopSheetDrag({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const stop = (e: PointerEvent) => e.stopPropagation();
+    el.addEventListener('pointerdown', stop);
+    return () => el.removeEventListener('pointerdown', stop);
+  }, []);
+  return <div ref={ref}>{children}</div>;
+}
+
+const PEEK: Partial<Record<AppMode, { title: string; desc: string; Icon: typeof BarChart3 }>> = {
+  // route renders the FlockHopper start ad instead of IdentityRow; entry kept so the peek effects treat route as peekable
+  route:   { title: 'Route', desc: 'Set a start and destination to see ALPR exposure along your route — and safer alternatives.', Icon: Navigation2 },
+  explore: { title: 'Timeline', desc: 'Watch the ALPR camera network grow as volunteers documented it on OpenStreetMap.', Icon: History },
+  density: { title: 'Surveillance Analysis', desc: 'Tap any state or county to reveal its statistics.', Icon: BarChart3 },
+  network: { title: 'Flock Sharing Network', desc: 'Law enforcement agencies sharing Flock ALPR data with each other, as publicly disclosed. Tap an agency to trace its connections.', Icon: Share2 },
+};
+
+/** One resting height for every content-mode peek — the sheet never changes
+ *  height switching among Route/Timeline/Analysis/Network. Tune spacing to
+ *  fit content, never this number per-mode. */
+const UNIFORM_PEEK_HEIGHT = 180;
+const PEEK_MODES: ReadonlySet<AppMode> = new Set(['route', 'explore', 'density', 'network']);
+
+/** Mode identity at peek. The whole row is the expand affordance — icon,
+ *  real title, one-liner, chevron. */
+function IdentityRow({ mode, onExpand, extra }: { mode: AppMode; onExpand: () => void; extra?: React.ReactNode }) {
+  const cfg = PEEK[mode];
+  if (!cfg) return null;
+  const Icon = cfg.Icon;
+  return (
+    <div className="mt-3 animate-fade-in">
+      <button
+        onClick={onExpand}
+        className="w-full flex items-center gap-3 text-left active:opacity-70 transition-opacity min-h-11"
+        aria-label={`${cfg.title} — open controls and details`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-accent-muted border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-[18px] h-[18px] text-accent" aria-hidden="true" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[15px] font-display font-semibold text-white leading-tight">{cfg.title}</h2>
+          <p className="text-xs text-dark-400 leading-snug mt-0.5">{cfg.desc}</p>
+        </div>
+        <ChevronUp className="w-4 h-4 text-dark-500 flex-shrink-0" aria-hidden="true" />
+      </button>
+      {extra}
+    </div>
+  );
+}
+
+/** Slim gradient legend inside the Analysis peek (replaces the floating
+ *  legend bar on mobile). */
+function DensityPeekLegend() {
+  const { densitySettings } = useAppModeStore();
+  const label = densitySettings.metric === 'perCapita' ? 'Cameras per 10K residents' : 'Cameras per road mile';
+  const gradient = DENSITY_COLOR_RAMPS[densitySettings.colorScheme].gradient.replace('90deg', 'to right');
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2">
+        <span className="text-2xs text-dark-500 uppercase">Low</span>
+        <div className="h-2 rounded-full flex-1" style={{ background: gradient }} />
+        <span className="text-2xs text-dark-500 uppercase">High</span>
+      </div>
+      <p className="text-[10px] text-dark-500 mt-2">{label}</p>
+    </div>
+  );
+}
+
+/** Selected agency at peek — name, type, key counts; ✕ clears (same pattern
+ *  as Analysis regions). */
+function NetworkPeekSummary({ onExpand, onClear }: { onExpand: () => void; onClear: () => void }) {
+  const node = useNetworkStore(s => s.selectedNode);
+  const adjacency = useNetworkStore(s => s.adjacency);
+  const inferredConnectionsEnabled = useNetworkStore(s => s.inferredConnectionsEnabled);
+  if (!node) return null;
+  const connections = adjacency[node.id]?.length ?? node.connectionCount;
+  const gated = !node.isPortal && !inferredConnectionsEnabled;
+  return (
+    <div className="mt-2 animate-fade-in">
+      <div className="flex items-start gap-3">
+        <button onClick={onExpand} className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity" aria-label={`${node.name} — open details`}>
+          <p className="text-[15px] font-display font-semibold text-white leading-snug truncate">{node.name}</p>
+          <p className="text-2xs text-dark-400 uppercase mt-0.5">{TYPE_LABELS[node.type]} · {node.state}</p>
+          {gated ? (
+            <p className="text-xs text-amber-400/90 mt-1.5">No transparency portal</p>
+          ) : (
+            <p className="text-xs text-dark-400 mt-1.5 tabular-nums">
+              {connections.toLocaleString()} connection{connections !== 1 ? 's' : ''}
+              {node.isPortal && node.cameras > 0 && <> · {node.cameras.toLocaleString()} cameras</>}
+            </p>
+          )}
+        </button>
+        <button
+          onClick={onClear}
+          className="flex-shrink-0 w-11 h-8 -mr-2 rounded-lg flex items-center justify-center text-dark-400 active:text-dark-200 transition-colors"
+          aria-label="Clear selected agency"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      {/* Full-width CTA fills the peek's remaining height (route-peek idiom);
+          keep it inside UNIFORM_PEEK_HEIGHT, never grow the sheet for it */}
+      {node.portalSlug && (
+        <a
+          href={`https://transparency.flocksafety.com/${node.portalSlug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 mt-2 w-full py-2 rounded-xl bg-[#3C7F66] active:bg-[#2C5D4A] text-white text-sm font-semibold shadow-sm shadow-[#3C7F66]/30 transition-colors"
+        >
+          Flock Portal
+          <ExternalLink className="w-3.5 h-3.5" aria-hidden />
+        </a>
+      )}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  MobileTabDrawer                                                    */
@@ -52,11 +197,30 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
 
   // Density store
   const { loadPhase: densityLoadPhase, loadAllLevels: loadDensity, retryLoad: retryDensity, error: densityError } = useDensityStore();
+  const selectedDensityFeature = useDensityStore(s => s.selectedFeature);
+  const setSelectedDensityFeature = useDensityStore(s => s.setSelectedFeature);
 
   // Network store — preload data when tab is selected (before drawer expands)
   const loadNetworkData = useNetworkStore(s => s.loadNetworkData);
   const selectedNode = useNetworkStore(s => s.selectedNode);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const adjacencyReady = useNetworkStore(s => s.adjacencyReady);
+  const setSelectedNodeId = useNetworkStore(s => s.setSelectedNodeId);
+
+  /* ---- country (gates US-only tabs) ---- */
+  const country = useCameraStore(s => s.country);
+
+  // Camera GeoJSON (gates the explore tab's timeline/viz controls)
+  const cameraIsInitialized = useCameraStore(s => s.isInitialized);
+  const cameraLoadPhase = useCameraStore(s => s.loadPhase);
+  const cameraError = useCameraStore(s => s.error);
+  const retryCameraLoad = useCameraStore(s => s.retryCameraLoad);
+
+  // Presence only: height + strip slot flip together, and per-pan stat
+  // updates re-render just the BrandBreakdown leaf, never this drawer.
+  const hasBrandStrip = useMapStore(
+    (s) => s.tileViewBrandStats !== null && s.tileViewBrandStats.total > 0
+  );
 
   /* ---- load data on mode switch ---- */
   useEffect(() => {
@@ -67,7 +231,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ---- route auto-expand ---- */
   useEffect(() => {
     if (hasRoutes && appMode === 'route' && !didAutoExpand) {
-      setSnapPoint('full');
+      setSnapPoint('peek');
       setDidAutoExpand(true);
     }
     if (!hasRoutes && didAutoExpand) {
@@ -75,19 +239,85 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
     }
   }, [hasRoutes, appMode, didAutoExpand]);
 
-  const densityIsLoading = densityLoadPhase === 'fetching';
-
-  /* ---- callbacks for BottomSheet + RoutePanelContent ---- */
-  const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
-  const handleCollapseSheet = useCallback(() => setSnapPoint('minimized'), []);
-
-  /* ---- tab switch ---- */
-  const handleTabPress = useCallback((mode: AppMode) => {
-    if (mode !== appMode) {
-      onModeChange(mode);
+  // Entering a mode that has an identity peek from the minimized state
+  // raises the sheet to peek — covers tab taps AND deep links, and never
+  // fights a user who deliberately expanded or is mid-gesture. The mirror
+  // case: returning to Map (no peek content) from a mode parked at peek
+  // drops back to minimized so the swipe-up hint row returns; a
+  // deliberately-expanded full sheet is left alone.
+  useEffect(() => {
+    if (PEEK[appMode] && snapPoint === 'minimized') {
+      setSnapPoint('peek');
+    } else if (!PEEK[appMode] && snapPoint === 'peek') {
+      setSnapPoint('minimized');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appMode]);
+
+  // Tapping a region on the map surfaces its stats at the detail peek.
+  // Only ever raises: never yanks a deliberately-expanded (full) sheet down,
+  // including when re-entering Analysis with a lingering selection.
+  useEffect(() => {
+    if (appMode === 'density' && selectedDensityFeature && snapPoint !== 'full') {
+      setSnapPoint('peek');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDensityFeature, appMode]);
+
+  // Tapping an agency node surfaces its summary at the peek. Only ever
+  // raises — same contract as the Analysis-region effect above.
+  useEffect(() => {
+    if (appMode === 'network' && selectedNode && snapPoint !== 'full') {
+      setSnapPoint('peek');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode, appMode]);
+
+  const densityIsLoading = densityLoadPhase === 'fetching';
+  const showDensitySkeleton = useDelayedFlag(densityIsLoading);
+
+  const exploresPending = !cameraIsInitialized && cameraLoadPhase !== 'error';
+  const showExploreSkeleton = useDelayedFlag(exploresPending);
+
+  /* ---- callbacks for BottomSheet ---- */
+  const handleExpandSheet = useCallback(() => setSnapPoint('full'), []);
+
+  // Explore's floor IS the peek (minimized height === peek height). Keep the
+  // stored snap canonical by mapping the equal-height 'minimized' label to
+  // 'peek' at the state boundary, so mode switches never pass through a
+  // one-frame 80px 'minimized' render.
+  const handleSnapPointChange = useCallback((p: SnapPoint) => {
+    setSnapPoint(appMode === 'explore' && p === 'minimized' ? 'peek' : p);
+  }, [appMode]);
+
+  /* ---- tab switch ----
+   * The tapped tab highlights this frame (pendingMode); the actual mode
+   * switch (store update → layer swaps → panel mounts) is deferred one
+   * painted frame so the tap always feels instant. */
+  const [pendingMode, setPendingMode] = useState<AppMode | null>(null);
+  // Latest requested mode — dedupes same-tab re-taps and lets a newer tap
+  // supersede an older one's still-queued deferred switch.
+  const latestTabRequestRef = useRef<AppMode | null>(null);
+
+  const handleTabPress = useCallback((mode: AppMode) => {
+    if (mode === (latestTabRequestRef.current ?? appMode)) return;
+    latestTabRequestRef.current = mode;
+    setPendingMode(mode);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (latestTabRequestRef.current !== mode) return; // superseded by a newer tap
+      latestTabRequestRef.current = null;
+      onModeChange(mode);
+    }));
     // Keep the drawer at its current snap — do NOT auto-expand on tab tap
   }, [appMode, onModeChange]);
+
+  // Clear the optimistic highlight once the real mode lands (or is bounced,
+  // e.g. the Canada US-only guard switching back to 'map').
+  useEffect(() => {
+    setPendingMode(null);
+  }, [appMode]);
+
+  const activeMode = pendingMode ?? appMode;
 
   /* ---- render controls for explore mode ---- */
   const renderExploreControls = () => {
@@ -105,24 +335,144 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /*  Header: single-row pill tabs                                     */
   /* ================================================================ */
 
+  // Map mode's minimized header carries the swipe-up hint row. Explore's
+  // floor IS the peek (scrubber always visible), so its minimized height
+  // equals the peek height and the lower snap collapses out of the sheet.
+  // Map's minimized floor grows to fit the live brand strip when the index
+  // has stats; without them it is exactly the pre-strip layout.
+  const minimizedHeight =
+    appMode === 'map' ? (hasBrandStrip ? 160 : 108)
+    : appMode === 'explore' ? UNIFORM_PEEK_HEIGHT
+    : 80;
+
+  // Resting height feeds --drawer-height so map controls/attribution ride
+  // above the sheet. Parked at the peek height while 'full' (controls are
+  // behind the sheet then anyway; jumping them to 85vh would look broken).
+  // A selected Analysis region raises the peek to a detail height that fits
+  // the stats while keeping the map (and the tapped region) visible above.
+  const isDensityDetail = appMode === 'density' && !!selectedDensityFeature;
+  const densityDetailHeight = Math.min(430, Math.round(window.innerHeight * 0.62));
+  const peekHeightForMode = isDensityDetail
+    ? densityDetailHeight
+    : PEEK_MODES.has(appMode)
+      ? UNIFORM_PEEK_HEIGHT
+      : minimizedHeight;
+  const drawerRestHeight = snapPoint === 'minimized' ? minimizedHeight : peekHeightForMode;
+
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('.map-page');
+    el?.style.setProperty('--drawer-height', `${drawerRestHeight}px`);
+  }, [drawerRestHeight]);
+
   const headerContent = (
-    <div className="grid grid-cols-5 gap-1">
-      {TABS.map(({ mode, label }) => {
-        const isActive = appMode === mode;
-        return (
-          <button
-            key={mode}
-            onClick={() => handleTabPress(mode)}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
-              isActive
-                ? 'bg-accent/10 text-accent border border-dark-600'
-                : 'bg-zinc-800/60 text-zinc-400 border border-zinc-700 active:bg-zinc-700'
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
+    <div>
+      <div className="flex items-stretch -mx-4 px-2 border-b border-hairline">
+        {TABS.map(({ mode, label }) => {
+          const isActive = activeMode === mode;
+          const available = isModeAvailable(mode, country);
+          return (
+            <button
+              key={mode}
+              onClick={() => available && handleTabPress(mode)}
+              disabled={!available}
+              aria-disabled={!available}
+              className={`relative flex-1 min-w-11 py-2.5 text-2xs font-semibold uppercase tracking-[0.14em] transition-colors ${
+                isActive
+                  ? 'text-white'
+                  : available
+                    ? 'text-dark-500 active:text-dark-300'
+                    : 'text-dark-600'
+              }`}
+            >
+              {label}
+              {isActive && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-[1.5px] bg-accent" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {appMode === 'map' && snapPoint === 'minimized' && (
+        <>
+          <BrandBreakdown variant="strip" />
+          <div className="mt-2.5 flex items-center justify-center gap-1 text-dark-400 animate-fade-in">
+            <ChevronUp className="w-3.5 h-3.5 animate-nudge-up" />
+            <span className="text-[11px] font-medium">Swipe up to learn about this map</span>
+          </div>
+        </>
+      )}
+      {appMode === 'explore' && (
+        <div className={`mt-3 animate-fade-in ${snapPoint === 'full' ? 'hidden' : ''}`}>
+          {mapVisualization === 'heatmap' ? (
+            <div className="mt-16">
+              <IdentityRow mode="explore" onExpand={handleExpandSheet} />
+            </div>
+          ) : (
+            <>
+              {cameraIsInitialized ? (
+                <StopSheetDrag>
+                  <div className="h-20"><TimelineBar bare showCount /></div>
+                </StopSheetDrag>
+              ) : (
+                // Placeholder keeps the h-20 scrubber row's height stable while
+                // the camera GeoJSON is still loading — avoids an empty
+                // sparkline, "· 0" count, and a dead play button (mirrors the
+                // desktop gate: isExploreMode && !isMobile && isInitialized).
+                <div className="h-20 flex items-center gap-2 lg:gap-3" aria-hidden="true">
+                  <Skeleton className="w-11 h-11 rounded-full flex-shrink-0" />
+                  <Skeleton className="flex-1 h-8 rounded-sm" />
+                  <Skeleton className="w-[150px] h-4 flex-shrink-0" />
+                </div>
+              )}
+              <p className="text-2xs text-dark-500 uppercase mt-1">When cameras were mapped on OSM</p>
+            </>
+          )}
+        </div>
+      )}
+      {appMode !== 'explore' && snapPoint === 'peek' && (
+        appMode === 'route' ? (
+          hasRoutes ? (
+            <div className="mt-3 animate-fade-in">
+              <FlockHopperCTA variant="start" />
+            </div>
+          ) : (
+            // Optically centered in the peek's content region (no floating gap)
+            <div className="mt-6 animate-fade-in">
+              <FlockHopperCTA variant="banner" />
+            </div>
+          )
+        ) : isDensityDetail ? (
+          <div className="mt-3 animate-fade-in">
+            <DensityFeatureStats
+              feature={selectedDensityFeature!}
+              onClose={() => setSelectedDensityFeature(null)}
+            />
+            <DensityPeekLegend />
+          </div>
+        ) : appMode === 'network' && selectedNode ? (
+          <NetworkPeekSummary
+            onExpand={handleExpandSheet}
+            onClear={() => setSelectedNodeId(null)}
+          />
+        ) : (
+          <IdentityRow
+            mode={appMode}
+            onExpand={handleExpandSheet}
+            extra={
+              appMode === 'density'
+                ? <DensityPeekLegend />
+                : appMode === 'network'
+                  ? (
+                    <div className="mt-3 flex items-center justify-center gap-1 text-dark-400">
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span className="text-[11px] font-medium">Swipe up for details</span>
+                    </div>
+                  )
+                  : undefined
+            }
+          />
+        )
+      )}
     </div>
   );
 
@@ -137,12 +487,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <MapPanelContent />
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -150,24 +495,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       case 'route':
         return (
           <div className="pb-8">
-            {/* Compact route strip at top */}
-            <div className="mb-4">
-              <MobileRoutePreview hasRoutes={hasRoutes} onExpand={handleExpandSheet} />
-            </div>
+            <RoutePanelContent />
 
-            <RoutePanelContent
-              isBottomSheet
-              onExpandSheet={handleExpandSheet}
-              onCollapseSheet={handleCollapseSheet}
-            />
-
-            {/* Footer */}
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -176,18 +506,44 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <p className="text-xs text-dark-400 mb-3 leading-relaxed">
-              Visualize ALPR camera density across the US. Data from{' '}
+              Watch the US ALPR network grow. Each camera appears on the date volunteers documented it on{' '}
+              <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">OpenStreetMap</a>
+              {' '}(which trails real-world installation). Data from{' '}
               <a href="https://deflock.me" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">DeFlock</a>
-              {' '}&amp;{' '}
-              <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">OSM</a>
-              {' '}contributors. Switch layers below.
+              {' '}&amp; OSM contributors. Switch layers below.
             </p>
 
             <div className="mb-3">
               <MapTypeDropdown />
             </div>
 
-            {renderExploreControls()}
+            {cameraLoadPhase === 'error' && cameraError ? (
+              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
+                <p className="text-sm text-red-400 mb-2">Failed to load camera data</p>
+                <p className="text-xs text-dark-500 mb-3">{cameraError}</p>
+                <button
+                  onClick={() => {
+                    // store owns the error state
+                    retryCameraLoad().catch(() => {});
+                  }}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : exploresPending ? (
+              showExploreSkeleton && (
+                <div className="space-y-4" aria-busy="true">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-24 w-full" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+              )
+            ) : (
+              renderExploreControls()
+            )}
 
             {mapVisualization === 'heatmap' && (
               <div className="mt-6">
@@ -195,13 +551,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               </div>
             )}
 
-            {/* Footer */}
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -209,6 +559,15 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       case 'density':
         return (
           <div className="pb-8">
+            {selectedDensityFeature && (
+              <div className="mb-5 pb-5 border-b border-hairline">
+                <DensityFeatureStats
+                  feature={selectedDensityFeature}
+                  onClose={() => setSelectedDensityFeature(null)}
+                />
+              </div>
+            )}
+
             <p className="text-xs text-dark-400 mb-3 leading-relaxed">
               Compare ALPR surveillance intensity by state or county. Data from{' '}
               <a href="https://deflock.me" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">DeFlock</a>
@@ -217,10 +576,16 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               {' '}contributors. Tap any region on the map to reveal its statistics.
             </p>
 
-            {densityIsLoading && (
-              <div className="flex items-center gap-3 py-4">
-                <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-                <span className="text-sm text-dark-300">Loading density data...</span>
+            {densityIsLoading && showDensitySkeleton && (
+              <div className="space-y-3 py-2" aria-busy="true">
+                <Skeleton className="h-4 w-2/5" />
+                {[0, 1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="w-4 h-4" />
+                    <Skeleton className="h-3 flex-1" />
+                    <Skeleton className="h-3 w-8" />
+                  </div>
+                ))}
               </div>
             )}
 
@@ -246,12 +611,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
               </>
             )}
 
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -260,12 +620,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
         return (
           <div className="pb-8">
             <NetworkPanelContent />
-            <div className="mt-6 pt-4 border-t border-dark-700/50">
-              <p className="text-[10px] text-dark-500 text-center">
-                Maps by{' '}
-                <a href="https://openroadlabs.org" target="_blank" rel="noopener noreferrer" className="hover:text-dark-300 transition-colors">OpenRoad Labs LLC</a>
-              </p>
-            </div>
+            <DrawerFooter />
           </div>
         );
 
@@ -279,6 +634,7 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
   /* ================================================================ */
 
   const isNonSharingPortal = appMode === 'network' &&
+    adjacencyReady &&
     selectedNode?.isPortal &&
     (adjacency[selectedNode.id]?.length ?? 0) === 0;
   const showNetworkWarning = isNonSharingPortal && snapPoint !== 'full';
@@ -288,7 +644,8 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       {showNetworkWarning && (
         <button
           onClick={handleExpandSheet}
-          className="fixed bottom-[96px] left-4 z-[52] flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 shadow-lg shadow-amber-500/30 active:bg-amber-600 transition-colors"
+          className="fixed left-4 z-[52] flex items-center justify-center w-11 h-11 rounded-full bg-amber-500 shadow-lg shadow-amber-500/30 active:bg-amber-600 transition-colors"
+          style={{ bottom: 'calc(var(--drawer-height, 80px) + 16px)' }}
           aria-label="View sharing disclaimer"
         >
           <AlertTriangle className="w-5 h-5 text-white" />
@@ -296,9 +653,9 @@ export function MobileTabDrawer({ onModeChange }: MobileTabDrawerProps) {
       )}
       <BottomSheet
         snapPoint={snapPoint}
-        onSnapPointChange={setSnapPoint}
-        minimizedHeight={80}
-        peekHeight={80}
+        onSnapPointChange={handleSnapPointChange}
+        minimizedHeight={minimizedHeight}
+        peekHeight={peekHeightForMode}
         fullHeight={85}
         headerContent={headerContent}
         disableHeaderTap

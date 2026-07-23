@@ -1,6 +1,30 @@
 export interface Env {
   DATA_BUCKET: R2Bucket;
+  EMAIL: SendEmail;
+  TRIGGER_SECRET: string;
   ENVIRONMENT: string;
+  /** Optional override (fraction, e.g. "0.05") for the cross-run delta guard. */
+  MAX_DELTA_PCT?: string;
+}
+
+/** ISO 3166-1 alpha-2 codes for the countries we publish datasets for. */
+export type CountryCode = 'US' | 'CA';
+
+/** One published dataset (one country's cameras) plus everything the pipeline needs to write it. */
+export interface Dataset {
+  country: CountryCode;
+  r2Key: string;
+  source: string;
+  featureCollection: GeoJSON.FeatureCollection;
+  featureCount: number;
+  endpoint: string;
+  /** Per-country minimum acceptable count. A run below this is blocked (unless forced). */
+  minCount: number;
+}
+
+/** Optional overrides for a fetch run. `bboxOverride` restricts US tiling to a single box (dev only). */
+export interface FetchOptions {
+  bboxOverride?: [number, number, number, number]; // [s, w, n, e]
 }
 
 export interface Fetcher {

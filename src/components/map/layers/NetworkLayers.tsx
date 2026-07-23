@@ -4,6 +4,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer, ArcLayer } from '@deck.gl/layers';
 import { useNetworkStore, classifyArcs } from '../../../store/networkStore';
 import type { NetworkNode, Direction, DirectionalArc } from '../../../store/networkStore';
+import { useMapStore } from '../../../store/mapStore';
 
 const NODE_COLORS: Record<string, [number, number, number]> = {
   pd:      [59, 130, 246],   // blue
@@ -38,6 +39,7 @@ export function NetworkLayers() {
   const nodesArray = useNetworkStore(s => s.nodesArray);
   const nodesMap = useNetworkStore(s => s.nodesMap);
   const adjacency = useNetworkStore(s => s.adjacency);
+  const adjacencyReady = useNetworkStore(s => s.adjacencyReady);
   const reverseAdjacency = useNetworkStore(s => s.reverseAdjacency);
   const selectedArcs = useNetworkStore(s => s.selectedArcs);
   const selectedNodeId = useNetworkStore(s => s.selectedNodeId);
@@ -45,6 +47,7 @@ export function NetworkLayers() {
   const portalOnly = useNetworkStore(s => s.portalOnly);
   const arcWidth = useNetworkStore(s => s.arcWidth);
   const hoverArcsEnabled = useNetworkStore(s => s.hoverArcsEnabled);
+  const inferredConnectionsEnabled = useNetworkStore(s => s.inferredConnectionsEnabled);
   const activeTab = useNetworkStore(s => s.activeTab);
   const setSelectedNodeId = useNetworkStore(s => s.setSelectedNodeId);
   const setHoveredNode = useNetworkStore(s => s.setHoveredNode);
@@ -69,8 +72,9 @@ export function NetworkLayers() {
       setHoverInfo({ node: info.object, x: info.x, y: info.y });
       setHoveredNode(info.object);
 
-      // Debounced hover arcs — only compute adjacency after pointer settles
-      if (hoverArcsEnabled && !selectedNodeId) {
+      // Debounced hover arcs — only compute adjacency after pointer settles.
+      // Non-portal nodes stay arc-free until inferred connections are enabled.
+      if (hoverArcsEnabled && !selectedNodeId && (info.object.isPortal || inferredConnectionsEnabled)) {
         clearTimeout(hoverDebounceRef.current);
         const node = info.object;
         hoverDebounceRef.current = setTimeout(() => {
@@ -85,7 +89,7 @@ export function NetworkLayers() {
       clearTimeout(hoverDebounceRef.current);
       if (hoveredArcs.length > 0) setHoveredArcs([]);
     }
-  }, [setHoveredNode, hoverArcsEnabled, selectedNodeId, adjacency, reverseAdjacency, nodesMap, hoveredArcs.length]);
+  }, [setHoveredNode, hoverArcsEnabled, inferredConnectionsEnabled, selectedNodeId, adjacency, reverseAdjacency, nodesMap, hoveredArcs.length]);
 
   // Clear hover arcs when a node gets clicked (selected arcs take over)
   useEffect(() => {
@@ -126,6 +130,10 @@ export function NetworkLayers() {
         },
         getLineColor: (d: NetworkNode): [number, number, number] => {
           if (!d.isPortal) return [0, 0, 0];
+          // Adjacency still streaming: no sharing verdict yet, so use the same
+          // neutral gray as NODE_COLORS.other (Tailwind dark-500) rather than
+          // red/green — otherwise every portal briefly paints "redacted".
+          if (!adjacencyReady) return [107, 114, 128];
           const hasOutgoing = (adjacency[d.id]?.length ?? 0) > 0;
           return hasOutgoing ? [34, 197, 94] : [239, 68, 68]; // green vs red
         },
@@ -145,7 +153,7 @@ export function NetworkLayers() {
         },
         updateTriggers: {
           getFillColor: [selectedNodeId, selectedArcs.length],
-          getLineColor: [adjacency],
+          getLineColor: [adjacency, adjacencyReady],
           getLineWidth: [adjacency],
         },
       })
@@ -202,8 +210,10 @@ export function NetworkLayers() {
     }
 
     return result;
-  }, [filteredNodes, selectedArcs, selectedNodeId, arcWidth, visibleSelectedArcs, visibleHoveredArcs, handleNodeClick, handleNodeHover]);
+  }, [filteredNodes, selectedArcs, selectedNodeId, arcWidth, visibleSelectedArcs, visibleHoveredArcs, handleNodeClick, handleNodeHover, adjacency, adjacencyReady]);
   // Note: selectedArcs kept in deps because ScatterplotLayer dimming uses it unfiltered (direction filter should not change which nodes dim).
+  // adjacency/adjacencyReady kept in deps so the portal-ring ScatterplotLayer is rebuilt (not just
+  // attribute-diffed) when adjacency finishes streaming in — see updateTriggers.getLineColor above.
 
   // Mount/unmount the deck.gl overlay
   useEffect(() => {
@@ -269,7 +279,7 @@ export function NetworkLayers() {
   useEffect(() => {
     if (!mapgl) return;
     const map = mapgl.getMap();
-    const hasViewport = new URLSearchParams(window.location.search).has('lat');
+    const hasViewport = useMapStore.getState().urlHadViewport;
 
     const raf = requestAnimationFrame(() => {
       if (hasViewport) {

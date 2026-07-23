@@ -5,6 +5,8 @@
  * Deduplicates concurrent requests and retries with exponential backoff.
  */
 
+import { readBodyWithProgress, type DownloadProgressCallback } from './cameraDataService';
+
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1000;
 
@@ -35,7 +37,10 @@ function setCache(level: string, data: GeoJSON.FeatureCollection | null, promise
   }
 }
 
-export async function loadDensityData(level: 'state' | 'county'): Promise<GeoJSON.FeatureCollection> {
+export async function loadDensityData(
+  level: 'state' | 'county',
+  onProgress?: DownloadProgressCallback
+): Promise<GeoJSON.FeatureCollection> {
   const cache = getCache(level);
 
   // Return cached data
@@ -54,7 +59,9 @@ export async function loadDensityData(level: 'state' | 'county'): Promise<GeoJSO
         const response = await fetch(url, { cache: 'default' });
         if (!response.ok) throw new Error(`Failed to load ${url}: ${response.status}`);
 
-        const data = await response.json() as GeoJSON.FeatureCollection;
+        const data = JSON.parse(
+          await readBodyWithProgress(response, onProgress)
+        ) as GeoJSON.FeatureCollection;
 
         // Validate
         if (data.type !== 'FeatureCollection' || !Array.isArray(data.features) || data.features.length === 0) {

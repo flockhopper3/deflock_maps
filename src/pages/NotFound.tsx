@@ -1,8 +1,14 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Map, ArrowLeft } from 'lucide-react';
 import { Seo, LegacyMapLink } from '@/components/common';
+import { removeBootSplash } from '@/utils/bootSplash';
 
 export function NotFound() {
+  useEffect(() => {
+    removeBootSplash();
+  }, []);
+
   return (
     <>
       <Seo

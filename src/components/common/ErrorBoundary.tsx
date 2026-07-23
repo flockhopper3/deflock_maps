@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { LegacyMapLink } from './LegacyMapLink';
+import { removeBootSplash } from '@/utils/bootSplash';
 
 interface Props {
   children: ReactNode;
@@ -28,6 +29,8 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error to console in development, could send to error tracking service in production
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // The boot splash overlays the viewport; never leave it floating over error UI
+    removeBootSplash();
   }
 
   handleReset = () => {

@@ -33,6 +33,16 @@ function GeolocateControl({ position }: { position: string }) {
   );
   return null;
 }
+// Attribution renders as a plain single-line credit flush in the bottom-left
+// corner (styled in index.css) — non-compact so it never collapses into the
+// (i) toggle or floats mid-stack among the map buttons.
+function AttributionCtl({ position }: { position: 'bottom-left' | 'bottom-right' }) {
+  useControl(
+    ({ mapLib }) => new (mapLib as typeof maplibregl).AttributionControl({ compact: false }),
+    { position },
+  );
+  return null;
+}
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -45,6 +55,10 @@ import { DensityLayers } from './layers/DensityLayers';
 import { NetworkLayers } from './layers/NetworkLayers';
 import { CameraMarkerLayers } from './layers/CameraMarkerLayers';
 import { BoundaryOverlayLayers } from './layers/BoundaryOverlayLayers';
+import { CameraTileLayers } from './layers/CameraTileLayers';
+import { useCameraRenderMode } from '../../hooks/useCameraRenderMode';
+import { ensureCameraIndex, getCameraIndex, countInBounds, tallyInBounds, deriveBrandStats, brandStatsEqual } from '../../services/cameraIndexService';
+import { MOBILE_BREAKPOINT } from '../../hooks/useIsMobile';
 import { useDensityStore } from '../../store/densityStore';
 import type { DensityFeatureProperties } from '../../types';
 
@@ -57,38 +71,39 @@ export interface MapLibreViewHandle {
 }
 
 import { layers as pmLayers, namedFlavor } from '@protomaps/basemaps';
-import { Protocol } from 'pmtiles';
+import { ensurePMTilesProtocol, setPMTilesFailureHandler, CAMERA_POINTS_MINZOOM, cameraTilesUrl, cameraFilterTilesUrl } from '../../services/cameraTilesService';
+import { loadStateGeometry } from '../../services/stateFilterService';
+import { buildCameraTileFilter } from '../../utils/cameraTileFilter';
 
-const TILES_URL = "https://sanitas.deflock.org";
+const TILES_URL = 'https://tiles.dontgetflocked.com';
 
-const _pmtilesProtocol = new Protocol();
-maplibregl.addProtocol('pmtiles', _pmtilesProtocol.tile.bind(_pmtilesProtocol));
+// Both tile paths (default + filtered) render the same points layer shape;
+// accept either id so click handling doesn't need to know which instance is
+// currently mounted/interactive.
+const CAMERA_POINT_LAYER_IDS = ['camera-tile-points', 'camera-tile-points-filtered'];
+
+// Camera tiles still use the pmtiles:// protocol (raw archive + Range); only the
+// basemap moved back to the per-tile TileJSON route.
+ensurePMTilesProtocol();
+
+// Wire pmtiles archive-load failures to the store here (not inside the service)
+// to avoid a store<->service import cycle. A failure before an archive ever
+// loaded flips the flag the retry pill reads.
+setPMTilesFailureHandler((kind) => {
+  if (kind === 'filter') useCameraStore.getState().setFilterTilesFailed(true);
+  else useCameraStore.getState().setTilesFailed(true);
+});
 
 // Map our style IDs to Protomaps flavor names (must match R2 sprites at /sprites/v4/{flavor})
 const FLAVOR_MAP: Record<MapTileStyleId, string> = {
-  'dark':               'dark',
-  'dark-nolabels':      'dark',
-  'light':              'light',
-  'light-nolabels':     'light',
-  'white':              'white',
-  'white-nolabels':     'white',
-  'black':              'black',
-  'black-nolabels':     'black',
-  'grayscale':          'grayscale',
-  'grayscale-nolabels': 'grayscale',
+  dark: 'dark',
+  light: 'light',
 };
 
 
 function buildMapStyle(tileStyleId: MapTileStyleId): maplibregl.StyleSpecification {
   const flavorName = FLAVOR_MAP[tileStyleId];
-  const isNoLabels = tileStyleId.endsWith('-nolabels');
-
-  let mapLayers = pmLayers('protomaps', namedFlavor(flavorName), { lang: 'en' });
-
-  if (isNoLabels) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mapLayers = mapLayers.filter((l: any) => l.type !== 'symbol');
-  }
+  const mapLayers = pmLayers('protomaps', namedFlavor(flavorName), { lang: 'en' });
 
   return {
     version: 8,
@@ -97,7 +112,9 @@ function buildMapStyle(tileStyleId: MapTileStyleId): maplibregl.StyleSpecificati
     sources: {
       protomaps: {
         type: 'vector',
-        url: `pmtiles://${TILES_URL}/basemap.pmtiles`,
+        // TileJSON → per-tile /planet/{z}/{x}/{y}.mvt URLs. Unlike raw pmtiles
+        // Range requests, these are edge-cacheable (URL-keyed, no Range header).
+        url: `${TILES_URL}/planet.json`,
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
       },
     },
@@ -156,9 +173,17 @@ interface MapLibreViewProps {
 export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   function MapLibreView({ onMarkersReady, mapKey }, ref) {
   const mapRef = useRef<MapRef>(null);
+
+  const attribPosition = 'bottom-left' as const;
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
   const lastFlyToRef = useRef<number>(0);
+  // Last tile-count query result — lets updateVisibleCameras skip the
+  // expensive re-query when a huge count can't have visibly changed.
+  const lastTileCountRef = useRef<{ zoom: number; count: number } | null>(null);
+  // Throttle stamp for the live per-tick index count during gestures
+  const liveCountAtRef = useRef(0);
+  const lastPickTimeRef = useRef(0);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [markersReady, setMarkersReady] = useState(false);
   const sourceDataVersion = useRef(0);
@@ -176,12 +201,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const { setViewState, setBounds, clearFlyToCommand } = useMapStore.getState();
   const filteredCameras = useCameraStore(s => s.filteredCameras);
   const cameras = useCameraStore(s => s.cameras);
+  const country = useCameraStore(s => s.country);
   const getCamerasInBounds = useCameraStore(s => s.getCamerasInBounds);
   const dataVersion = useCameraStore(s => s.dataVersion);
+  const tilesFailed = useCameraStore(s => s.tilesFailed);
   const appMode = useAppModeStore(s => s.appMode);
   const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const heatmapSettings = useAppModeStore(s => s.heatmapSettings);
-  const dotDensitySettings = useAppModeStore(s => s.dotDensitySettings);
   const mapTileStyle = useAppModeStore(s => s.mapTileStyle);
   const isTimelineActive = appMode === 'explore';
   const mapStyle = useMemo(() => buildMapStyle(mapTileStyle), [mapTileStyle]);
@@ -190,31 +216,70 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const isNetworkMode = appMode === 'network';
   const isMapMode = appMode === 'map';
   const mapModeViz = useMapModeStore(s => s.visualization);
-  const activeView = useMapModeStore(s => s.activeView);
   const setActiveView = useMapModeStore(s => s.setActiveView);
   const isHeatmapMode = isExploreMode && mapVisualization === 'heatmap';
   const isDotsMode = isExploreMode && mapVisualization === 'dots';
+  const { renderMode } = useCameraRenderMode();
+  const isTilesMode = renderMode === 'tiles';
+  const isFilterTilesMode = renderMode === 'filter-tiles';
+
+  // Once a filter has been used, keep the filtered source mounted for the
+  // session (visibility toggles instead) so its tiles stay cached. Never
+  // mounted for users who never filter — zero filter-tileset bytes for them.
+  const [filterLayersMounted, setFilterLayersMounted] = useState(false);
+  useEffect(() => {
+    if (isFilterTilesMode) setFilterLayersMounted(true);
+  }, [isFilterTilesMode]);
+
+  // First successful load of the filtered source this map instance. Until
+  // then the default tile layers stay visible under the filtered ones, so
+  // activating a filter never blanks the camera layer while filter tiles
+  // stream in (and if the filter source is unhealthy, the map stays populated
+  // for the whole error window before the geojson fallback kicks in).
+  const [filterTilesReady, setFilterTilesReady] = useState(false);
+
+  const manifest = useCameraStore((s) => s.manifest);
+  const cameraFilters = useCameraStore((s) => s.filters);
+  // State-filter boundary polygon — loaded lazily; the filter expression
+  // matches nothing until it arrives (usually a one-time local fetch).
+  const [stateGeom, setStateGeom] = useState<GeoJSON.Polygon | GeoJSON.MultiPolygon | null>(null);
+  const stateCode = cameraFilters.state ?? null;
+  useEffect(() => {
+    if (!stateCode) {
+      setStateGeom(null);
+      return;
+    }
+    let cancelled = false;
+    void loadStateGeometry(stateCode).then((f) => {
+      if (!cancelled) setStateGeom(f ? f.geometry : null);
+    });
+    return () => { cancelled = true; };
+  }, [stateCode]);
+
+  const tileFilterExpr = useMemo(
+    () => (manifest ? buildCameraTileFilter(cameraFilters, manifest, stateGeom) : undefined),
+    [cameraFilters, manifest, stateGeom]
+  );
   // Only render camera markers + direction cones when needed.
-  // In map-mode auto, both heatmap & markers are mounted — crossfade opacity handles
-  // the transition seamlessly. For explicit heatmap/clusters/individual selections,
-  // only the chosen layer is shown so they never overlap.
-  // In explore mode, auto-show markers when zoomed past 13 (heatmap crossfades out 13-14),
+  // Map-mode auto no longer crossfades heatmap→markers; heatmap is only shown
+  // when explicitly selected (isMapModeHeatmap below).
+  // In heatmap explore, auto-show markers when zoomed past 13 (heatmap crossfades out 13-14),
   // or when the user explicitly toggles "Show Markers" at any zoom.
   // In density mode, hide camera markers entirely to keep choropleth clean.
-  const isMapModeAuto = isMapMode && mapModeViz === 'auto';
-  const showCameraMarkers = !isNetworkMode && !isDensityMode && (
+  // Timeline (dots) never shows markers: the dot layer carries every zoom, and the
+  // markers it used to stack on top were never date-filtered past z13.
+  const isMapModeHeatmap = isMapMode && mapModeViz === 'heatmap';
+  const showCameraMarkers = !isNetworkMode && !isDensityMode && !isMapModeHeatmap && (
     appMode === 'route'
-    || isMapModeAuto
-    || (isMapMode && activeView !== 'heatmap')
+    || isMapMode
     || (isHeatmapMode && (heatmapSettings.showMarkers || zoom >= 13))
-    || (isDotsMode && (dotDensitySettings.showMarkers || zoom >= 13))
   );
   // Expose handle to parent
   useImperativeHandle(ref, () => ({
     isMarkersReady: markersReady,
     forceRemount: () => forceUpdate(n => n + 1),
   }), [markersReady]);
-  const { origin, destination, normalRoute, avoidanceRoute, activeRoute, pickingLocation, setPickedLocation, cancelPickingLocation } = useRouteStore();
+  const { origin, destination, normalRoute, avoidanceRoute, activeRoute, pickingLocation, pickingSequence, setPickedLocation, cancelPickingLocation } = useRouteStore();
 
   // Handle flyTo commands from store
   useEffect(() => {
@@ -238,16 +303,180 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
   const updateVisibleCameras = useCallback(() => {
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
+
+    // Unfiltered tiles mode counts from the positions index when it has
+    // loaded: exact at every zoom, sub-millisecond, and immune to the
+    // tile-load races the query path fights below.
+    if (renderMode === 'tiles') {
+      const idx = getCameraIndex(country);
+      if (idx) {
+        const b = map.getBounds();
+        const tally = tallyInBounds(idx, {
+          north: b.getNorth(),
+          south: b.getSouth(),
+          east: b.getEast(),
+          west: b.getWest(),
+        });
+        const store = useMapStore.getState();
+        store.setTileViewCameraCount(tally.total);
+        // Equality-gated: idle fires after every tile load/repaint, and an
+        // ungated write of a fresh object re-rendered the panel + strip on
+        // each one. Identical stats must never cause a React commit.
+        const stats = deriveBrandStats(tally, idx.brands);
+        if (!brandStatsEqual(stats, store.tileViewBrandStats)) {
+          store.setTileViewBrandStats(stats);
+        }
+        return;
+      }
+    }
+
+    if (renderMode === 'tiles' || renderMode === 'filter-tiles') {
+      // Exact viewport count, straight from the rendered tiles — no dedup.
+      //
+      // Dedup used to be the whole game here, and it was the bug. The old key
+      // was osmId when present, else lng/lat; low-zoom tiles carry no
+      // attributes (metadata starts at z9) so it fell back to
+      // coordinates. Tile geometry is quantised (~600m per unit at z4), so
+      // distinct cameras share a key and were merged away: 99k in view were
+      // reported as ~64.6k, a 35% undercount.
+      //
+      // No dedup is needed, because neither source of duplication survives:
+      //  - Tile buffers repeat neighbours' features, but MapLibre clips each
+      //    query to the tile's own bounds, so a buffer copy is never returned.
+      //  - The dots (z0–10) and points (z9+) layers OVERLAP on [9, 10), and
+      //    queryRenderedFeatures ignores paint opacity — querying both there
+      //    returns every camera twice. Querying the single layer that covers
+      //    this zoom yields each camera exactly once.
+      //
+      // Verified against the dataset: z4 +0.21%, z9 −0.03%, z10.5 +2.0%. The
+      // small excess is real — a camera whose dot overlaps the viewport edge is
+      // in view — and grows with dot radius at high zoom.
+      try {
+        // Fallback path: filter-tiles mode, or plain tiles before the
+        // positions index loads (or when its artifact is unavailable).
+        // Zoomed out, the query itself is the jank: deserializing ~112k
+        // rendered features blocked the main thread ~280ms per gesture at
+        // 6x throttle (measured 2026-07-18), landing mid-drag during rapid
+        // panning. When the last count was huge and zoom hasn't moved,
+        // panning can't visibly change a six-digit count — keep it.
+        const zoomNow = map.getZoom();
+        const last = lastTileCountRef.current;
+        if (last && last.count > 30000 && Math.abs(zoomNow - last.zoom) < 0.5) {
+          return;
+        }
+        const suffix = renderMode === 'filter-tiles' ? '-filtered' : '';
+        const layerForZoom = zoomNow >= CAMERA_POINTS_MINZOOM
+          ? `camera-tile-points${suffix}`
+          : `camera-tile-dots${suffix}`;
+        const feats = map.queryRenderedFeatures(undefined, { layers: [layerForZoom] });
+        lastTileCountRef.current = { zoom: zoomNow, count: feats.length };
+        useMapStore.getState().setTileViewCameraCount(feats.length);
+        // Query counts carry no brand data; hide the breakdown.
+        useMapStore.getState().setTileViewBrandStats(null);
+      } catch {
+        // layers not ready yet
+      }
+      return;
+    }
+
+    useMapStore.getState().setTileViewCameraCount(null);
+    useMapStore.getState().setTileViewBrandStats(null);
     const bounds = map.getBounds();
-    
-    // Get visible cameras for bounds update (count is now shown in MapPage header)
     getCamerasInBounds(
       bounds.getNorth(),
       bounds.getSouth(),
       bounds.getEast(),
       bounds.getWest()
     );
-  }, [getCamerasInBounds]);
+  }, [getCamerasInBounds, renderMode, country]);
+
+  // Load the positions index in the background once the map is up — boot
+  // never waits on it; until it resolves the query fallback above serves.
+  useEffect(() => {
+    if (!mapLoaded) return;
+    // Once the index is in, counting is sub-millisecond — so recount on
+    // EVERY map idle, persistently. One-shot corrections proved flaky: a
+    // count taken during boot (query fallback against half-loaded tiles,
+    // or bounds read mid-init) could stick for the whole session when no
+    // later trigger fired. A persistent idle recount makes the displayed
+    // value self-healing regardless of what any transient wrote.
+    let attached: { map: maplibregl.Map; fn: () => void } | null = null;
+    const kick = () => {
+      void ensureCameraIndex(country).then((idx) => {
+        if (!idx) return;
+        updateVisibleCameras();
+        const map = mapRef.current?.getMap();
+        if (map && !attached) {
+          attached = { map, fn: () => updateVisibleCameras() };
+          map.on('idle', attached.fn);
+        }
+      });
+    };
+    const ric = typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(kick, { timeout: 5000 })
+      : window.setTimeout(kick, 2000);
+    return () => {
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(ric as number);
+      else window.clearTimeout(ric as number);
+      if (attached) attached.map.off('idle', attached.fn);
+    };
+  }, [mapLoaded, country, updateVisibleCameras]);
+
+  // Filter changes re-render tiles without a camera move — refresh the
+  // viewport count once the map has settled on the new filter. Also covers
+  // renderMode flipping back to plain 'tiles' (e.g. Reset): the effect below
+  // that calls updateVisibleCameras on renderMode change fires immediately,
+  // often before the newly-visible tile layer has actually painted, so its
+  // query can read 0. This idle-triggered refresh corrects that once the map
+  // settles, without requiring a user pan/zoom. Also re-fires when
+  // filterTilesReady flips: during warmup the -filtered layer may be
+  // partially painted, so the count taken right as it finishes loading can
+  // still be off — the map may already be idle by then, so a dep-driven
+  // re-run (not just the idle listener) is needed to correct it.
+  useEffect(() => {
+    if (!(isFilterTilesMode || isTilesMode) || !mapRef.current) return;
+    // Filter/mode changes alter what's rendered at the same zoom — any
+    // cached count is wrong now, so the skip heuristic must not keep it.
+    lastTileCountRef.current = null;
+    const map = mapRef.current.getMap();
+    const onIdle = () => updateVisibleCameras();
+    map.once('idle', onIdle);
+    return () => { map.off('idle', onIdle); };
+  }, [isFilterTilesMode, isTilesMode, tileFilterExpr, filterTilesReady, updateVisibleCameras]);
+
+  // moveend's count query races tile loading — a flyTo (e.g. search jump)
+  // lands and counts before the destination's tiles arrive, reading a stale 0
+  // that nothing corrects until the next gesture (verified: search-fly to
+  // Houston held "0 cameras in view" through 9s of idle; a 10px nudge read
+  // 1,583). Counting again on the next idle picks up the settled tiles.
+  const handleMoveEnd = useCallback((evt: ViewStateChangeEvent) => {
+    const map = mapRef.current?.getMap();
+
+    // Mirror the settled viewport into the store once per gesture (URL sync,
+    // header counts, legacy-map link). Per-tick writes lived in onMove and
+    // re-rendered every subscriber each frame; nothing needs live values.
+    if (map) {
+      const bounds = map.getBounds();
+      setViewState(
+        [evt.viewState.latitude, evt.viewState.longitude],
+        evt.viewState.zoom,
+        {
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest(),
+        },
+      );
+    }
+
+    // Count once on the next idle only. The old immediate query here was
+    // always followed by the idle one (see comment above), so it double-paid
+    // — at national zoom that's ~112k features deserialized twice per
+    // gesture, blocking the main thread mid-wiggle on mobile-class CPUs.
+    if (!map) return;
+    map.off('idle', updateVisibleCameras);
+    map.once('idle', updateVisibleCameras);
+  }, [setViewState, updateVisibleCameras]);
 
   // Derive camera source outside the memo so reference equality works across tab switches.
   // When no filters are applied, cameras === filteredCameras (same ref), so switching
@@ -276,8 +505,18 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     onMarkersReady?.(markersReady);
   }, [markersReady, onMarkersReady]);
 
+  // Reveal the basemap on a camera-tile failure. markersReady normally waits
+  // for the camera source to load, which never happens when tiles fail — so
+  // without this the map stays hidden and the 15s watchdog fires a full-screen
+  // error even though the basemap is fine. Once the basemap is up and tiles
+  // have given up, reveal the interactive map; the retry pill carries the
+  // camera-tile failure instead. GeoJSON is never loaded on this path.
+  useEffect(() => {
+    if (mapLoaded && tilesFailed) setMarkersReady(true);
+  }, [mapLoaded, tilesFailed]);
+
   // --- Timeline filter handler (imperative setFilter, no GeoJSON rebuild) ---
-  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'unclustered-glow', 'pulse-ring-outer', 'pulse-ring-inner'], []);
+  const TIMELINE_LAYERS = useMemo(() => ['unclustered-point', 'cameras-dots-lowzoom'], []);
   // Cache the last cutoff to skip redundant setFilter calls (same date = same filter).
   // With 71 Protomaps vector layers, every setFilter triggers an expensive render cycle.
   const lastCutoffRef = useRef<number>(0);
@@ -287,13 +526,12 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     if (!map) return;
 
     // Read viz state imperatively (no dependency needed — keeps callback stable)
-    const { mapVisualization, appMode, heatmapSettings, dotDensitySettings } = useAppModeStore.getState();
+    const { mapVisualization, appMode, heatmapSettings } = useAppModeStore.getState();
     const isExplore = appMode === 'explore';
     const isHeatmap = isExplore && mapVisualization === 'heatmap';
     const isDots = isExplore && mapVisualization === 'dots';
-    const markersVisible = !isExplore
-      || (isHeatmap && heatmapSettings.showMarkers)
-      || (isDots && dotDensitySettings.showMarkers);
+    // Timeline (dots) no longer mounts CameraMarkerLayers at all.
+    const markersVisible = !isExplore || (isHeatmap && heatmapSettings.showMarkers);
 
     // If date is at or past the max camera date, clear filters (every point passes)
     const { timelineMaxDay } = useCameraStore.getState();
@@ -301,9 +539,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       if (lastCutoffRef.current === Infinity) return; // already cleared
       lastCutoffRef.current = Infinity;
       if (markersVisible) {
-        const defaultUnclustered: maplibregl.FilterSpecification = ['!', ['has', 'point_count']];
         for (const layerId of TIMELINE_LAYERS) {
-          if (map.getLayer(layerId)) map.setFilter(layerId, defaultUnclustered, { validate: false });
+          if (map.getLayer(layerId)) map.setFilter(layerId, null, { validate: false });
         }
         if (map.getLayer('direction-cones')) map.setFilter('direction-cones', null, { validate: false });
         if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', null, { validate: false });
@@ -326,16 +563,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     // Evaluated 78K times per tick — this matters.
     const vizFilter: maplibregl.FilterSpecification = ['<=', ['get', 'ts'], cutoffMs];
 
-    // Only filter layers that are actually visible — avoids expensive
-    // Supercluster re-evaluation on hidden clustered layers
+    // Only filter layers that are actually visible — avoids an unnecessary
+    // render cycle on layers nobody can see
     if (markersVisible) {
-      const timelineFilter: maplibregl.FilterSpecification = [
-        'all',
-        ['!', ['has', 'point_count']],
-        vizFilter,
-      ];
       for (const layerId of TIMELINE_LAYERS) {
-        if (map.getLayer(layerId)) map.setFilter(layerId, timelineFilter, { validate: false });
+        if (map.getLayer(layerId)) map.setFilter(layerId, vizFilter, { validate: false });
       }
       if (map.getLayer('direction-cones')) map.setFilter('direction-cones', vizFilter, { validate: false });
       if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', vizFilter, { validate: false });
@@ -355,9 +587,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       // Restore default filters when timeline is disabled
       const map = mapRef.current?.getMap();
       if (map && map.isStyleLoaded()) {
-        const defaultFilter: maplibregl.FilterSpecification = ['!', ['has', 'point_count']];
         for (const layerId of TIMELINE_LAYERS) {
-          if (map.getLayer(layerId)) map.setFilter(layerId, defaultFilter);
+          if (map.getLayer(layerId)) map.setFilter(layerId, null);
         }
         if (map.getLayer('direction-cones')) map.setFilter('direction-cones', null);
         if (map.getLayer('direction-cones-outline')) map.setFilter('direction-cones-outline', null);
@@ -378,6 +609,14 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const map = mapRef.current?.getMap();
     if (!map) return;
 
+    // CameraMarkerLayers unmounts on a viz switch into/out of Timeline (dots),
+    // and its date filter is imperative-only (no layer spec carries one) — so
+    // remounting recreates unfiltered layers. isTimelineActive stays true across
+    // a heatmap<->dots switch and handleTimelineTick is stable, so without the
+    // reset below the same-date guard (`cutoffMs === lastCutoffRef.current`)
+    // would skip re-applying the filter and leave every camera/cone showing.
+    lastCutoffRef.current = 0;
+
     const { currentDate } = useAppModeStore.getState().timelineSettings;
     handleTimelineTick(currentDate);
 
@@ -392,12 +631,14 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     map.on('sourcedata', onDotsSourceReady);
 
     return () => { map.off('sourcedata', onDotsSourceReady); };
-  }, [mapLoaded, isTimelineActive, handleTimelineTick]);
+    // mapVisualization is a trigger-only dep: it re-fires this effect on a
+    // heatmap<->dots switch so the filter is re-applied. It is intentionally
+    // unused in the body — do not remove it, or dots<->heatmap re-filtering breaks.
+  }, [mapLoaded, isTimelineActive, handleTimelineTick, mapVisualization]);
 
-  // Symbol layer visibility is controlled entirely by the labels toggle
-  // (mapTileStyle nolabels variants filter them out in buildMapStyle).
-  // No need to programmatically hide them per mode — the 13 symbol layers
-  // have negligible GPU cost and hiding them confused users entering via /timeline.
+  // Symbol (label) layers are always visible in both themes. No need to
+  // programmatically hide them per mode — the 13 symbol layers have
+  // negligible GPU cost and hiding them confused users entering via /timeline.
 
   // Update visible cameras when camera data changes
   useEffect(() => {
@@ -558,27 +799,110 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     };
   }, [mapLoaded, dataVersion, geojsonData]);
 
+  // Tiles mode readiness: first successful camera-tiles load ⇒ markers ready.
+  // Repeated failures before any load ⇒ flip tilesFailed (surfaces the retry pill).
+  //
+  // Deliberately NOT gated on `mapLoaded`. That flag comes from the map's
+  // `load` event, which by definition waits for the first visually complete
+  // render — i.e. every basemap tile in the viewport. Readiness would then
+  // trail the basemap by seconds on data the cameras never needed. These two
+  // handlers are passed to <Map> instead, so MapLibre binds them at map
+  // creation (react-map-gl reads the callback from props at dispatch time) —
+  // no sourcedata/error can slip through before we attach, which is what the
+  // old effect's synchronous seed check existed to cover.
+  const tileLoadSeenRef = useRef(false);
+  const tileErrorCountRef = useRef(0);
+  const filterTileLoadSeenRef = useRef(false);
+  const filterTileErrorCountRef = useRef(0);
 
+  // Fresh map instance per remount (mapKey bumps on retry) ⇒ fresh counters.
+  useEffect(() => {
+    tileLoadSeenRef.current = false;
+    tileErrorCountRef.current = 0;
+    filterTileLoadSeenRef.current = false;
+    filterTileErrorCountRef.current = 0;
+    setFilterTilesReady(false);
+  }, [mapKey]);
+
+  const handleTileSourceData = useCallback((e: maplibregl.MapSourceDataEvent) => {
+    if (!e.isSourceLoaded) return;
+    if (e.sourceId === 'camera-tiles') {
+      tileLoadSeenRef.current = true;
+      if (renderMode === 'tiles') setMarkersReady(true);
+      return;
+    }
+    if (e.sourceId === 'camera-tiles-filtered') {
+      filterTileLoadSeenRef.current = true;
+      setFilterTilesReady(true);
+      if (renderMode === 'filter-tiles') setMarkersReady(true);
+    }
+  }, [renderMode]);
+
+  const handleMapError = useCallback((e: maplibregl.ErrorEvent & { sourceId?: string }) => {
+    const sourceId = e?.sourceId ?? (e as { source?: { id?: string } })?.source?.id;
+    if (sourceId === 'camera-tiles') {
+      if (tileLoadSeenRef.current) return;
+      tileErrorCountRef.current += 1;
+      if (tileErrorCountRef.current >= 3) {
+        console.warn('[MapLibre] Camera tiles failing; surfacing the retry pill');
+        useCameraStore.getState().setTilesFailed(true);
+      }
+      return;
+    }
+    if (sourceId === 'camera-tiles-filtered') {
+      if (filterTileLoadSeenRef.current) return;
+      filterTileErrorCountRef.current += 1;
+      if (filterTileErrorCountRef.current >= 3) {
+        console.warn('[MapLibre] Filter tiles failing; showing all cameras unfiltered');
+        useCameraStore.getState().setFilterTilesFailed(true);
+      }
+    }
+  }, []);
 
   // Handle map move - batch center, zoom, and bounds in a single store update
-  const onMove = useCallback((evt: ViewStateChangeEvent) => {
-    if (mapRef.current) {
-      const map = mapRef.current.getMap();
-      const bounds = map.getBounds();
-      setViewState(
-        [evt.viewState.latitude, evt.viewState.longitude],
-        evt.viewState.zoom,
-        {
-          north: bounds.getNorth(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          west: bounds.getWest(),
-        },
-      );
+  const onMove = useCallback(() => {
+    // Live in-view count while the camera moves — index counting is
+    // sub-millisecond, so the counter tracks the gesture like the old
+    // geojson grid did. Throttled to ~8Hz: only the two small count
+    // consumers re-render, never the map tree.
+    //
+    // Count ONLY on the gesture path. countInBounds sums interior cells in
+    // O(1); the per-brand tally iterates every member (~117k at national
+    // zoom) and allocates, so brand stats are computed exclusively in the
+    // idle recount — the breakdown lags the gesture by design, never
+    // costs it.
+    if (renderMode === 'tiles') {
+      const idx = getCameraIndex(country);
+      const now = performance.now();
+      if (idx && now - liveCountAtRef.current > 120) {
+        liveCountAtRef.current = now;
+        const map = mapRef.current?.getMap();
+        if (map) {
+          const b = map.getBounds();
+          useMapStore.getState().setTileViewCameraCount(countInBounds(idx, {
+            north: b.getNorth(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            west: b.getWest(),
+          }));
+        }
+      }
     }
 
-    updateVisibleCameras();
-  }, [setViewState, updateVisibleCameras]);
+    // The store viewport mirror moved to onMoveEnd: the map is uncontrolled
+    // (initialViewState), so nothing consumes live per-tick values, and a
+    // setViewState per onMove tick re-rendered every mapStore subscriber on
+    // every frame of a drag (measured ~120 React commits per one-second
+    // gesture — the drag hitching on mid-tier devices).
+    //
+    // Both tile modes' viewport count is derived from queryRenderedFeatures,
+    // which is too hot to run on every onMove tick — it runs once per gesture
+    // via onMoveEnd instead (filter-tiles also gets an idle-triggered refresh
+    // on filter change, see the effect above).
+    if (renderMode === 'geojson') {
+      updateVisibleCameras();
+    }
+  }, [updateVisibleCameras, renderMode, country]);
 
   // Handle map load
   const onLoad = useCallback(() => {
@@ -619,7 +943,8 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
   }, [setBounds, updateVisibleCameras]);
 
-  // Handle cluster click - zoom in or pick location
+  // Handle map clicks - density feature selection, location picking, or
+  // camera marker click to open its popup
   const onClick = useCallback(async (event: MapLayerMouseEvent) => {
     if (!mapRef.current) return;
 
@@ -658,6 +983,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
     // If in location picking mode (for route origin/destination), handle click
     if (pickingLocation) {
+      // Ignore taps while the camera is animating or gliding (accidental picks)
+      if (event.target.isMoving()) return;
+      // Debounce: a fast double-tap fires two click events even with
+      // double-tap zoom disabled — ignore the second pick.
+      const now = Date.now();
+      if (now - lastPickTimeRef.current < 400) return;
+      lastPickTimeRef.current = now;
       const { lng, lat } = event.lngLat;
       
       // Create location with coordinates first
@@ -676,53 +1008,38 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     const feature = event.features?.[0];
     if (!feature) return;
 
-    const clusterId = feature.properties?.cluster_id;
-    
-    if (clusterId) {
-      // It's a cluster - zoom into it
-      const map = mapRef.current.getMap();
-      const source = map.getSource('cameras') as maplibregl.GeoJSONSource;
-      
-      source.getClusterExpansionZoom(clusterId).then((zoomLevel: number) => {
-        const geometry = feature.geometry as GeoJSON.Point;
-        map.easeTo({
-          center: geometry.coordinates as [number, number],
-          zoom: zoomLevel,
-          duration: 500,
-        });
-      }).catch((error) => {
-        if (import.meta.env.DEV) {
-          console.warn('[MapLibre] Cluster expansion failed:', error);
-        }
-      });
-    } else {
-      // It's an unclustered point - show popup
-      const props = feature.properties;
-      if (props) {
-        const camera: ALPRCamera = {
-          osmId: props.osmId,
-          osmType: props.osmType as 'node' | 'way',
-          lat: props.lat,
-          lon: props.lon,
-          operator: props.operator || undefined,
-          brand: props.brand || undefined,
-          direction: props.direction ?? undefined,
-          directionCardinal: props.directionCardinal || undefined,
-          surveillanceZone: props.surveillanceZone || undefined,
-          mountType: props.mountType || undefined,
-          ref: props.ref || undefined,
-          startDate: props.startDate || undefined,
-          wikimediaCommons: props.wikimediaCommons || undefined,
-        };
-        
-        setPopupInfo({
-          longitude: props.lon,
-          latitude: props.lat,
-          camera,
-        });
-      }
+    // Tile paths (default + filtered) share this handler — guard so a stray
+    // feature from a non-camera interactive layer is never parsed as one.
+    if ((isTilesMode || isFilterTilesMode) && !CAMERA_POINT_LAYER_IDS.includes(feature.layer.id)) {
+      return;
     }
-  }, [pickingLocation, setPickedLocation, isDensityMode, isNetworkMode]);
+
+    const props = feature.properties;
+    if (!props || props.osmId == null) return;
+
+    const [lon, lat] = (feature.geometry as GeoJSON.Point).coordinates;
+    const camera: ALPRCamera = {
+      osmId: Number(props.osmId),
+      osmType: (props.osmType as 'node' | 'way') || 'node',
+      lat: props.lat ?? lat,
+      lon: props.lon ?? lon,
+      operator: props.operator || undefined,
+      brand: props.brand || undefined,
+      direction: props.direction ?? undefined,
+      directionCardinal: props.directionCardinal || undefined,
+      surveillanceZone: props.surveillanceZone || undefined,
+      mountType: props.mountType || undefined,
+      ref: props.ref || undefined,
+      startDate: props.startDate || undefined,
+      wikimediaCommons: props.wikimediaCommons || undefined,
+    };
+
+    setPopupInfo({
+      longitude: camera.lon,
+      latitude: camera.lat,
+      camera,
+    });
+  }, [pickingLocation, setPickedLocation, isDensityMode, isNetworkMode, isTilesMode, isFilterTilesMode]);
 
   // Cursor handling - crosshair when adding waypoints or picking location
   const onMouseEnter = useCallback((e: MapLayerMouseEvent) => {
@@ -754,6 +1071,69 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     }
   }, [pickingLocation]);
 
+  // While picking, disable double-tap zoom so a double-tap doesn't lurch the
+  // camera; the pick debounce in onClick handles the duplicate click events
+  // a double-tap still fires.
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (pickingLocation) {
+      map.doubleClickZoom.disable();
+    } else {
+      map.doubleClickZoom.enable();
+    }
+  }, [pickingLocation]);
+
+  // Escape exits the picking sequence (keeps endpoints picked so far)
+  useEffect(() => {
+    if (!pickingLocation) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelPickingLocation();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [pickingLocation, cancelPickingLocation]);
+
+  // MapLibre 5.15 ends a mouse drag only on an element-scoped mouseup — its
+  // window-level mouseup is not wired to dragEnd and it takes no pointer
+  // capture — so releasing the button over the side panel left the gesture
+  // armed: no dragend/moveend ever fired and the map kept panning with the
+  // button up. Forward off-map releases to the canvas so the drag ends.
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const container = map.getContainer();
+    let dragging = false;
+    const onStart = () => { dragging = true; };
+    const onEnd = () => { dragging = false; };
+    const forwardRelease = (e: MouseEvent) => {
+      if (!dragging || container.contains(e.target as Node)) return;
+      map.getCanvas().dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        button: e.button,
+        buttons: 0,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        screenX: e.screenX,
+        screenY: e.screenY,
+      }));
+    };
+    map.on('dragstart', onStart);
+    map.on('dragend', onEnd);
+    map.on('rotatestart', onStart);
+    map.on('rotateend', onEnd);
+    window.addEventListener('mouseup', forwardRelease, true);
+    return () => {
+      map.off('dragstart', onStart);
+      map.off('dragend', onEnd);
+      map.off('rotatestart', onStart);
+      map.off('rotateend', onEnd);
+      window.removeEventListener('mouseup', forwardRelease, true);
+    };
+  }, [mapLoaded]);
+
   // Auto mode: update activeView based on zoom level
   useEffect(() => {
     if (!mapLoaded || !isMapMode || mapModeViz !== 'auto') return;
@@ -774,6 +1154,22 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
     };
   }, [mapLoaded, isMapMode, mapModeViz, setActiveView]);
 
+  // One-shot fitBounds command (e.g. framing a state filter). Also keyed on
+  // mapLoaded: a deep link can issue the command before the map instance
+  // exists — the command stays queued until the map is ready to consume it.
+  const fitBoundsCommand = useMapStore(s => s.fitBoundsCommand);
+  useEffect(() => {
+    if (!fitBoundsCommand || !mapRef.current || !mapLoaded) return;
+    mapRef.current.fitBounds(
+      [
+        [fitBoundsCommand.west, fitBoundsCommand.south],
+        [fitBoundsCommand.east, fitBoundsCommand.north],
+      ],
+      { padding: 60, duration: 1200 }
+    );
+    useMapStore.getState().clearFitBoundsCommand();
+  }, [fitBoundsCommand, mapLoaded]);
+
   // Fit to route bounds when routes change
   useEffect(() => {
     if (!mapRef.current) return;
@@ -791,9 +1187,35 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         { minLng: Infinity, maxLng: -Infinity, minLat: Infinity, maxLat: -Infinity }
       );
 
+      // On mobile the results scoreboard is pinned across the top of the map
+      // and the tab drawer rests across the bottom. A uniform inset would
+      // center the route in the whole viewport, tucking its middle behind
+      // them — so pad the fit to the actual free band: clear the measured
+      // scoreboard up top and the drawer's resting height below. Desktop
+      // (results live in the side panel, not over the map) keeps the uniform
+      // inset.
+      let padding: number | { top: number; bottom: number; left: number; right: number } = 80;
+      if (window.innerWidth < MOBILE_BREAKPOINT && useAppModeStore.getState().appMode === 'route') {
+        const mapPage = document.querySelector<HTMLElement>('.map-page');
+        const drawerHeight = mapPage
+          ? parseFloat(getComputedStyle(mapPage).getPropertyValue('--drawer-height')) || 0
+          : 0;
+        const scoreboard = document.querySelector<HTMLElement>('[data-route-scoreboard]');
+        const container = mapRef.current.getContainer();
+        const topInset = scoreboard && container
+          ? scoreboard.getBoundingClientRect().bottom - container.getBoundingClientRect().top + 16
+          : 130;
+        padding = {
+          top: Math.round(topInset),
+          bottom: Math.round(drawerHeight) + 24,
+          left: 36,
+          right: 36,
+        };
+      }
+
       mapRef.current.fitBounds(
         [[bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat]],
-        { padding: 80, duration: 1000 }
+        { padding, duration: 1000 }
       );
     }
   }, [normalRoute, avoidanceRoute, activeRoute]);
@@ -924,7 +1346,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
       style={{ width: '100%', height: '100%' }}
       mapStyle={mapStyle}
       onMove={onMove}
+      onMoveEnd={handleMoveEnd}
       onLoad={onLoad}
+      // Bound at map creation — camera-tile readiness must not wait for `load`.
+      onSourceData={handleTileSourceData}
+      onError={handleMapError}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -934,36 +1360,69 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
         : isDensityMode
           ? ['density-states-fill', 'density-counties-fill', 'density-states-extrusion', 'density-counties-extrusion']
           : showCameraMarkers
-            ? (isMapMode && activeView === 'individual')
-              ? ['unclustered-point']
-              : ['clusters', 'unclustered-point']
+            ? (isTilesMode
+                ? ['camera-tile-points']
+                : isFilterTilesMode
+                  ? ['camera-tile-points-filtered']
+                  : ['unclustered-point'])
             : []}
-      attributionControl={{}}
+      attributionControl={false}
       // Removed reuseMaps to avoid stale reused instances
     >
       <NavigationControl position="bottom-right" showCompass={false} />
       <GeolocateControl position="bottom-right" />
+      <AttributionCtl key={attribPosition} position={attribPosition} />
 
       {/* Explore visualization layers */}
       {isHeatmapMode && <HeatmapLayers />}
-      {isMapMode && <HeatmapLayers visible={mapModeViz === 'auto' || activeView === 'heatmap'} />}
+      {isMapMode && <HeatmapLayers visible={mapModeViz === 'heatmap'} />}
       {isDotsMode && <DotDensityLayers />}
       {isDensityMode && <DensityLayers />}
       {isNetworkMode && <NetworkLayers />}
       {isMapMode && <BoundaryOverlayLayers />}
 
-
-      {/* Direction cones + Camera markers — always mounted, visibility toggled.
-          In map-mode auto, crossfadeZoom makes markers fade in at zoom 9-11
-          while the heatmap fades out 9-14, giving a seamless GPU-driven transition. */}
-      <CameraMarkerLayers
-        cameras={cameraSource}
-        visible={showCameraMarkers}
-        clustered={isMapModeAuto ? false : (!isMapMode || activeView !== 'individual')}
-        mapLoaded={mapLoaded}
-        mapRef={mapRef}
-        crossfadeZoom={isMapModeAuto ? 9 : undefined}
+      {/* Camera tiles — the default rendering path. Always mounted; hidden
+          when the geojson path (filters/timeline/heatmap) is active. Kept
+          visible through filter-tiles warmup (until filterTilesReady) so the
+          camera layer never blanks while the filtered source streams in.
+          Keyed by country so a switch remounts source + layers cleanly on the
+          other country's archive. */}
+      <CameraTileLayers
+        key={country}
+        sourceUrl={cameraTilesUrl(country)}
+        visible={
+          (isTilesMode || (isFilterTilesMode && !filterTilesReady)) &&
+          showCameraMarkers && showCameraLayer
+        }
       />
+      {/* Filtered camera tiles — mounted the first time a filter is applied this
+          session and left mounted (visibility toggles) so its tiles stay cached.
+          Users who never filter never mount this source. */}
+      {filterLayersMounted && (
+        <CameraTileLayers
+          key={`filtered-${country}`}
+          visible={isFilterTilesMode && showCameraMarkers && showCameraLayer}
+          sourceId="camera-tiles-filtered"
+          sourceUrl={cameraFilterTilesUrl(country)}
+          idSuffix="-filtered"
+          filter={tileFilterExpr}
+        />
+      )}
+
+      {/* Legacy GeoJSON camera layers — empty until the dataset lazily loads;
+          becomes the active path for filters/heatmap/Canada.
+          Unmounted entirely in Timeline: `visible` only toggles layout visibility,
+          so a mounted instance still builds a 114k-feature source plus a cone
+          polygon per camera that Timeline would never draw.
+          Stays hidden during filter-tiles rendering to prevent double markers. */}
+      {!isDotsMode && (
+        <CameraMarkerLayers
+          cameras={cameraSource}
+          visible={renderMode === 'geojson' && showCameraMarkers}
+          mapLoaded={mapLoaded}
+          mapRef={mapRef}
+        />
+      )}
 
       {/* Routes (only in route mode) */}
       {appMode === 'route' && hasRoutes && (
@@ -983,13 +1442,13 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
               'line-join': 'round',
             }}
           />
-          {/* Privacy route - solid blue (rendered first/underneath) */}
+          {/* Privacy route - solid green (rendered first/underneath) */}
           <Layer
             id="route-line-privacy"
             type="line"
             filter={['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'type'], 'avoidance']]}
             paint={{
-              'line-color': '#0080BC', // Blue for privacy route
+              'line-color': '#22c55e', // Green: must not blend into the blue camera dots
               'line-width': 6,
               'line-opacity': 0.95,
             }}
@@ -1149,7 +1608,11 @@ export const MapLibreView = forwardRef<MapLibreViewHandle, MapLibreViewProps>(
 
               {/* Text */}
               <p className="text-white font-medium text-sm flex-1">
-                Tap to set {pickingLocation === 'origin' ? 'start' : 'destination'}
+                {pickingSequence === 'full'
+                  ? pickingLocation === 'origin'
+                    ? 'Step 1 of 2 — Tap the map to set your start'
+                    : 'Step 2 of 2 — Now tap your destination'
+                  : `Tap the map to set your ${pickingLocation === 'origin' ? 'start' : 'destination'}`}
               </p>
 
               {/* Cancel button */}

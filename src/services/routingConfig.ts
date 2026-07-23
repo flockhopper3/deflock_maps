@@ -28,7 +28,7 @@ export const ZONE_SAFETY_MULTIPLIERS = {
 
 export const DIRECTIONAL_ZONE = {
   /** Total field of view for camera cone (degrees) */
-  cameraFovDegrees: 70,
+  cameraFovDegrees: 50,
   /** Legacy — not used */
   detectionRangeMeters: 120,
   /** Small buffer behind camera (meters) */

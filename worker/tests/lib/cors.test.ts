@@ -14,6 +14,32 @@ describe('getAllowedOrigin', () => {
     expect(getAllowedOrigin('http://localhost:3000', 'production')).toBe('http://localhost:3000');
   });
 
+  it('allows maps.deflock.org', () => {
+    expect(getAllowedOrigin('https://maps.deflock.org', 'production')).toBe('https://maps.deflock.org');
+  });
+
+  it('allows preview branches on flockhopper.workers.dev', () => {
+    expect(getAllowedOrigin('https://redesign-compact-homepage-flockhopper.flockhopper.workers.dev', 'production'))
+      .toBe('https://redesign-compact-homepage-flockhopper.flockhopper.workers.dev');
+    expect(getAllowedOrigin('https://stage-flockhopper.flockhopper.workers.dev', 'production'))
+      .toBe('https://stage-flockhopper.flockhopper.workers.dev');
+  });
+
+  it('allows preview branches on deflock-maps.deflock.workers.dev', () => {
+    expect(getAllowedOrigin('https://test-deflock-maps.deflock.workers.dev', 'production'))
+      .toBe('https://test-deflock-maps.deflock.workers.dev');
+    expect(getAllowedOrigin('https://main-deflock-maps.deflock.workers.dev', 'production'))
+      .toBe('https://main-deflock-maps.deflock.workers.dev');
+  });
+
+  it('rejects lookalike workers.dev domains', () => {
+    expect(getAllowedOrigin('https://flockhopper.workers.dev.evil.com', 'production')).toBeNull();
+    expect(getAllowedOrigin('https://evil-flockhopper.workers.dev', 'production')).toBeNull();
+    expect(getAllowedOrigin('http://foo.flockhopper.workers.dev', 'production')).toBeNull();
+    expect(getAllowedOrigin('https://foo.deflock.workers.dev', 'production')).toBeNull();
+    expect(getAllowedOrigin('https://deflock-maps.deflock.workers.dev', 'production')).toBeNull();
+  });
+
   it('rejects unknown origins', () => {
     expect(getAllowedOrigin('https://evil.com', 'production')).toBeNull();
   });

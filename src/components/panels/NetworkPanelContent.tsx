@@ -2,19 +2,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNetworkStore } from '../../store/networkStore';
 import { useMapStore } from '../../store';
 import { Search, X, ChevronDown, ChevronUp, Camera, ScanSearch, Car, AlertTriangle, Link2, Users, ArrowUpRight, ArrowDownLeft, ExternalLink } from 'lucide-react';
-import type { NetworkNode, Direction } from '../../store/networkStore';
+import { TYPE_LABELS, type NetworkNode, type Direction } from '../../store/networkStore';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 
 /* ------------------------------------------------------------------ */
 /*  Shared constants & helpers                                         */
 /* ------------------------------------------------------------------ */
-
-const TYPE_LABELS: Record<string, string> = {
-  pd: 'Police Department',
-  so: "Sheriff's Office",
-  federal: 'Federal Agency',
-  school: 'School District',
-  other: 'Other Agency',
-};
 
 const TYPE_COLORS: Record<string, string> = {
   pd: 'bg-accent',
@@ -97,7 +91,12 @@ export function NetworkPanelContent() {
     activeTab, setActiveTab,
     clearSelection, arcWidth, setArcWidth, hoverArcsEnabled, setHoverArcsEnabled,
     portalOnly, togglePortalOnly, typeFilter, toggleTypeFilter, clearTypeFilter, error,
+    adjacencyReady, inferredConnectionsEnabled, toggleInferredConnections,
   } = useNetworkStore();
+
+  // Non-portal agency selected while inferred connections are off: no arcs,
+  // no counts, just the explainer card.
+  const gatedSelection = !!selectedNode && !selectedNode.isPortal && !inferredConnectionsEnabled;
 
   // Load data on mount
   useEffect(() => {
@@ -146,6 +145,7 @@ export function NetworkPanelContent() {
   }, [setSelectedNodeId]);
 
   const isLoading = loadPhase === 'idle' || loadPhase === 'fetching';
+  const showSkeleton = useDelayedFlag(isLoading);
   const byDirection = useMemo(() => {
     const buckets: Record<Direction, NetworkNode[]> = { mutual: [], outgoing: [], incoming: [] };
     for (const arc of selectedArcs) buckets[arc.direction].push(arc.target);
@@ -170,10 +170,17 @@ export function NetworkPanelContent() {
 
   return (
     <>
-      {isLoading && (
-        <div className="flex items-center gap-3 py-4">
-          <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-          <span className="text-sm text-dark-300">Loading network data...</span>
+      {isLoading && showSkeleton && (
+        <div className="space-y-3 py-2" aria-busy="true">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="w-8 h-8 rounded-lg" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-2.5 w-1/2" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -196,6 +203,7 @@ export function NetworkPanelContent() {
           <div className="relative mb-5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
             <input
+              id="network-agency-search"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -294,7 +302,7 @@ export function NetworkPanelContent() {
                 {incomingCount > 0 && (
                   <StatRow icon={ArrowDownLeft} label="Incoming only" value={formatNumber(incomingCount)} colorClass={DIRECTION_DOT.incoming} />
                 )}
-                {mutualCount + outgoingCount + incomingCount === 0 && (
+                {adjacencyReady && !gatedSelection && mutualCount + outgoingCount + incomingCount === 0 && (
                   <StatRow icon={Link2} label="Connections" value="0" />
                 )}
                 {selectedNode.population > 0 && (
@@ -302,7 +310,50 @@ export function NetworkPanelContent() {
                 )}
               </div>
 
-              {selectedNode.isPortal && outgoingCount === 0 && mutualCount === 0 && (
+              {gatedSelection && (
+                <div role="status" className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <div className="flex gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden />
+                    <div className="text-xs text-amber-100/90 leading-relaxed">
+                      <p className="font-medium text-amber-300 mb-1">No transparency portal</p>
+                      <p>
+                        This agency does not publish a Flock transparency portal, so its data
+                        sharing cannot be confirmed. Some connections can be inferred from
+                        portals run by other agencies.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={toggleInferredConnections}
+                    className="mt-2.5 w-full px-3 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 active:bg-amber-500/30 text-amber-200 text-xs font-semibold transition-colors"
+                  >
+                    Show inferred connections
+                  </button>
+                </div>
+              )}
+
+              {selectedNode && !selectedNode.isPortal && inferredConnectionsEnabled && (
+                <div role="status" className="mb-4 flex gap-2.5 p-3 rounded-lg bg-sky-500/10 border border-sky-500/30">
+                  <Link2 className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" aria-hidden />
+                  <div className="text-xs text-sky-100/90 leading-relaxed">
+                    <p className="font-medium text-sky-300 mb-1">Inferred connections</p>
+                    <p>
+                      This agency has no transparency portal. These connections were found in
+                      other agencies' portals that list it as a sharing partner. The real list
+                      is likely longer.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!adjacencyReady && !gatedSelection && (
+                <div className="mb-4 flex items-center gap-2 py-1" role="status">
+                  <span className="w-3.5 h-3.5 border-2 border-dark-600 border-t-accent rounded-full animate-spin shrink-0" />
+                  <span className="text-xs text-dark-400">Loading connections…</span>
+                </div>
+              )}
+
+              {adjacencyReady && selectedNode.isPortal && outgoingCount === 0 && mutualCount === 0 && (
                 <div role="status" className="mb-4 flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
                   <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden />
                   <div className="text-xs text-amber-100/90 leading-relaxed">
@@ -411,14 +462,14 @@ export function NetworkPanelContent() {
           ) : (
             <div>
               <p className="text-sm text-dark-300 leading-relaxed mb-3">
-                This map visualizes the Flock Safety surveillance sharing network &mdash; {nodesArray.length.toLocaleString()}+ law enforcement agencies that share automatic license plate reader (ALPR) data with each other. Click an agency to see who they share data with.
+                Law enforcement agencies that run Flock Safety license plate readers can share their ALPR data with each other. This map shows that network: {nodesArray.length.toLocaleString()}+ agencies and the sharing relationships between them. Click an agency to see who they share data with.
               </p>
               <div role="alert" className="mb-3 flex gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/40">
                 <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden />
                 <div className="text-xs text-amber-100/90 leading-relaxed">
                   <p className="font-semibold text-amber-300 mb-1">Most of the network is hidden.</p>
                   <p>
-                    Of <span className="font-semibold text-amber-200">6,400+ agencies</span> using Flock, only about <span className="font-semibold text-amber-200">900</span> run a public transparency portal &mdash; and just <span className="font-semibold text-amber-200">~530</span> of those actually disclose who they share data with. The rest redact their sharing list or don&rsquo;t publish one at all.
+                    Of <span className="font-semibold text-amber-200">6,400+ agencies</span> using Flock, only about <span className="font-semibold text-amber-200">900</span> run a public transparency portal. Just <span className="font-semibold text-amber-200">~530</span> of those actually disclose who they share data with. The rest redact their sharing list or don&rsquo;t publish one at all.
                   </p>
                 </div>
               </div>
@@ -431,6 +482,10 @@ export function NetworkPanelContent() {
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-3 h-3 rounded-full bg-dark-700 ring-2 ring-red-500 flex-shrink-0" aria-hidden />
                   <span className="text-xs text-dark-300">Red ring = portal with redacted data sharing</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-accent flex-shrink-0" aria-hidden />
+                  <span className="text-xs text-dark-300">No ring = no transparency portal (most agencies)</span>
                 </div>
               </div>
 
@@ -480,19 +535,46 @@ export function NetworkPanelContent() {
           {/* Arc settings */}
           <div className="mt-5 pt-5 border-t border-dark-700/50 space-y-4">
             {/* Portal only toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-dark-400 uppercase tracking-wider font-medium">Portal Agencies Only</span>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-dark-400 uppercase tracking-wider font-medium">Portal Agencies Only</span>
+                <p className="text-[11px] text-dark-500 mt-0.5">Hide agencies without a transparency portal</p>
+              </div>
               <button
                 onClick={togglePortalOnly}
                 role="switch"
                 aria-checked={portalOnly}
-                className={`relative w-10 h-[22px] rounded-full transition-colors ${
+                aria-label="Portal agencies only"
+                className={`relative flex-shrink-0 w-10 h-[22px] rounded-full transition-colors ${
                   portalOnly ? 'bg-accent' : 'bg-dark-700'
                 }`}
               >
                 <span
                   className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white transition-transform ${
                     portalOnly ? 'translate-x-[18px]' : ''
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Inferred connections toggle */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-dark-400 uppercase tracking-wider font-medium">Inferred Connections</span>
+                <p className="text-[11px] text-dark-500 mt-0.5">Explore agencies that only appear in other agencies' portals</p>
+              </div>
+              <button
+                onClick={toggleInferredConnections}
+                role="switch"
+                aria-checked={inferredConnectionsEnabled}
+                aria-label="Inferred connections"
+                className={`relative flex-shrink-0 w-10 h-[22px] rounded-full transition-colors ${
+                  inferredConnectionsEnabled ? 'bg-accent' : 'bg-dark-700'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white transition-transform ${
+                    inferredConnectionsEnabled ? 'translate-x-[18px]' : ''
                   }`}
                 />
               </button>

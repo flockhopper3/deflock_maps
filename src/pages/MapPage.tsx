@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { MapLibreView, MapSearch, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
+import { MapLibreView, MapSearch, FloatingRouteCard, CameraStats, MapLoadingScreen, type MapLibreViewHandle } from '@/components/map';
+import { HeaderCameraCount } from '@/components/map/HeaderCameraCount';
 import { RoutePanel } from '@/components/panels';
 import { ExplorePanel } from '@/components/panels/ExplorePanel';
 import { DensityPanel } from '@/components/panels/DensityPanel';
@@ -9,15 +9,28 @@ import { MapPanel } from '@/components/panels/MapPanel';
 import { MobileTabDrawer } from '@/components/panels/MobileTabDrawer';
 import { DensityLegendBar } from '@/components/map/DensityLegendBar';
 import { NetworkAgencyCount } from '@/components/map/NetworkAgencyCount';
-import { Seo, LegacyMapLink, ShareButton } from '@/components/common';
-import { parseViewportFromURL, writeViewportParams } from '@/utils/urlParams';
+import { NetworkLoadingPill } from '@/components/map/NetworkLoadingPill';
+import { DensityLoadingPill } from '@/components/map/DensityLoadingPill';
+import { Seo, LegacyMapLink, ShareButton, LoadingPill } from '@/components/common';
+import { stateSlug, getStateName } from '@/services/stateFilterService';
+import { isModeAvailable } from '@/services/cameraDataService';
+import { resetPMTilesProtocol } from '@/services/cameraTilesService';
 import { isWebGLAvailable } from '@/utils/webgl';
-import { useCameraStore, useMapStore, useAppModeStore } from '@/store';
+import { removeBootSplash } from '@/utils/bootSplash';
+import { useCameraStore, useAppModeStore } from '@/store';
 import { useEmbedMode } from '@/hooks/useEmbedMode';
+import { useCameraRenderMode } from '@/hooks/useCameraRenderMode';
+import { useIsMobile } from '@/hooks/useIsMobile';
+import { useUrlSync } from '@/hooks/useUrlSync';
 import { MapStyleControl } from '@/components/map/MapStyleControl';
+import { CameraFilterControl } from '@/components/map/CameraFilterControl';
+import { BoundaryControl } from '@/components/map/BoundaryControl';
+import { BoundaryFeaturePopup } from '@/components/map/BoundaryFeaturePopup';
+import { MapThemeControl } from '@/components/map/MapThemeControl';
+import { CameraTileStatusPill } from '@/components/map/CameraTileStatusPill';
 import { TimelineBar } from '@/modes/timeline/TimelineBar';
 import { DensityFeaturePopup } from '@/modes/density/DensityFeaturePopup';
-import { Route, Compass, BarChart3, Menu, X, Network, Map as MapIcon } from 'lucide-react';
+import { Route, Compass, BarChart3, Network, Map as MapIcon } from 'lucide-react';
 import type { AppMode } from '@/store';
 
 const WEBGL_REQUIRED_MESSAGE =
@@ -32,133 +45,45 @@ const MODE_LABELS: Record<AppMode, { icon: typeof Route; label: string }> = {
 };
 
 export function MapPage() {
-  const { 
-    ensureCamerasLoaded,
+  const {
     retryCameraLoad,
     isInitialized,
     cameras,
-    error,
-    getCamerasInBounds,
-    loadPhase,
+    country,
   } = useCameraStore();
-  const bounds = useMapStore(s => s.bounds);
-  const center = useMapStore(s => s.center);
-  const zoom = useMapStore(s => s.zoom);
   const appMode = useAppModeStore(s => s.appMode);
-  const mapVisualization = useAppModeStore(s => s.mapVisualization);
   const setAppMode = useAppModeStore(s => s.setAppMode);
-  const isEmbed = useEmbedMode();
+  const enterTimeline = useAppModeStore(s => s.enterTimeline);
   const updateTimelineSettings = useAppModeStore(s => s.updateTimelineSettings);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const isExplorePath = location.pathname === '/explore';
-  const isTimelinePath = location.pathname === '/timeline';
-  const isAnalysisPath = location.pathname === '/analysis';
-  const isNetworkPath = location.pathname === '/network';
-  const isRoutePath = location.pathname === '/route';
+  const isEmbed = useEmbedMode();
   const isExploreMode = appMode === 'explore';
   const hasAutoPlayed = useRef(false);
 
-  // Seed map viewport from URL params once, before MapLibreContainer mounts.
-  // useState initializer runs once — sets store synchronously so initialViewState picks it up.
-  useState(() => {
-    const viewport = parseViewportFromURL(new URLSearchParams(window.location.search));
-    if (viewport) {
-      useMapStore.setState({ center: [viewport.lat, viewport.lng], zoom: viewport.zoom });
-    }
-  });
+  // Single URL↔state bridge: seeds stores from the boot URL (viewport,
+  // country, mode, state filter) and mirrors store changes back into the
+  // address bar. All URL logic lives in useUrlSync/urlState.
+  useUrlSync();
 
-  // Debounced live URL sync: mirrors whatever buildShareURL would produce,
-  // so copying the address bar equals clicking Share.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setSearchParams(prev => writeViewportParams(new URLSearchParams(prev)), { replace: true });
-    }, 500);
-    return () => clearTimeout(t);
-  }, [center, zoom, appMode, mapVisualization, setSearchParams]);
+  const stateFilter = useCameraStore(s => s.filters.state);
+  const isMobile = useIsMobile();
 
-  // Responsive breakpoint — single source of truth for timeline bar layout
-  // Never go mobile in embed mode — the iframe width should not affect layout
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    if (isEmbed) return;
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [isEmbed]);
-
-  // Sync URL params with app mode on mount
-  useEffect(() => {
-    const vizParam = searchParams.get('viz');
-    const viz = vizParam === 'heatmap' ? 'heatmap' : 'dots';
-
-    if (isAnalysisPath) {
-      setAppMode('density');
-    } else if (isExplorePath || isTimelinePath) {
-      useAppModeStore.setState({
-        appMode: 'explore',
-        mapVisualization: viz,
-        timelineSettings: {
-          currentDate: isTimelinePath ? '2024-07-01' : new Date().toISOString().slice(0, 10),
-          isPlaying: false,
-          playSpeed: 45,
-        },
-      });
-    } else if (isNetworkPath) {
-      setAppMode('network');
-    } else if (isRoutePath) {
-      setAppMode('route');
-    } else {
-      const urlMode = searchParams.get('mode');
-      if (urlMode === 'route') {
-        setAppMode('route');
-      } else if (urlMode === 'explore') {
-        setAppMode('explore');
-      } else if (urlMode === 'density') {
-        setAppMode('density');
-      } else if (urlMode === 'network') {
-        setAppMode('network');
-      } else {
-        setAppMode('map');
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Update URL when mode changes
+  // Mode switching is a plain store update — the URL follows via useUrlSync.
   const handleSetAppMode = useCallback((mode: AppMode) => {
     if (mode === 'explore') {
-      // Set timeline state directly — bypass setAppMode which defaults to today's date
-      useAppModeStore.setState({
-        appMode: 'explore',
-        mapVisualization: 'dots',
-        timelineSettings: {
-          currentDate: '2024-07-01',
-          isPlaying: false,
-          playSpeed: 45,
-        },
-      });
+      enterTimeline();
       hasAutoPlayed.current = false;
-      navigate('/timeline', { replace: true });
-    } else if (mode === 'map') {
+    } else {
       setAppMode(mode);
-      setSearchParams({}, { replace: true });
-    } else if (mode === 'route') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'route' }, { replace: true });
-    } else if (mode === 'density') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'density' }, { replace: true });
-    } else if (mode === 'network') {
-      setAppMode(mode);
-      setSearchParams({ mode: 'network' }, { replace: true });
     }
-  }, [setAppMode, setSearchParams, navigate]);
+  }, [enterTimeline, setAppMode]);
 
-  // Mobile menu state
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // US-only modes (Route/Analysis/Network): bounce back to Map when Canada
+  // is active — covers the country switcher, deep links, and URL edits
+  useEffect(() => {
+    if (!isModeAvailable(appMode, country)) {
+      handleSetAppMode('map');
+    }
+  }, [appMode, country, handleSetAppMode]);
 
   // Track map markers ready state
   const [markersReady, setMarkersReady] = useState(false);
@@ -167,51 +92,44 @@ export function MapPage() {
   const mapRef = useRef<MapLibreViewHandle>(null);
   const mapInitDeadlineRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Get cameras in view for mobile header display
-  const viewCameraCount = bounds
-    ? getCamerasInBounds(bounds.north, bounds.south, bounds.east, bounds.west).length
-    : 0;
-
-  // Load cameras on mount - immediately, not waiting for idle
-  // Also resets UI state in case of stale state from previous navigation
+  // Reset UI state on mount (handles stale state from previous navigation)
+  // and probe for WebGL before doing any work — without it the map cannot
+  // render. Camera JSON is no longer fetched here: tiles are the default
+  // rendering path and need no JSON at all, and useCameraRenderMode()
+  // lazily triggers ensureCamerasLoaded() the moment a feature actually
+  // needs the dataset (filters/timeline/heatmap/Canada).
   useEffect(() => {
-    const mountTime = performance.now();
     if (import.meta.env.DEV) {
-      console.log('[MapPage] Component mounted, starting camera load...');
+      console.log('[MapPage] Component mounted');
     }
 
-    // Reset UI state on mount (handles navigation back scenarios)
+    removeBootSplash();
     setMarkersReady(false);
     setMapInitError(null);
 
-    // Probe for WebGL before doing any work — without it the map cannot
-    // render and there is no point fetching the camera dataset.
     if (!isWebGLAvailable()) {
       setMapInitError(WEBGL_REQUIRED_MESSAGE);
       if (import.meta.env.DEV) {
         console.warn('[MapPage] WebGL not available — surfacing error UI');
       }
-      return;
     }
+  }, []);
 
-    ensureCamerasLoaded()
-      .then(() => {
-        if (import.meta.env.DEV) {
-          console.log(`[MapPage] Camera load complete in ${(performance.now() - mountTime).toFixed(0)}ms`);
-        }
-      })
-      .catch((err) => {
-        console.error('Camera initialization failed:', err);
-      });
-  }, [ensureCamerasLoaded]);
+  const { needsGeojson } = useCameraRenderMode();
 
-  // Map-init deadline: if markers don't become ready within 15s after cameras
-  // load, treat the map init as failed and surface the existing error UI
-  // (Try Again + Legacy Maps Link). The inner retry pipeline in
-  // MapLibreContainer keeps event listeners attached for the full duration,
-  // so a successful late init before the deadline still clears markersReady.
+  // Map-init deadline: if markers don't become ready within 15s, treat the
+  // map init as failed and surface the existing error UI (Try Again + Legacy
+  // Maps Link). Arms on either rendering path:
+  // - geojson: after the dataset is hydrated (isInitialized && cameras)
+  // - tiles: immediately (!needsGeojson) — a silently stalled pmtiles load
+  //   emits neither sourcedata nor 'error' events, so without this the
+  //   loading screen would spin forever with no retry UI.
+  // The inner retry pipeline in MapLibreContainer keeps event listeners
+  // attached for the full duration, so a successful late init before the
+  // deadline still clears markersReady (which also clears this timer).
   useEffect(() => {
-    if (isInitialized && cameras.length > 0 && !markersReady && !mapInitError) {
+    const watchdogArmed = !needsGeojson || (isInitialized && cameras.length > 0);
+    if (watchdogArmed && !markersReady && !mapInitError) {
       mapInitDeadlineRef.current = setTimeout(() => {
         if (!markersReady) {
           setMapInitError('Map failed to initialize. Please try again.');
@@ -227,7 +145,7 @@ export function MapPage() {
         }
       };
     }
-  }, [isInitialized, cameras.length, markersReady, mapInitError]);
+  }, [needsGeojson, isInitialized, cameras.length, markersReady, mapInitError]);
 
   // Handle markers ready callback from MapLibreView
   const handleMarkersReady = useCallback((ready: boolean) => {
@@ -258,30 +176,47 @@ export function MapPage() {
 
     setMapInitError(null);
     setMarkersReady(false);
-    // Force map remount with new key — unconditional so a failing
-    // retryCameraLoad still gets a fresh map instance on next attempt
+    // Force map remount with new key — unconditional, always the recovery
+    // path for a stalled tile source. The (multi-MB) GeoJSON refetch only
+    // helps when a feature actually needs it (filters/timeline/heatmap/Canada);
+    // skip it in tiles mode where the remount alone drives recovery.
+    // Clear a prior camera-tile failure and discard the pmtiles header cache so
+    // the remount genuinely re-fetches the archive (the retry pill's point).
+    useCameraStore.getState().setTilesFailed(false);
+    useCameraStore.getState().setFilterTilesFailed(false);
+    resetPMTilesProtocol();
     setMapKey(k => k + 1);
 
-    try {
-      await retryCameraLoad();
-    } catch {
-      // Error handling done in store
+    if (needsGeojson) {
+      try {
+        await retryCameraLoad();
+      } catch {
+        // Error handling done in store
+      }
     }
-  }, [retryCameraLoad]);
+  }, [retryCameraLoad, needsGeojson]);
 
-  // Map progress: idle -> loading -> hydrating -> ready (for cameras)
-  // Then map also needs markers to be ready
-  const cameraProgress = error ? 'error' : loadPhase;
-  
-  // Show map only when cameras are fully loaded
-  const camerasReady = isInitialized && cameras.length > 0;
-  
-  // Full ready state: cameras loaded AND map markers rendered
+  // Tiles mode: the map is "ready" when the tile source has rendered
+  // (markersReady). The JSON dataset only gates readiness when a feature
+  // actually needs it (filters/timeline/heatmap/Canada).
+  const camerasReady = needsGeojson ? (isInitialized && cameras.length > 0) : true;
   const isFullyReady = camerasReady && markersReady;
 
-  // /timeline path: auto-play dot density animation once map is ready
+  // The pill covers GeoJSON loads with no visible panel to host a skeleton:
+  // mobile, and any non-explore desktop context (heatmap/filters/Canada).
+  // Desktop Timeline gets an in-panel skeleton instead (ExplorePanel).
+  // Deliberately NOT gated on !camerasReady: camerasReady flips true in the
+  // same atomic store commit as loadPhase → 'ready', so gating on it here
+  // would unmount the pill before it can render its own "N cameras ready"
+  // completion flash. The pill owns its own visibility (idle/ready-without-
+  // flash → null) so it's safe to keep mounted through the ready transition.
+  const showCameraPill =
+    needsGeojson && !mapInitError &&
+    (isMobile || appMode !== 'explore');
+
+  // Timeline entry: auto-play the dot density animation once the map is ready
   useEffect(() => {
-    if (isTimelinePath && isFullyReady && !hasAutoPlayed.current) {
+    if (isExploreMode && isFullyReady && !hasAutoPlayed.current) {
       hasAutoPlayed.current = true;
       // Short delay so TimelineBar mounts and registers the tick callback
       const timer = setTimeout(() => {
@@ -289,9 +224,15 @@ export function MapPage() {
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [isTimelinePath, isFullyReady, updateTimelineSettings]);
+  }, [isExploreMode, isFullyReady, updateTimelineSettings]);
 
-  const seo = (
+  const seo = stateFilter ? (
+    <Seo
+      title={`${getStateName(stateFilter)} ALPR Cameras | DeFlock Maps`}
+      description={`Map of known ALPR (license plate reader) cameras in ${getStateName(stateFilter)}, with brand breakdowns and privacy-optimized routing.`}
+      path={`/state/${stateSlug(stateFilter)}`}
+    />
+  ) : (
     <Seo
       title="DeFlock Maps | ALPR Camera Map & Privacy Routes"
       description="Explore the national ALPR camera map and compare direct routes with privacy-optimized alternatives."
@@ -302,23 +243,17 @@ export function MapPage() {
   return (
     <>
       {seo}
-      {/* Unified loading overlay — map renders underneath so tiles load in parallel */}
-      {(!isFullyReady || error || mapInitError) && (
-        <MapLoadingScreen
-          cameraProgress={cameraProgress}
-          cameraCount={cameras.length}
-          error={error ?? mapInitError}
-          onRetry={handleRetryWithRemount}
-          markersReady={markersReady}
-          camerasReady={camerasReady}
-        />
+      {/* Full-screen overlay is error-only: WebGL missing, watchdog timeout,
+          or tile-source stall. GeoJSON loads surface in-panel / as a pill. */}
+      {mapInitError && (
+        <MapLoadingScreen error={mapInitError} onRetry={handleRetryWithRemount} />
       )}
-      <div className={`map-page h-screen w-screen flex flex-col bg-dark-900 overflow-hidden ${isExploreMode ? 'timeline-active' : ''}`}>
+      <div className={`map-page h-screen supports-[height:100dvh]:h-[100dvh] w-screen flex flex-col bg-dark-900 overflow-hidden ${appMode === 'map' ? 'map-mode-active' : ''}`}>
         {/* Header - hidden in embed mode */}
         {!isEmbed && (
-        <header className="h-12 bg-dark-900 border-b border-dark-600 flex items-center z-50 shrink-0">
+        <header className="h-[38px] lg:h-12 bg-dark-900 border-b border-hairline flex items-center z-50 shrink-0">
           <div className="w-full px-4 lg:px-5">
-            <div className="flex items-center justify-between h-12">
+            <div className="flex items-center justify-between h-full">
               {/* Logo + Product Switcher */}
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <a
@@ -329,12 +264,12 @@ export function MapPage() {
                   <img
                     src="/deflock-icon.png"
                     alt="DeFlock Icon"
-                    className="h-7 lg:h-8 w-auto object-contain"
+                    className="h-5 lg:h-8 w-auto object-contain"
                   />
                   <img
                     src="/deflock-logo.svg"
                     alt="DeFlock Logo"
-                    className="h-7 lg:h-8 w-auto object-contain"
+                    className="h-5 lg:h-8 w-auto object-contain"
                   />
                   <span className="text-dark-400 text-[11px] font-medium tracking-[0.2em] uppercase hidden sm:inline self-end mb-[3px]">Maps</span>
                 </a>
@@ -342,38 +277,38 @@ export function MapPage() {
 
               {/* Desktop: Mode tabs - editorial underline style */}
               <nav className="hidden lg:flex items-center gap-6" aria-label="App modes">
-                {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { label }]) => (
-                  <button
-                    key={mode}
-                    onClick={() => handleSetAppMode(mode)}
-                    className={`relative text-sm font-medium uppercase tracking-widest pb-1 transition-colors duration-150 ${
-                      appMode === mode
-                        ? 'text-accent'
-                        : 'text-dark-200 hover:text-white'
-                    }`}
-                    aria-current={appMode === mode ? 'page' : undefined}
-                  >
-                    {label}
-                    {appMode === mode && (
-                      <span className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-accent" />
-                    )}
-                  </button>
-                ))}
+                {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { label }]) => {
+                  const available = isModeAvailable(mode, country);
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => available && handleSetAppMode(mode)}
+                      disabled={!available}
+                      title={available ? undefined : 'Available in the US only'}
+                      className={`relative text-sm font-medium uppercase tracking-widest pb-1 transition-colors duration-150 ${
+                        appMode === mode
+                          ? 'text-accent'
+                          : available
+                            ? 'text-dark-200 hover:text-white'
+                            : 'text-dark-600 cursor-not-allowed'
+                      }`}
+                      aria-current={appMode === mode ? 'page' : undefined}
+                    >
+                      {label}
+                      {appMode === mode && (
+                        <span className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-accent" />
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
 
-              {/* Mobile: Camera count + hamburger */}
-              <div className="lg:hidden flex items-center gap-2">
-                <span className="text-xs text-dark-400">
-                  <span className="text-dark-200 font-semibold tabular-nums">{viewCameraCount.toLocaleString()}</span> in view
-                </span>
-                <button
-                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className="inline-flex items-center justify-center w-10 h-10 text-dark-300 hover:text-dark-100 transition-colors duration-150"
-                  aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                  aria-expanded={mobileMenuOpen}
-                >
-                  {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-                </button>
+              {/* Mobile: live count + share. No count on Timeline/Analysis/
+                  Network — "in view" ignores the timeline date, Analysis shows
+                  choropleths not cameras, and Network shows agencies. */}
+              <div className="lg:hidden flex items-center gap-2 h-full">
+                {appMode !== 'explore' && appMode !== 'density' && appMode !== 'network' && <HeaderCameraCount />}
+                <ShareButton variant="icon" className="-mr-2" />
               </div>
 
               <div className="hidden lg:flex items-center gap-4 flex-shrink-0">
@@ -385,39 +320,6 @@ export function MapPage() {
           </div>
         </header>
         )} {/* end !isEmbed header */}
-
-        {/* Mobile slide-down menu — only relevant outside embed mode */}
-        {!isEmbed && mobileMenuOpen && (
-          <nav
-            className="lg:hidden absolute top-12 left-0 right-0 z-[60] bg-dark-800 border-b border-dark-600"
-            aria-label="Mobile navigation"
-          >
-            <div className="px-4 py-2 space-y-0.5">
-              {(Object.entries(MODE_LABELS) as [AppMode, typeof MODE_LABELS[AppMode]][]).map(([mode, { icon: Icon, label }]) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    handleSetAppMode(mode);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 ${
-                    appMode === mode
-                      ? 'text-accent'
-                      : 'text-dark-300 hover:text-dark-100'
-                  }`}
-                  aria-current={appMode === mode ? 'page' : undefined}
-                >
-                  <Icon className="w-4 h-4" aria-hidden="true" />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-dark-600 mt-1 pt-1 px-4 pb-2 space-y-0.5">
-              <ShareButton variant="menu-item" />
-              <LegacyMapLink variant="menu-item" />
-            </div>
-          </nav>
-        )}
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden relative">
@@ -434,16 +336,34 @@ export function MapPage() {
           {/* Map */}
           <main className="flex-1 relative w-full lg:w-auto">
             <h1 className="sr-only">DeFlock ALPR Camera Map</h1>
-            <MapLibreView
-              ref={mapRef}
-              mapKey={mapKey}
-              onMarkersReady={handleMarkersReady}
-            />
+            {/* Map fades in on first render instead of popping */}
+            <div className={`absolute inset-0 transition-opacity duration-300 ${markersReady ? 'opacity-100' : 'opacity-0'}`}>
+              <MapLibreView
+                ref={mapRef}
+                mapKey={mapKey}
+                onMarkersReady={handleMarkersReady}
+              />
+            </div>
 
             {/* Map Overlays */}
-            {!isEmbed && <MapSearch />}
-            {appMode === 'network' ? <NetworkAgencyCount /> : appMode !== 'map' ? <CameraStats /> : null}
-            <MapStyleControl />
+            {!isEmbed && (appMode === 'route' ? <FloatingRouteCard /> : <MapSearch />)}
+            {/* Camera-count overlay only where it's meaningful: route mode.
+                Timeline's count ignores the scrubbed date; Analysis renders
+                choropleths, not cameras. */}
+            {appMode === 'network' ? <NetworkAgencyCount /> : appMode === 'route' ? <CameraStats /> : null}
+            {/* Country switch only where switching countries is meaningful:
+                camera browse + Explore. Hidden on Route/Analysis/Network. */}
+            {(appMode === 'map' || appMode === 'explore') && <MapStyleControl />}
+            {showCameraPill && <LoadingPill />}
+            {(appMode === 'map' || appMode === 'route') && !needsGeojson && (
+              <CameraTileStatusPill onRetryTiles={handleRetryWithRemount} />
+            )}
+            {appMode === 'network' && <NetworkLoadingPill />}
+            {appMode === 'density' && <DensityLoadingPill />}
+            <MapThemeControl />
+            <CameraFilterControl />
+            {appMode === 'map' && <BoundaryControl />}
+            {appMode === 'map' && <BoundaryFeaturePopup />}
 
             {/* Density feature popup — floating stats card */}
             {appMode === 'density' && <DensityFeaturePopup />}
@@ -454,7 +374,7 @@ export function MapPage() {
 
             {/* Map Legend - route mode only (explore/density legends live in side panel) */}
             {appMode === 'route' && (
-              <div className="absolute bottom-6 left-4 z-20 hidden lg:flex flex-col gap-2">
+              <div className="absolute bottom-6 left-[68px] z-20 hidden lg:flex flex-col gap-2">
                 <div className="bg-dark-800/90 rounded-md px-3 py-2 border border-dark-600">
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
@@ -468,7 +388,7 @@ export function MapPage() {
                     </div>
                     <div className="w-px h-5 bg-dark-600"></div>
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-1 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.5)]"></div>
+                      <div className="w-6 h-1 rounded-full bg-success shadow-[0_0_6px_rgba(34,197,94,0.5)]"></div>
                       <span className="text-dark-100">Privacy Route</span>
                     </div>
                   </div>
@@ -478,7 +398,7 @@ export function MapPage() {
 
             {/* Map mode legend */}
             {appMode === 'map' && (
-              <div className="absolute bottom-6 left-4 z-20 hidden lg:flex flex-col gap-2">
+              <div className="absolute bottom-6 left-[68px] z-20 hidden lg:flex flex-col gap-2">
                 <div className="bg-dark-800/90 rounded-md px-3 py-2 border border-dark-600">
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
@@ -490,12 +410,9 @@ export function MapPage() {
               </div>
             )}
 
-            {/* Timeline Bar — single instance, wrapper switches on breakpoint */}
-            {isExploreMode && (
-              <div className={isMobile
-                ? "timeline-bar-mobile fixed bottom-[84px] left-3 right-3 z-[51] h-12 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
-                : "timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30"
-              }>
+            {/* Timeline Bar — desktop only; on mobile the scrubber lives in the drawer peek */}
+            {isExploreMode && !isMobile && isInitialized && (
+              <div className="timeline-bar-desktop absolute bottom-4 left-4 right-20 z-20 h-14 bg-dark-900/70 backdrop-blur-xl rounded-xl border border-white/[0.06] shadow-lg shadow-black/30">
                 <TimelineBar />
               </div>
             )}

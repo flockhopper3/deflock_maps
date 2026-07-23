@@ -1,62 +1,10 @@
-import { useMemo, useCallback, useEffect, useRef } from 'react';
-import { Source, Layer, useMap } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
-import { useMapStore } from '../../../store';
-import { DIRECTIONAL_ZONE, CAMERA_DETECTION, ZONE_SAFETY_MULTIPLIERS } from '../../../services/routingConfig';
+import { useMemo } from 'react';
+import { Source, Layer } from 'react-map-gl/maplibre';
+import type maplibregl from 'maplibre-gl';
+import { useMapStore, useAppModeStore } from '../../../store';
+import { CAMERA_POINT_FILL } from './cameraColors';
 import type { ALPRCamera } from '../../../types';
-
-// Helper to create a direction cone polygon from a point and direction
-// Uses the same parameters as the routing algorithm for consistency
-function createDirectionCone(
-  lon: number,
-  lat: number,
-  direction: number,
-  // Use routing config values so visualization matches what routing avoids
-  lengthMeters: number = CAMERA_DETECTION.routeBufferMeters * ZONE_SAFETY_MULTIPLIERS.block * 0.75,
-  spreadDegrees: number = DIRECTIONAL_ZONE.cameraFovDegrees
-): GeoJSON.Feature<GeoJSON.Polygon> {
-  const earthRadius = 6371000; // meters
-  const latRad = (lat * Math.PI) / 180;
-
-  // Convert meters to degrees (approximate)
-  const lengthDeg = (lengthMeters / earthRadius) * (180 / Math.PI);
-
-  // Calculate the three points of the cone
-  const points: [number, number][] = [[lon, lat]]; // Start at camera
-
-  // Left edge of cone
-  const leftAngle = ((direction - spreadDegrees / 2) * Math.PI) / 180;
-  const leftLon = lon + lengthDeg * Math.sin(leftAngle) / Math.cos(latRad);
-  const leftLat = lat + lengthDeg * Math.cos(leftAngle);
-  points.push([leftLon, leftLat]);
-
-  // Create arc for the front of the cone
-  const steps = 8;
-  for (let i = 1; i < steps; i++) {
-    const angle = ((direction - spreadDegrees / 2 + (spreadDegrees * i) / steps) * Math.PI) / 180;
-    const arcLon = lon + lengthDeg * Math.sin(angle) / Math.cos(latRad);
-    const arcLat = lat + lengthDeg * Math.cos(angle);
-    points.push([arcLon, arcLat]);
-  }
-
-  // Right edge of cone
-  const rightAngle = ((direction + spreadDegrees / 2) * Math.PI) / 180;
-  const rightLon = lon + lengthDeg * Math.sin(rightAngle) / Math.cos(latRad);
-  const rightLat = lat + lengthDeg * Math.cos(rightAngle);
-  points.push([rightLon, rightLat]);
-
-  // Close the polygon
-  points.push([lon, lat]);
-
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [points],
-    },
-  };
-}
+import { createDirectionCone, parseDirections } from './cameraGeometry';
 
 // Convert cameras to GeoJSON - optimized with pre-allocated array
 function camerasToGeoJSON(cameras: ALPRCamera[]): GeoJSON.FeatureCollection {
@@ -91,105 +39,112 @@ function camerasToGeoJSON(cameras: ALPRCamera[]): GeoJSON.FeatureCollection {
   return { type: 'FeatureCollection', features };
 }
 
-// Cluster layer style - smaller, tighter clusters
-const clusterLayer: maplibregl.LayerSpecification = {
-  id: 'clusters',
+// Zoom-scaled glow from z8 — matches camera-tile-glow so mode swaps are seamless.
+// Carries visual mass continuously through the z9–10 dot→point handoff.
+const geojsonGlowLayer: maplibregl.LayerSpecification = {
+  id: 'cameras-glow',
   type: 'circle',
   source: 'cameras',
-  filter: ['has', 'point_count'],
+  minzoom: 8,
   paint: {
-    'circle-color': [
-      'step',
-      ['get', 'point_count'],
-      '#4DA6FF', // Blue for small clusters
-      5,
-      '#0080BC', // Darker blue for medium
-      20,
-      '#1565C0', // Even darker for large
-      50,
-      '#0D47A1', // Darkest for huge
-    ],
+    'circle-color': '#4DA6FF',
+    // Stays just behind the mark it sits under — at z9 it is barely wider than
+    // the r≈4.3 dot. Blooms to the full r=16 only at z12+, where cameras
+    // have separated and the halo has room to read as presence, not as bulk.
     'circle-radius': [
-      'step',
-      ['get', 'point_count'],
-      14,  // Base size - smaller
-      5,
-      16,  // 5+ points
-      20,
-      20,  // 20+ points
-      50,
-      26,  // 50+ points
+      'interpolate', ['linear'], ['zoom'],
+      8, 2,
+      9, 5,
+      10, 9,
+      11, 10,
+      12, 16,
     ],
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#93CBFF',
-    'circle-stroke-opacity': 0.5,
+    // Held subtle through the dense z9–11.5 band, full halo by z12 —
+    // matches camera-tile-glow (overlapping-halo shimmer scales with halo
+    // coverage, measured identical on both render paths)
+    'circle-opacity': [
+      'interpolate', ['linear'], ['zoom'],
+      8, 0,
+      9, 0.15,
+      11, 0.15,
+      12, 0.4,
+    ],
+    'circle-blur': 0.5,
+    'circle-stroke-width': 0,
   },
 };
 
-// Cluster count label
-const clusterCountLayer: maplibregl.LayerSpecification = {
-  id: 'cluster-count',
-  type: 'symbol',
+// Density dots below z10 — matches camera-tile-dots so mode swaps are seamless
+const geojsonDotLayer: maplibregl.LayerSpecification = {
+  id: 'cameras-dots-lowzoom',
+  type: 'circle',
   source: 'cameras',
-  filter: ['has', 'point_count'],
-  layout: {
-    'text-field': '{point_count_abbreviated}',
-    'text-font': ['Noto Sans Bold'],
-    'text-size': 13,
-    'text-allow-overlap': true,
-  },
+  maxzoom: 10,
   paint: {
-    'text-color': '#ffffff',
+    'circle-color': '#4DA6FF',
+    'circle-radius': [
+      'interpolate', ['linear'], ['zoom'],
+      0, 1,
+      4, 1.5,
+      7, 2.2,
+      8, 3.5,
+      9.9, 5,
+    ],
+    // Holds full strength until points finish fading in at z9.6 — matches
+    // camera-tile-dots (see CameraTileLayers for the green-murk rationale).
+    'circle-opacity': [
+      'interpolate', ['linear'], ['zoom'],
+      0, 0.5,
+      6, 0.6,
+      8.5, 0.75,
+      9.6, 0.75,
+      10, 0,
+    ],
+    'circle-stroke-width': 0,
   },
 };
 
-// Unclustered camera point - solid core
-const unclusteredPointLayer: maplibregl.LayerSpecification = {
+const makeUnclusteredPointLayer = (pointFill: string): maplibregl.LayerSpecification => ({
   id: 'unclustered-point',
   type: 'circle',
   source: 'cameras',
-  filter: ['!', ['has', 'point_count']],
+  minzoom: 9,
   paint: {
-    'circle-color': '#0080BC',
-    'circle-radius': 6,
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#93CBFF',
-    'circle-opacity': 1,
+    // Staggered handoff: fade-in first (z9–9.6), then hue+ring together over
+    // z9.6–10.4 — matches camera-tile-points. Settled fill is theme-keyed
+    // (see cameraColors.ts).
+    'circle-color': ['interpolate', ['linear'], ['zoom'], 9.6, '#4DA6FF', 10.4, pointFill],
+    // Enters at exactly the dot's z9 radius (4.3) and grows into r=6, which
+    // it holds past z10. The stroke widens 0→2 over the same span: at full
+    // width from the start it would bolt 2px of outer radius on the instant
+    // the point appears, which is a pop of its own.
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 4.3, 10, 6],
+    'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9.6, 0, 10.4, 2],
+    'circle-stroke-color': '#93CBFF', // light master ring — matches camera-tile-points
+    // Fully opaque by z9.6 — matches camera-tile-points (green-murk fix)
+    'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
+    'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 9.6, 1],
   },
-};
+});
 
-// Static glow for unclustered points - moderate ambient presence
-const unclusteredGlowLayer: maplibregl.LayerSpecification = {
-  id: 'unclustered-glow',
-  type: 'circle',
-  source: 'cameras',
-  filter: ['!', ['has', 'point_count']],
-  paint: {
-    'circle-color': '#4DA6FF',
-    'circle-radius': 16,
-    'circle-opacity': 0.4,
-    'circle-blur': 0.5,
-  },
-};
-
-// Direction cone layer style - only show when zoomed past clusters
+// Direction cone layer style - only show once individual cameras are distinguishable
 const directionConeLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones',
   type: 'fill',
   source: 'direction-cones',
-  minzoom: 12, // Only show when zoomed in past cluster level
+  minzoom: 10, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'fill-color': '#4DA6FF',
     'fill-opacity': 0.35,
   },
 };
 
-// Direction cone outline - only show when zoomed past clusters
+// Direction cone outline - only show once individual cameras are distinguishable
 const directionConeOutlineLayer: maplibregl.LayerSpecification = {
   id: 'direction-cones-outline',
   type: 'line',
   source: 'direction-cones',
-  minzoom: 12, // Only show when zoomed in past cluster level
+  minzoom: 10, // Matches unclustered-point's zoom-in fade threshold
   paint: {
     'line-color': '#0080BC',
     'line-width': 2,
@@ -200,114 +155,18 @@ const directionConeOutlineLayer: maplibregl.LayerSpecification = {
 interface CameraMarkerLayersProps {
   cameras: ALPRCamera[];
   visible: boolean;
-  clustered: boolean;
   mapLoaded: boolean;
   mapRef: React.RefObject<{ getMap: () => maplibregl.Map } | null>;
-  /** When set, all marker layers fade from 0 to full opacity between this zoom and +2. */
-  crossfadeZoom?: number;
 }
 
-export function CameraMarkerLayers({ cameras, visible, clustered, crossfadeZoom }: CameraMarkerLayersProps) {
+export function CameraMarkerLayers({ cameras, visible }: CameraMarkerLayersProps) {
   const showCameraLayer = useMapStore(s => s.showCameraLayer);
-  const { current: mapInstance } = useMap();
-
+  const mapTileStyle = useAppModeStore((s) => s.mapTileStyle);
+  const unclusteredPointLayer = useMemo(
+    () => makeUnclusteredPointLayer(CAMERA_POINT_FILL[mapTileStyle]),
+    [mapTileStyle]
+  );
   const cameraLayerVisibility: 'visible' | 'none' = visible ? 'visible' : 'none';
-
-  // Zoom-interpolated opacity: fades from 0 → full over [crossfadeZoom, crossfadeZoom+2]
-  const fadeIn = useCallback((fullOpacity: number) => {
-    if (crossfadeZoom == null) return fullOpacity;
-    return [
-      'interpolate', ['linear'], ['zoom'],
-      crossfadeZoom, 0,
-      crossfadeZoom + 2, fullOpacity,
-    ];
-  }, [crossfadeZoom]);
-
-  // Pre-compute paint overrides so Layer components get stable references
-  const crossfadePaints = useMemo(() => {
-    if (crossfadeZoom == null) return null;
-    return {
-      point: {
-        ...unclusteredPointLayer.paint,
-        'circle-opacity': fadeIn(1),
-        'circle-stroke-opacity': fadeIn(1),
-      },
-      glow: {
-        ...unclusteredGlowLayer.paint,
-        'circle-opacity': fadeIn(0.4),
-      },
-      cluster: {
-        ...clusterLayer.paint,
-        'circle-opacity': fadeIn(1),
-        'circle-stroke-opacity': fadeIn(0.5),
-      },
-      clusterCount: {
-        ...clusterCountLayer.paint,
-        'text-opacity': fadeIn(1),
-      },
-      cone: {
-        ...directionConeLayer.paint,
-        'fill-opacity': fadeIn(0.35),
-      },
-      coneOutline: {
-        ...directionConeOutlineLayer.paint,
-        'line-opacity': fadeIn(0.7),
-      },
-    };
-  }, [crossfadeZoom, fadeIn]);
-
-  // Imperative crossfade sync — react-map-gl doesn't reliably update paint
-  // when switching between static values and zoom-interpolated expressions.
-  // Force the correct paint onto MapLibre layers whenever crossfadeZoom changes.
-  const prevCrossfadeRef = useRef(crossfadeZoom);
-  useEffect(() => {
-    if (prevCrossfadeRef.current === crossfadeZoom) return;
-    prevCrossfadeRef.current = crossfadeZoom;
-
-    const map = mapInstance?.getMap();
-    if (!map) return;
-
-    const setIfExists = (layerId: string, prop: string, value: unknown) => {
-      try { if (map.getLayer(layerId)) map.setPaintProperty(layerId, prop, value); } catch { /* layer not ready */ }
-    };
-    const setZoomRange = (layerId: string, min: number | undefined) => {
-      try { if (map.getLayer(layerId)) map.setLayerZoomRange(layerId, min ?? 0, 24); } catch { /* layer not ready */ }
-    };
-
-    if (crossfadeZoom != null) {
-      // Switching TO crossfade (auto mode): apply zoom-interpolated opacity
-      const expr = (full: number) => ['interpolate', ['linear'], ['zoom'], crossfadeZoom, 0, crossfadeZoom + 2, full];
-
-      setIfExists('unclustered-point', 'circle-opacity', expr(1));
-      setIfExists('unclustered-point', 'circle-stroke-opacity', expr(1));
-      setIfExists('unclustered-glow', 'circle-opacity', expr(0.4));
-      setIfExists('clusters', 'circle-opacity', expr(1));
-      setIfExists('clusters', 'circle-stroke-opacity', expr(0.5));
-      setIfExists('cluster-count', 'text-opacity', expr(1));
-      setIfExists('direction-cones', 'fill-opacity', expr(0.35));
-      setIfExists('direction-cones-outline', 'line-opacity', expr(0.7));
-
-      setZoomRange('unclustered-glow', crossfadeZoom);
-      setZoomRange('clusters', crossfadeZoom);
-      setZoomRange('cluster-count', crossfadeZoom);
-      setZoomRange('unclustered-point', crossfadeZoom);
-    } else {
-      // Switching FROM crossfade (leaving auto mode): restore static opacity
-      setIfExists('unclustered-point', 'circle-opacity', 1);
-      setIfExists('unclustered-point', 'circle-stroke-opacity', 1);
-      setIfExists('unclustered-glow', 'circle-opacity', 0.4);
-      setIfExists('clusters', 'circle-opacity', 1);
-      setIfExists('clusters', 'circle-stroke-opacity', 0.5);
-      setIfExists('cluster-count', 'text-opacity', 1);
-      setIfExists('direction-cones', 'fill-opacity', 0.35);
-      setIfExists('direction-cones-outline', 'line-opacity', 0.7);
-
-      setZoomRange('unclustered-glow', undefined);
-      setZoomRange('clusters', undefined);
-      setZoomRange('cluster-count', undefined);
-      setZoomRange('unclustered-point', undefined);
-    }
-  }, [crossfadeZoom, mapInstance]);
 
   // Convert cameras to GeoJSON
   const geojsonData = useMemo(
@@ -334,9 +193,7 @@ export function CameraMarkerLayers({ cameras, visible, clustered, crossfadeZoom 
 
     const features: GeoJSON.Feature[] = [];
     for (const camera of camerasWithDirection) {
-      const bearings = camera.directions && camera.directions.length > 1
-        ? camera.directions
-        : [camera.direction!];
+      const bearings = parseDirections(camera.direction, camera.directions);
       const ts = camera.osmTimestamp ? new Date(camera.osmTimestamp).getTime() : 0;
       for (const bearing of bearings) {
         const cone = createDirectionCone(camera.lon, camera.lat, bearing);
@@ -350,33 +207,15 @@ export function CameraMarkerLayers({ cameras, visible, clustered, crossfadeZoom 
 
   return (
     <>
-      {/* Direction cones — minzoom already 12 in layer spec, no change needed */}
       <Source id="direction-cones" type="geojson" data={directionConesData}>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...directionConeLayer} layout={{ visibility: cameraLayerVisibility }} paint={(crossfadePaints?.cone ?? directionConeLayer.paint) as any} />
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...directionConeOutlineLayer} layout={{ visibility: cameraLayerVisibility }} paint={(crossfadePaints?.coneOutline ?? directionConeOutlineLayer.paint) as any} />
+        <Layer {...directionConeLayer} layout={{ visibility: cameraLayerVisibility }} />
+        <Layer {...directionConeOutlineLayer} layout={{ visibility: cameraLayerVisibility }} />
       </Source>
-
-      {/* Camera markers — when crossfading, minzoom prevents rendering invisible
-          points below the fade-in threshold (avoids processing 62K hidden features) */}
-      <Source
-        key={clustered ? 'cameras-clustered' : 'cameras-unclustered'}
-        id="cameras"
-        type="geojson"
-        data={geojsonData}
-        cluster={clustered}
-        clusterMaxZoom={11}
-        clusterRadius={35}
-      >
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...unclusteredGlowLayer} layout={{ visibility: cameraLayerVisibility }} paint={(crossfadePaints?.glow ?? unclusteredGlowLayer.paint) as any} minzoom={crossfadeZoom ?? unclusteredGlowLayer.minzoom} />
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...clusterLayer} layout={{ visibility: cameraLayerVisibility }} paint={(crossfadePaints?.cluster ?? clusterLayer.paint) as any} minzoom={crossfadeZoom ?? clusterLayer.minzoom} />
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...clusterCountLayer} layout={{ ...clusterCountLayer.layout, visibility: cameraLayerVisibility }} paint={(crossfadePaints?.clusterCount ?? clusterCountLayer.paint) as any} minzoom={crossfadeZoom ?? clusterCountLayer.minzoom} />
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Layer {...unclusteredPointLayer} layout={{ visibility: cameraLayerVisibility }} paint={(crossfadePaints?.point ?? unclusteredPointLayer.paint) as any} minzoom={crossfadeZoom ?? unclusteredPointLayer.minzoom} />
+      <Source id="cameras" type="geojson" data={geojsonData}>
+        {/* Glow first — document order is paint order, and it must sit beneath both marks */}
+        <Layer {...geojsonGlowLayer} layout={{ visibility: cameraLayerVisibility }} />
+        <Layer {...geojsonDotLayer} layout={{ visibility: cameraLayerVisibility }} />
+        <Layer {...unclusteredPointLayer} layout={{ visibility: cameraLayerVisibility }} />
       </Source>
     </>
   );
