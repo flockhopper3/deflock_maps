@@ -96,9 +96,15 @@ export function DensityLayers() {
   const prevSelected = useRef<string | null>(null);
 
   const { level, metric, viewMode, opacity, colorScheme, heightScale } = densitySettings;
-  const activeSource = level === 'state' ? 'density-states' : 'density-counties';
-  const inactiveSource = level === 'state' ? 'density-counties' : 'density-states';
+  // Interim layer: while the (default) County level is still downloading,
+  // show the states choropleth so slow connections see data immediately.
+  // Same metric, colors, and legend; it reads as detail sharpening when
+  // counties land and visibility swaps.
+  const effectiveLevel = level === 'county' && !countiesData && statesData ? 'state' : level;
+  const activeSource = effectiveLevel === 'state' ? 'density-states' : 'density-counties';
+  const inactiveSource = effectiveLevel === 'state' ? 'density-counties' : 'density-states';
   const selectedFeatureId = selectedFeature?.GEOID ?? null;
+  const prevEffectiveLevel = useRef(effectiveLevel);
 
   // --- Hover feature-state management ---
   useEffect(() => {
@@ -146,11 +152,11 @@ export function DensityLayers() {
     prevSelected.current = selectedFeatureId;
   }, [selectedFeatureId, mapgl, activeSource]);
 
-  // --- Clear selection when level changes ---
+  // --- Clear selection when the rendered level changes ---
   useEffect(() => {
     setSelectedFeature(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [level]);
+  }, [effectiveLevel]);
 
   // --- Imperative paint/layout updates when settings change ---
   // react-map-gl does NOT reliably apply declarative paint/layout changes for
@@ -193,10 +199,10 @@ export function DensityLayers() {
         }
       }
 
-      // Level changed → toggle visibility
-      if (prev.level !== curr.level) {
-        const stateVis = curr.level === 'state' ? 'visible' : 'none';
-        const countyVis = curr.level === 'county' ? 'visible' : 'none';
+      // Rendered level changed (user toggle OR counties arriving) → toggle visibility
+      if (prevEffectiveLevel.current !== effectiveLevel) {
+        const stateVis = effectiveLevel === 'state' ? 'visible' : 'none';
+        const countyVis = effectiveLevel === 'county' ? 'visible' : 'none';
         for (const suffix of ['-fill', '-extrusion', '-outline']) {
           if (map.getLayer(`density-states${suffix}`))
             map.setLayoutProperty(`density-states${suffix}`, 'visibility', stateVis);
@@ -204,19 +210,20 @@ export function DensityLayers() {
             map.setLayoutProperty(`density-counties${suffix}`, 'visibility', countyVis);
         }
         // After switching level, also ensure the correct view mode is applied
-        toggleViewMode(map, curr.viewMode, curr.level, curr.opacity);
+        toggleViewMode(map, curr.viewMode, effectiveLevel, curr.opacity);
       }
 
       // View mode changed → toggle 2D fill / 3D extrusion
       if (prev.viewMode !== curr.viewMode) {
-        toggleViewMode(map, curr.viewMode, curr.level, curr.opacity);
+        toggleViewMode(map, curr.viewMode, effectiveLevel, curr.opacity);
       }
     } catch {
       // Layers may not be ready yet
     }
 
     prevSettings.current = curr;
-  }, [densitySettings, mapgl]);
+    prevEffectiveLevel.current = effectiveLevel;
+  }, [densitySettings, mapgl, effectiveLevel]);
 
   // --- 3D pitch management ---
   useEffect(() => {
@@ -242,12 +249,12 @@ export function DensityLayers() {
     };
   }, []);
 
-  const stateVis = level === 'state' ? 'visible' : 'none';
-  const countyVis = level === 'county' ? 'visible' : 'none';
+  const stateVis = effectiveLevel === 'state' ? 'visible' : 'none';
+  const countyVis = effectiveLevel === 'county' ? 'visible' : 'none';
   const is2d = viewMode === '2d';
   // Hide outlines in 3D — they render on the ground plane and bleed through extrusions
-  const stateOutlineVis = (level === 'state' && is2d) ? 'visible' : 'none';
-  const countyOutlineVis = (level === 'county' && is2d) ? 'visible' : 'none';
+  const stateOutlineVis = (effectiveLevel === 'state' && is2d) ? 'visible' : 'none';
+  const countyOutlineVis = (effectiveLevel === 'county' && is2d) ? 'visible' : 'none';
 
   const colorExpr = buildColorExpression(metric, colorScheme);
   const heightExpr = buildHeightExpression(metric, heightScale);

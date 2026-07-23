@@ -10,6 +10,9 @@ export {
 // API client - FlockHopper routing API
 export * from './apiClient';
 
+// Camera vector tiles - shared pmtiles protocol + archive constants
+export * from './cameraTilesService';
+
 // Geocoding - Nominatim + Photon based service
 export { smartSearch, toLocation, getResultTypeIcon } from './geocodingService';
 export type { GeocodingResult } from './geocodingService';

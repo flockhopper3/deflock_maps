@@ -29,6 +29,9 @@ interface RouteState {
   // Location picking mode - for "choose on map" feature
   pickingLocation: LocationPickingMode;
 
+  // Guided picking sequence state
+  pickingSequence: 'single' | 'full' | null;
+
   // Actions
   setOrigin: (location: Location | null) => void;
   setDestination: (location: Location | null) => void;
@@ -41,6 +44,7 @@ interface RouteState {
 
   // Location picking actions
   startPickingLocation: (mode: 'origin' | 'destination') => void;
+  startPickingSequence: () => void;
   cancelPickingLocation: () => void;
   setPickedLocation: (location: Location) => void;
 }
@@ -64,6 +68,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
   activeRoute: 'normal',
   routeOptions: DEFAULT_ROUTE_OPTIONS,
   pickingLocation: null,
+  pickingSequence: null,
 
   setOrigin: (location: Location | null) => {
     set({
@@ -72,6 +77,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -82,6 +89,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -115,6 +124,13 @@ export const useRouteStore = create<RouteState>((set, get) => ({
         avoidanceCameras: result.avoidanceRoute.camerasOnRoute,
       };
 
+      // Discard stale results if endpoints changed while the request was in flight
+      const current = get();
+      if (current.origin !== origin || current.destination !== destination) {
+        set({ isCalculating: false });
+        return;
+      }
+
       set({
         normalRoute: result.normalRoute.route,
         avoidanceRoute: result.avoidanceRoute.route,
@@ -130,6 +146,14 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       });
     } catch (error) {
       console.error('Routing failed:', error);
+
+      // Discard stale errors if endpoints changed while the request was in flight
+      const current = get();
+      if (current.origin !== origin || current.destination !== destination) {
+        set({ isCalculating: false });
+        return;
+      }
+
       set({
         error:
           error instanceof Error ? error.message : 'Failed to calculate route',
@@ -163,6 +187,8 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       avoidanceRoute: null,
       comparison: null,
       error: null,
+      pickingLocation: null,
+      pickingSequence: null,
     });
   },
 
@@ -190,19 +216,47 @@ export const useRouteStore = create<RouteState>((set, get) => ({
 
   // Location picking actions
   startPickingLocation: (mode: 'origin' | 'destination') => {
-    set({ pickingLocation: mode });
+    // Manual single-target pick takes over from any running guided sequence
+    set({ pickingLocation: mode, pickingSequence: null });
+  },
+
+  startPickingSequence: () => {
+    const { origin, destination } = get();
+    if (origin && !destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'destination' });
+    } else if (!origin && destination) {
+      set({ pickingSequence: 'single', pickingLocation: 'origin' });
+    } else {
+      // Both empty, or both set (redo): start fresh so the first pick
+      // can't auto-calculate against a leftover endpoint mid-sequence.
+      // Note: re-invoking mid-sequence intentionally re-evaluates from the
+      // current endpoint state (manual mutations cancel the sequence anyway).
+      set({
+        origin: null,
+        destination: null,
+        normalRoute: null,
+        avoidanceRoute: null,
+        comparison: null,
+        error: null,
+        pickingSequence: 'full',
+        pickingLocation: 'origin',
+      });
+    }
   },
 
   cancelPickingLocation: () => {
-    set({ pickingLocation: null });
+    set({ pickingLocation: null, pickingSequence: null });
   },
 
   setPickedLocation: (location: Location) => {
-    const { pickingLocation } = get();
+    const { pickingLocation, pickingSequence } = get();
     if (pickingLocation === 'origin') {
+      const continuing = pickingSequence === 'full';
       set({
         origin: location,
-        pickingLocation: null,
+        // In a full guided sequence, advance straight to the destination pick
+        pickingLocation: continuing ? 'destination' : null,
+        pickingSequence: continuing ? 'full' : null,
         normalRoute: null,
         avoidanceRoute: null,
         comparison: null,
@@ -212,6 +266,7 @@ export const useRouteStore = create<RouteState>((set, get) => ({
       set({
         destination: location,
         pickingLocation: null,
+        pickingSequence: null,
         normalRoute: null,
         avoidanceRoute: null,
         comparison: null,

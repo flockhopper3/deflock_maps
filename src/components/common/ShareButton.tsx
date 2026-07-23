@@ -3,12 +3,27 @@ import { Share2 } from 'lucide-react';
 import { ShareModal } from './ShareModal';
 
 interface ShareButtonProps {
-  variant: 'header' | 'menu-item';
+  variant: 'header' | 'menu-item' | 'icon';
   className?: string;
 }
 
 export function ShareButton({ variant, className = '' }: ShareButtonProps) {
   const [open, setOpen] = useState(false);
+
+  if (variant === 'icon') {
+    return (
+      <>
+        <button
+          onClick={() => setOpen(true)}
+          className={`flex items-center justify-center w-11 h-full text-dark-400 active:text-dark-200 transition-colors ${className}`}
+          aria-label="Share this map view"
+        >
+          <Share2 className="w-4 h-4" aria-hidden="true" />
+        </button>
+        {open && <ShareModal onClose={() => setOpen(false)} />}
+      </>
+    );
+  }
 
   if (variant === 'header') {
     return (

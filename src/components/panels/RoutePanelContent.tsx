@@ -1,99 +1,57 @@
-import { useState, useRef } from 'react';
-import { useRouteStore, useMapStore } from '../../store';
-import { AddressSearch } from '../inputs/AddressSearch';
-import { LoadingSpinner } from '../common/LoadingSpinner';
-import { FlockHopperAppPromo } from './FlockHopperAppPromo';
-import { downloadGPX } from '../../services/gpxService';
+import { useState, useEffect } from 'react';
+import { useRouteStore } from '../../store';
+import { FlockHopperCTA, FlockHopperStoreButtons, FlockHopperLearnMore } from './FlockHopperCTA';
 import { formatDistance, formatDuration } from '../../utils/geo';
 import { formatPercent } from '../../utils/formatting';
-import type { Location } from '../../types';
 
-interface RoutePanelContentProps {
-  /** Callback to expand the bottom sheet (mobile only) */
-  onExpandSheet?: () => void;
-  /** Callback to collapse the bottom sheet (mobile only) */
-  onCollapseSheet?: () => void;
-  /** Whether this is rendered inside a bottom sheet (mobile) vs side panel (desktop) */
-  isBottomSheet?: boolean;
-}
-
-export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomSheet = false }: RoutePanelContentProps) {
+export function RoutePanelContent() {
   const [showSettings, setShowSettings] = useState(false);
-  const [showNamingModal, setShowNamingModal] = useState(false);
-  const [routeName, setRouteName] = useState('');
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  
+
+  /* Options the current results were calculated with — settings edits after
+     a calculation surface an "Apply & recalculate" button. */
+  const [appliedOptions, setAppliedOptions] = useState<{ distance: number; directional: boolean } | null>(null);
+
   const {
-    origin,
-    destination,
-    setOrigin,
-    setDestination,
     calculateRoutes,
     clearRoutes,
-    swapLocations,
     normalRoute,
     avoidanceRoute,
     comparison,
     isCalculating,
-    error,
     activeRoute,
     setActiveRoute,
     routeOptions,
     setCameraDistance,
     setUseDirectionalZones,
-    pickingLocation,
-    startPickingLocation,
-    cancelPickingLocation,
   } = useRouteStore();
 
-  const flyTo = useMapStore(s => s.flyTo);
-
-  // Wrapper to set origin and zoom to it
-  const handleSetOrigin = (location: Location | null) => {
-    setOrigin(location);
-    if (location) {
-      // Zoom to the origin location at a city-level zoom
-      flyTo([location.lat, location.lon], 13);
-    }
-  };
-
-  const handleCalculate = () => {
-    calculateRoutes();
-  };
-
-  const openNamingModal = () => {
-    // Pre-fill with a suggested name based on origin/destination
-    const suggestedName = origin && destination 
-      ? `${origin.name?.split(',')[0] || 'Start'} to ${destination.name?.split(',')[0] || 'End'}`
-      : '';
-    setRouteName(suggestedName);
-    setShowNamingModal(true);
-  };
-
-  const handleExportGPX = () => {
-    const route = activeRoute === 'avoidance' ? avoidanceRoute : normalRoute;
-    if (route) {
-      // Sanitize filename: remove special chars, replace spaces with hyphens
-      const sanitizedName = routeName.trim()
-        ? routeName.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-')
-        : `${activeRoute}-route`;
-      const filename = `flockhopper-${sanitizedName}-${Date.now()}.gpx`;
-      downloadGPX(route, filename);
-      setShowNamingModal(false);
-      setRouteName('');
-    }
-  };
-
-  // Expand sheet when user focuses on inputs (mobile only)
-  const handleInputFocus = () => {
-    if (isBottomSheet && onExpandSheet) {
-      onExpandSheet();
-    }
-  };
-
-  const canCalculate = origin && destination && !isCalculating;
   const hasRoutes = normalRoute && avoidanceRoute && comparison;
-  
+
+  useEffect(() => {
+    if (isCalculating) {
+      setAppliedOptions({
+        distance: routeOptions.cameraDistanceMeters,
+        directional: routeOptions.useDirectionalZones,
+      });
+    }
+  }, [isCalculating, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
+
+  /* Remount with routes already in the store (e.g. after a tab switch):
+     adopt current options as the applied baseline so settings edits can
+     still surface the Apply button. */
+  useEffect(() => {
+    if (hasRoutes && appliedOptions === null) {
+      setAppliedOptions({
+        distance: routeOptions.cameraDistanceMeters,
+        directional: routeOptions.useDirectionalZones,
+      });
+    }
+  }, [hasRoutes, appliedOptions, routeOptions.cameraDistanceMeters, routeOptions.useDirectionalZones]);
+
+  const settingsDirty = !!hasRoutes && appliedOptions !== null &&
+    (appliedOptions.distance !== routeOptions.cameraDistanceMeters ||
+     appliedOptions.directional !== routeOptions.useDirectionalZones);
+
   const normalCameraCount = comparison?.normalCameras.length ?? 0;
   const avoidanceCameraCount = comparison?.avoidanceCameras.length ?? 0;
   const cameraReduction = normalCameraCount > 0 
@@ -106,84 +64,27 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
           {!hasRoutes && (
             <div className="space-y-4">
               <div>
-                <img src="/FlockHopper-2.png" alt="FlockHopper" className="h-14 w-auto" />
-                <div className="flex items-center gap-2 mt-2">
-                  <p className="text-xs text-dark-400">
-                    Powered by{' '}
-                    <a
-                      href="https://dontgetflocked.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent hover:text-accent-hover font-medium transition-colors"
-                    >
-                      dontgetflocked.com
-                    </a>
-                  </p>
-                  <span className="text-dark-600">·</span>
-                  <FlockHopperAppPromo />
+                <img
+                  src="/FlockHopper-2.webp"
+                  alt="FlockHopper"
+                  width={500}
+                  height={100}
+                  decoding="async"
+                  className="h-14 w-auto"
+                />
+                <p className="text-sm text-gray-200 leading-relaxed mt-3">
+                  Real-time, turn-by-turn navigation that avoids ALPR cameras — get the app that powers this map.
+                </p>
+                <div className="mt-3">
+                  <FlockHopperStoreButtons />
                 </div>
+                <FlockHopperLearnMore className="mt-2.5" />
               </div>
               <p className="text-sm text-gray-200 leading-relaxed">
-                Enter your starting point and destination to analyze ALPR camera exposure along your route and discover safer alternatives.
+                Set your start and destination — search, use your location, or tap the map — to analyze ALPR camera exposure along your route and discover safer alternatives.
               </p>
             </div>
           )}
-
-          {/* Route Inputs */}
-          <div className="space-y-1">
-            <AddressSearch
-              value={origin}
-              onChange={handleSetOrigin}
-              placeholder="Where are you starting?"
-              label="Start"
-              icon="origin"
-              onFocus={handleInputFocus}
-              onPickFromMap={() => {
-                if (pickingLocation === 'origin') {
-                  cancelPickingLocation();
-                } else {
-                  startPickingLocation('origin');
-                  // Collapse sheet so user can see the map
-                  if (isBottomSheet && onCollapseSheet) {
-                    onCollapseSheet();
-                  }
-                }
-              }}
-              isPickingFromMap={pickingLocation === 'origin'}
-            />
-            <div className="flex justify-center -my-1">
-              <button
-                onClick={swapLocations}
-                disabled={!origin && !destination}
-                className="p-1 text-gray-300 hover:text-white transition-all disabled:opacity-30"
-                title="Swap locations"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z" />
-                </svg>
-              </button>
-            </div>
-            <AddressSearch
-              value={destination}
-              onChange={setDestination}
-              placeholder="Where are you going?"
-              label="Destination"
-              icon="destination"
-              onFocus={handleInputFocus}
-              onPickFromMap={() => {
-                if (pickingLocation === 'destination') {
-                  cancelPickingLocation();
-                } else {
-                  startPickingLocation('destination');
-                  // Collapse sheet so user can see the map
-                  if (isBottomSheet && onCollapseSheet) {
-                    onCollapseSheet();
-                  }
-                }
-              }}
-              isPickingFromMap={pickingLocation === 'destination'}
-            />
-          </div>
 
           {/* Settings Toggle */}
           <button
@@ -260,38 +161,17 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
                   </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Calculate Button */}
-          <button
-            onClick={handleCalculate}
-            disabled={!canCalculate}
-            className="w-full py-4 bg-accent hover:bg-accent-hover disabled:bg-dark-600 disabled:cursor-not-allowed text-white font-display font-bold text-base rounded-md transition-all duration-300 flex items-center justify-center gap-3"
-            aria-label="Analyze route"
-          >
-            {isCalculating ? (
-              <>
-                <LoadingSpinner size="sm" />
-                <span>Scanning route...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21.71 11.29l-9-9a.996.996 0 00-1.41 0l-9 9a.996.996 0 000 1.41l9 9c.39.39 1.02.39 1.41 0l9-9a.996.996 0 000-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z" />
-                </svg>
-                <span>Analyze Route</span>
-              </>
-            )}
-          </button>
-
-          {/* Error */}
-          {error && (
-            <div className="p-4 bg-accent/10 border border-accent/30 rounded-xl text-sm text-accent flex items-start gap-3">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-              </svg>
-              <span>{error}</span>
+              {/* Apply changed settings to the current route */}
+              {settingsDirty && (
+                <button
+                  onClick={() => calculateRoutes()}
+                  disabled={isCalculating}
+                  className="w-full py-3 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-semibold text-sm rounded-md transition-colors flex items-center justify-center gap-2 animate-fade-in"
+                >
+                  Apply &amp; recalculate
+                </button>
+              )}
             </div>
           )}
 
@@ -367,12 +247,12 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
                   aria-label="Select privacy route"
                   className={`relative p-4 rounded-md border-2 transition-all ${
                     activeRoute === 'avoidance'
-                      ? 'bg-blue-500/10 border-blue-500'
+                      ? 'bg-success/10 border-success'
                       : 'bg-dark-800 border-dark-600 hover:border-dark-500'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-1 rounded-full bg-blue-500"></div>
+                    <div className="w-6 h-1 rounded-full bg-success"></div>
                     <span className="text-xs font-semibold text-gray-200 uppercase tracking-wide">
                       Privacy
                     </span>
@@ -423,71 +303,12 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
                 </div>
               )}
 
-              {/* Export Button */}
-              <button
-                onClick={openNamingModal}
-                className="w-full py-3.5 bg-dark-800 hover:bg-dark-700 border border-dark-600 text-white font-medium text-sm rounded-md transition-colors flex items-center justify-center gap-3"
-                aria-label="Download route as GPX"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
-                Download {activeRoute === 'avoidance' ? 'Privacy' : 'Direct'} Route (GPX)
-              </button>
-
-              {/* Route Naming Modal */}
-              {showNamingModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 animate-fade-in">
-                  <div
-                    className="bg-dark-800 border border-dark-600 rounded-md p-6 w-full max-w-md animate-scale-in"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                        <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-display font-bold text-white">Name Your Route</h3>
-                        <p className="text-sm text-gray-400">Give this route a memorable name</p>
-                      </div>
-                    </div>
-
-                    <input
-                      ref={nameInputRef}
-                      type="text"
-                      autoFocus
-                      value={routeName}
-                      onChange={(e) => setRouteName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleExportGPX();
-                        if (e.key === 'Escape') setShowNamingModal(false);
-                      }}
-                      placeholder="e.g., Work Commute, Weekend Trip..."
-                      className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                    />
-
-                    <div className="flex gap-3 mt-5">
-                      <button
-                        onClick={() => setShowNamingModal(false)}
-                        className="flex-1 py-3 bg-dark-700 hover:bg-dark-600 text-gray-300 font-medium rounded-xl transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleExportGPX}
-                        className="flex-1 py-3 bg-accent hover:bg-accent-hover text-white font-medium rounded-md transition-all flex items-center justify-center gap-2"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                        </svg>
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* FlockHopper Navigation CTA */}
+              <FlockHopperCTA
+                variant="card"
+                title="Drive this route with live navigation"
+                description="FlockHopper gives you real-time, turn-by-turn camera avoidance."
+              />
 
               {/* Clear */}
               <button
@@ -507,11 +328,10 @@ export function RoutePanelContent({ onExpandSheet, onCollapseSheet, isBottomShee
               </h4>
               <ol className="space-y-3">
                 {[
-                  'Enter your starting point and destination',
-                  'See exactly how many cameras track your commute',
-                  'FlockHopper generates an alternative private route',
-                  'Customize by adding waypoints or avoiding areas',
-                  'Export to GPX and navigate with OsmAnd or Organic Maps',
+                  'Set your start and destination — search, use your location, or tap the map',
+                  'We instantly compare the direct route against a privacy route',
+                  'See exactly how many ALPR cameras each route passes',
+                  'Get FlockHopper Mobile for real-time, turn-by-turn navigation',
                 ].map((step, idx) => (
                   <li key={idx} className="flex gap-4 text-sm text-gray-200">
                     <span className="w-6 h-6 rounded-full bg-dark-700 flex items-center justify-center text-sm font-bold text-accent flex-shrink-0">

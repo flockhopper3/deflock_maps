@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { readBodyWithProgress, type DownloadProgress } from '../services/cameraDataService';
 
 export interface NetworkNode {
   id: string;
@@ -23,6 +24,15 @@ export interface NetworkNode {
 
 export type Direction = 'mutual' | 'outgoing' | 'incoming';
 export type TabKey = 'all' | Direction;
+
+/** Human-readable labels for NetworkNode['type']. */
+export const TYPE_LABELS: Record<NetworkNode['type'], string> = {
+  pd: 'Police Department',
+  so: "Sheriff's Office",
+  federal: 'Federal Agency',
+  school: 'School District',
+  other: 'Other Agency',
+};
 
 export interface DirectionalArc {
   source: NetworkNode;
@@ -66,10 +76,26 @@ export function classifyArcs(
   return arcs;
 }
 
+/** Arcs for a selection, honoring the inferred-connections gate: non-portal
+ *  agencies have no disclosures of their own, so their arcs (mentions in
+ *  other agencies' portals) stay hidden until the user opts in. */
+function gatedArcs(
+  source: NetworkNode,
+  state: Pick<NetworkState, 'nodesMap' | 'adjacency' | 'reverseAdjacency' | 'inferredConnectionsEnabled'>,
+): DirectionalArc[] {
+  if (!source.isPortal && !state.inferredConnectionsEnabled) return [];
+  return classifyArcs(source, state.nodesMap, state.adjacency, state.reverseAdjacency);
+}
+
 export type NetworkLoadPhase = 'idle' | 'fetching' | 'ready' | 'error';
 
 interface NetworkState {
+  /** Nodes lifecycle. 'ready' means agency dots can render; adjacency may still be streaming. */
   loadPhase: NetworkLoadPhase;
+  /** True once adjacency + reverseAdjacency are committed. */
+  adjacencyReady: boolean;
+  nodesProgress: DownloadProgress | null;
+  adjacencyProgress: DownloadProgress | null;
   nodesMap: Map<string, NetworkNode>;
   nodesArray: NetworkNode[];
   adjacency: Record<string, string[]>;
@@ -84,6 +110,8 @@ interface NetworkState {
   searchQuery: string;
   typeFilter: Set<string>; // empty = show all
   portalOnly: boolean;
+  /** When false, non-portal selections get no arcs (their data is inferred). */
+  inferredConnectionsEnabled: boolean;
   error: string | null;
 
   loadNetworkData: () => Promise<void>;
@@ -96,6 +124,7 @@ interface NetworkState {
   toggleTypeFilter: (type: string) => void;
   clearTypeFilter: () => void;
   togglePortalOnly: () => void;
+  toggleInferredConnections: () => void;
   clearSelection: () => void;
 }
 
@@ -172,6 +201,9 @@ let _initPromise: Promise<void> | null = null;
 
 export const useNetworkStore = create<NetworkState>((set, get) => ({
   loadPhase: 'idle',
+  adjacencyReady: false,
+  nodesProgress: null,
+  adjacencyProgress: null,
   nodesMap: new Map(),
   nodesArray: [],
   adjacency: {},
@@ -185,50 +217,73 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   arcWidth: 0.5,
   searchQuery: '',
   typeFilter: new Set(),
-  portalOnly: true,
+  portalOnly: false,
+  inferredConnectionsEnabled: false,
   error: null,
 
   loadNetworkData: async () => {
-    const { loadPhase, nodesArray } = get();
-    if (loadPhase === 'fetching') return;
-    if (nodesArray.length > 0) return; // already loaded
-
+    if (get().loadPhase === 'fetching') return;
     if (_initPromise) return _initPromise;
 
+    const needNodes = get().nodesArray.length === 0;
+    const needAdjacency = !get().adjacencyReady;
+    if (!needNodes && !needAdjacency) return;
+
     _initPromise = (async () => {
-      set({ loadPhase: 'fetching', error: null });
-      try {
-        const [nodesResponse, adjacencyResponse] = await Promise.all([
-          fetch('/sharing-network-nodes.geojson'),
-          fetch('/sharing-network-adjacency.json'),
-        ]);
+      set({ error: null, ...(needNodes ? { loadPhase: 'fetching' as const } : {}) });
 
-        if (!nodesResponse.ok) throw new Error(`Nodes fetch failed: ${nodesResponse.status}`);
-        if (!adjacencyResponse.ok) throw new Error(`Adjacency fetch failed: ${adjacencyResponse.status}`);
+      // Each file commits the moment it lands: nodes unlock the dot layer
+      // (and flip loadPhase to 'ready'); adjacency arrives later and
+      // backfills arcs for any selection made in the meantime.
+      const nodesTask = needNodes
+        ? (async () => {
+            const response = await fetch('/sharing-network-nodes.geojson');
+            if (!response.ok) throw new Error(`Nodes fetch failed: ${response.status}`);
+            const text = await readBodyWithProgress(response, (percent, loadedBytes) => {
+              set({ nodesProgress: { percent, loadedBytes } });
+            });
+            const { nodesMap, nodesArray } = parseGeoJSON(JSON.parse(text));
+            set({ nodesMap, nodesArray, loadPhase: 'ready', nodesProgress: null });
+          })()
+        : Promise.resolve();
 
-        const [nodesGeoJSON, adjacency] = await Promise.all([
-          nodesResponse.json(),
-          adjacencyResponse.json(),
-        ]);
+      const adjacencyTask = needAdjacency
+        ? (async () => {
+            const response = await fetch('/sharing-network-adjacency.json');
+            if (!response.ok) throw new Error(`Adjacency fetch failed: ${response.status}`);
+            const text = await readBodyWithProgress(response, (percent, loadedBytes) => {
+              set({ adjacencyProgress: { percent, loadedBytes } });
+            });
+            const adjacency = JSON.parse(text) as Record<string, string[]>;
+            const reverseAdjacency = buildReverseAdjacency(adjacency);
+            set({ adjacency, reverseAdjacency, adjacencyReady: true, adjacencyProgress: null });
 
-        const { nodesMap, nodesArray } = parseGeoJSON(nodesGeoJSON);
-        const reverseAdjacency = buildReverseAdjacency(adjacency);
+            // Backfill arcs for a selection made while adjacency streamed
+            const backfillState = get();
+            const source = backfillState.selectedNodeId
+              ? backfillState.nodesMap.get(backfillState.selectedNodeId)
+              : undefined;
+            if (source) {
+              set({ selectedArcs: gatedArcs(source, backfillState) });
+            }
+          })()
+        : Promise.resolve();
 
-        set({
-          nodesMap,
-          nodesArray,
-          adjacency,
-          reverseAdjacency,
-          loadPhase: 'ready',
-        });
-        _initPromise = null;
-      } catch (error) {
-        console.error('[NetworkStore] Failed to load network data:', error);
-        set({
-          error: error instanceof Error ? error.message : 'Failed to load network data',
-          loadPhase: 'error',
-        });
-        _initPromise = null;
+      const [nodesResult, adjacencyResult] = await Promise.allSettled([nodesTask, adjacencyTask]);
+      _initPromise = null;
+
+      const failure = [nodesResult, adjacencyResult].find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected'
+      );
+      if (failure) {
+        console.error('[NetworkStore] Failed to load network data:', failure.reason);
+        set((state) => ({
+          error: failure.reason instanceof Error ? failure.reason.message : 'Failed to load network data',
+          // Failed adjacency after committed nodes leaves the dots usable
+          loadPhase: nodesResult.status === 'rejected' ? 'error' : state.loadPhase,
+          nodesProgress: null,
+          adjacencyProgress: null,
+        }));
       }
     })();
 
@@ -236,7 +291,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   },
 
   setSelectedNodeId: (id) => {
-    const { nodesMap, adjacency, reverseAdjacency } = get();
+    const { nodesMap } = get();
     if (!id) {
       set({ selectedNodeId: null, selectedNode: null, selectedArcs: [], activeTab: 'all' });
       return;
@@ -244,7 +299,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     const sourceNode = nodesMap.get(id);
     if (!sourceNode) return;
 
-    const arcs = classifyArcs(sourceNode, nodesMap, adjacency, reverseAdjacency);
+    const arcs = gatedArcs(sourceNode, get());
 
     set({
       selectedNodeId: id,
@@ -276,6 +331,14 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
   clearTypeFilter: () => set({ typeFilter: new Set() }),
 
   togglePortalOnly: () => set((s) => ({ portalOnly: !s.portalOnly })),
+
+  toggleInferredConnections: () => {
+    set((s) => ({ inferredConnectionsEnabled: !s.inferredConnectionsEnabled }));
+    const { selectedNode } = get();
+    if (selectedNode) {
+      set({ selectedArcs: gatedArcs(selectedNode, get()) });
+    }
+  },
 
   clearSelection: () => set({ selectedNodeId: null, selectedNode: null, selectedArcs: [], activeTab: 'all' }),
 }));

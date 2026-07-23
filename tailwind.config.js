@@ -28,6 +28,8 @@ export default {
           200: '#e5e7eb',
           100: '#f3f4f6',
         },
+        // Instrument language: the one border treatment for chrome
+        hairline: 'rgba(255,255,255,0.12)',
         accent: {
           DEFAULT: '#0080BC',
           hover: '#0095d9',
@@ -35,7 +37,8 @@ export default {
         },
         route: {
           direct: '#e5a04d',
-          avoid: '#0080BC',
+          // Green: privacy route must not blend into the blue camera dots
+          avoid: '#22c55e',
         },
         danger: '#ef4444',
         success: '#22c55e',
@@ -57,6 +60,8 @@ export default {
         mono: ['JetBrains Mono', 'SF Mono', 'Fira Code', 'monospace'],
       },
       fontSize: {
+        // Uppercase micro-labels ("COUNTY", tab labels)
+        '2xs': ['0.625rem', { lineHeight: '0.875rem', letterSpacing: '0.06em' }],
         'xs': ['0.75rem', { lineHeight: '1.25rem' }],
         'sm': ['0.875rem', { lineHeight: '1.375rem' }],
         'base': ['0.9375rem', { lineHeight: '1.5rem' }],
@@ -72,8 +77,13 @@ export default {
       animation: {
         'fade-in': 'fadeIn 0.2s cubic-bezier(0.25, 1, 0.5, 1)',
         'slide-up': 'slideUp 0.2s cubic-bezier(0.25, 1, 0.5, 1)',
+        'nudge-up': 'nudgeUp 1.8s ease-in-out infinite',
       },
       keyframes: {
+        nudgeUp: {
+          '0%, 100%': { transform: 'translateY(1px)', opacity: '0.5' },
+          '50%': { transform: 'translateY(-2px)', opacity: '1' },
+        },
         fadeIn: {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },

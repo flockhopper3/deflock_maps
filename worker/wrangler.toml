@@ -7,14 +7,25 @@ routes = [
 ]
 
 [triggers]
-crons = ["0 8 * * *"]
+# 09:00 UTC = 01:00 PST (winter) / 02:00 PDT (summer). Cloudflare cron is UTC only.
+crons = ["0 9 * * *"]
 
 [limits]
-cpu_ms = 30000
+# Adaptive tiling parses ~54MB of Overpass JSON across ~70 tiles and stringifies the
+# merged ~107K-feature collection. Give generous CPU headroom (wall-clock waiting on
+# fetch I/O does not count as CPU). Max for paid Workers is 300000.
+cpu_ms = 300000
 
 [[r2_buckets]]
 binding = "DATA_BUCKET"
 bucket_name = "flockhopper-data"
 
+[[send_email]]
+name = "EMAIL"
+destination_address = "flockhopper@proton.me"
+
 [vars]
 ENVIRONMENT = "production"
+# Cross-run delta guard: block the R2 write if the camera count moves more than this
+# fraction (±5%) from the previous run. Override per-run with ?force=true on /trigger.
+MAX_DELTA_PCT = "0.05"

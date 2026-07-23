@@ -277,36 +277,27 @@ input[type="range"]::-moz-range-thumb {
   font-family: 'DM Sans', system-ui, sans-serif;
 }
 
+/* Attribution — plain single-line credit flush in the bottom-left corner,
+   no pill box; readable over both light and dark basemaps via text-shadow. */
 .maplibregl-ctrl-attrib {
-  background: rgba(10, 10, 15, 0.95) !important;
-  color: #9ca3af !important;
-  font-size: 11px !important;
-  padding: 3px 8px !important;
-  border-radius: 6px !important;
+  background: transparent !important;
+  color: rgba(156, 163, 175, 0.85) !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
   max-width: none !important;
-}
-
-/* Ensure attribution stays in bottom-right corner */
-.maplibregl-ctrl-attrib.maplibregl-compact {
-  min-height: auto !important;
-  padding: 2px 24px 2px 6px !important;
-}
-
-/* Mobile attribution - keep compact and in corner */
-@media (max-width: 640px) {
-  .maplibregl-ctrl-attrib {
-    font-size: 9px !important;
-    padding: 2px 6px !important;
-    max-width: 180px !important;
-  }
-
-  .maplibregl-ctrl-attrib.maplibregl-compact {
-    padding: 2px 20px 2px 4px !important;
-  }
+  white-space: nowrap !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
 .maplibregl-ctrl-attrib a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.maplibregl-ctrl-attrib a:hover {
   color: #0080BC !important;
+  text-decoration: underline !important;
 }
 
 .maplibregl-ctrl-group {
@@ -395,9 +386,33 @@ input[type="range"]::-moz-range-thumb {
   right: 16px !important;
 }
 
-/* Map style control — inline above zoom + geolocate controls */
+/* Attribution container — flush bottom-left corner, under the theme control */
+.maplibregl-ctrl-bottom-left {
+  bottom: 6px !important;
+  left: 16px !important;
+}
+
+/* Left column: country button on top, filter button below it, both above
+   the attribution line and beside the legend chip */
+.map-page .map-layers-control {
+  bottom: 120px; /* 72px (country slot) + 40px (country button) + 8px gap */
+  left: 16px;
+}
+
 .map-page .map-style-control {
-  bottom: 208px; /* 24px (zoom offset) + 172px (zoom group + geolocate group + gaps) + 12px gap */
+  bottom: 72px; /* 24px (filter slot) + 40px (filter button) + 8px gap */
+  left: 16px;
+}
+
+.map-page .map-filter-control {
+  bottom: 24px;
+  left: 16px;
+}
+
+/* Theme (light/dark) pill — right column, above geolocate + zoom.
+   24px (ctrl offset) + 76px (zoom group) + 10px margin + 40px (geolocate) + 12px gap */
+.map-page .map-theme-control {
+  bottom: 162px;
   right: 26px; /* 16px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
 }
 
@@ -424,35 +439,66 @@ input[type="range"]::-moz-range-thumb {
 /* Mobile-specific styles for main map page (with bottom sheet) */
 @media (max-width: 1023px) {
   /* Only apply bottom offset on the main map page, not landing page preview */
-  /* Bottom sheet minimized height is 64-80px; sit controls just above */
+  /* Offset tracks --drawer-height (the sheet's resting height), + 12px gap */
   .map-page .maplibregl-ctrl-bottom-right {
-    bottom: 92px !important;
+    bottom: calc(var(--drawer-height, 80px) + 12px) !important;
     right: 12px !important;
   }
 
+  /* Hide zoom +/- on touch layouts — pinch-to-zoom covers it */
+  .map-page .maplibregl-ctrl-group:has(.maplibregl-ctrl-zoom-in) {
+    display: none;
+  }
+
+  /* Left column: layers above country above filter, above the attribution
+     line. Offsets track --drawer-height. */
+  .map-page .map-layers-control {
+    bottom: calc(var(--drawer-height, 80px) + 122px); /* 76px (country slot) + 38px button + 8px gap */
+    left: 12px;
+  }
+
+  .map-page .map-layers-control .layers-trigger {
+    width: 38px;
+    height: 38px;
+  }
+
   .map-page .map-style-control {
-    bottom: 276px; /* 92px (zoom offset) + 172px (zoom + geolocate groups) + 12px gap */
+    bottom: calc(var(--drawer-height, 80px) + 76px); /* 30px (filter slot) + 38px button + 8px gap */
+    left: 12px;
+  }
+
+  .map-page .map-style-control .country-trigger {
+    width: 38px;
+    height: 38px;
+  }
+
+  .map-page .map-filter-control {
+    bottom: calc(var(--drawer-height, 80px) + 30px);
+    left: 12px;
+  }
+
+  .map-page .map-filter-control .filter-trigger {
+    width: 38px;
+    height: 38px;
+  }
+
+  /* Theme pill floats above geolocate with a small gap.
+     Offset tracks --drawer-height: 12px gap + 40px geolocate + 8px gap. */
+  .map-page .map-theme-control {
+    bottom: calc(var(--drawer-height, 80px) + 72px);
     right: 22px; /* 12px (ctrl container offset) + 10px (maplibregl-ctrl margin) */
   }
 
-  /* Ensure map controls don't overlap with bottom sheet */
+  .map-page .map-theme-control .theme-pill {
+    width: 38px;
+  }
+
+  /* Attribution line hugs the corner just above the bottom sheet. */
   .map-page .maplibregl-ctrl-bottom-left {
-    bottom: 92px !important;
+    bottom: calc(var(--drawer-height, 80px) + 8px) !important;
     left: 12px !important;
   }
 
-  /* Timeline bar active — push controls up by 56px to clear the floating pill */
-  .map-page.timeline-active .maplibregl-ctrl-bottom-right {
-    bottom: 148px !important; /* 92px + 56px */
-  }
-
-  .map-page.timeline-active .map-style-control {
-    bottom: 332px; /* 276px + 56px */
-  }
-
-  .map-page.timeline-active .maplibregl-ctrl-bottom-left {
-    bottom: 148px !important; /* 92px + 56px */
-  }
 }
 
 /* Safe area padding for iOS devices */

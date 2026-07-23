@@ -93,6 +93,12 @@ export function BottomSheet({
     return distances.sort((a, b) => a.distance - b.distance)[0].point;
   }, [getSnapPointHeight, activeSnapPoints]);
 
+  // Collapse lands on peek when the mode has a real peek, else minimized —
+  // dismissing content should never strand the user on the bare tab row.
+  const collapseTarget = useCallback((): SnapPoint => (
+    getSnapPointHeight('peek') > getSnapPointHeight('minimized') ? 'peek' : 'minimized'
+  ), [getSnapPointHeight]);
+
   // Get next snap point in a direction
   const getNextSnapPoint = useCallback((current: SnapPoint, direction: 'up' | 'down'): SnapPoint => {
     const order = activeSnapPoints();
@@ -196,11 +202,11 @@ export function BottomSheet({
   // Handle tap on header to toggle between collapsed and full
   const handleHeaderTap = useCallback(() => {
     if (snapPoint === 'full') {
-      onSnapPointChange?.('minimized');
+      onSnapPointChange?.(collapseTarget());
     } else {
       onSnapPointChange?.('full');
     }
-  }, [snapPoint, onSnapPointChange]);
+  }, [snapPoint, onSnapPointChange, collapseTarget]);
 
   return (
     <>
@@ -208,12 +214,12 @@ export function BottomSheet({
       <motion.div
         className="fixed inset-0 bg-black z-[55] lg:hidden"
         style={{ opacity: backdropOpacity, pointerEvents: snapPoint === 'full' ? 'auto' : 'none' }}
-        onClick={() => onSnapPointChange?.('minimized')}
+        onClick={() => onSnapPointChange?.(collapseTarget())}
       />
 
       {/* Bottom Sheet */}
       <motion.div
-        className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden bg-dark-900 rounded-t-xl flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden bg-dark-900 rounded-t-lg border-t border-hairline flex flex-col"
         role="dialog"
         aria-label="Panel"
         style={{
@@ -236,7 +242,7 @@ export function BottomSheet({
         >
           {/* Visual drag indicator */}
           <div className="flex justify-center pt-3 pb-1">
-            <div className="w-8 h-[3px] rounded-full bg-dark-500" />
+            <div className="w-8 h-[3px] rounded-full bg-dark-600" />
           </div>
 
           {/* Header content area - shows preview when collapsed */}

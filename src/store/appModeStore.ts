@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { TIMELINE_START } from '../modes/timeline/timelineUtils';
 
 export type AppMode = 'map' | 'route' | 'explore' | 'density' | 'network';
 export type ExploreFeature = 'heatmap'; // extend: | 'density-3d' | 'timeline' | 'score' | 'demographics'
@@ -20,7 +21,19 @@ export interface DensitySettings {
 
 export type ColorSchemeId = 'neon' | 'thermal' | 'inferno' | 'classic' | 'plasma' | 'viridis';
 export type MapVisualizationType = 'heatmap' | 'dots';
-export type MapTileStyleId = 'dark' | 'dark-nolabels' | 'light' | 'light-nolabels' | 'white' | 'white-nolabels' | 'black' | 'black-nolabels' | 'grayscale' | 'grayscale-nolabels';
+export type MapTileStyleId = 'dark' | 'light';
+
+const THEME_STORAGE_KEY = 'deflock-map-theme';
+
+function loadStoredTheme(): MapTileStyleId {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    // storage unavailable (private mode / denied) — use default
+  }
+  return 'dark';
+}
 
 export interface HeatmapSettings {
   intensity: number;
@@ -31,10 +44,7 @@ export interface HeatmapSettings {
 }
 
 export interface DotDensitySettings {
-  radius: number;          // dot size in px (1-6)
-  opacity: number;         // per-dot opacity (0.05-0.5) — stacks visually in dense areas
-  color: string;           // dot color hex
-  showMarkers: boolean;
+  color: string;           // dot color hex — size and opacity are tuned zoom curves
 }
 
 export interface TimelineSettings {
@@ -61,13 +71,8 @@ const DEFAULT_HEATMAP_SETTINGS: HeatmapSettings = {
 };
 
 const DEFAULT_DOT_DENSITY_SETTINGS: DotDensitySettings = {
-  radius: 2,
-  opacity: 0.25,
   color: '#4DA6FF',
-  showMarkers: false,
 };
-
-const TIMELINE_START = '2024-07-01';
 
 const DEFAULT_TIMELINE_SETTINGS: TimelineSettings = {
   currentDate: TIMELINE_START,
@@ -80,6 +85,9 @@ interface AppModeState {
   exploreFeature: ExploreFeature;
   mapVisualization: MapVisualizationType;
   setAppMode: (mode: AppMode) => void;
+  /** Enter Timeline (explore) at the animation start date. The only
+   *  entry point for explore mode — deep links and tab clicks both. */
+  enterTimeline: (viz?: MapVisualizationType) => void;
   setExploreFeature: (feature: ExploreFeature) => void;
   setMapVisualization: (type: MapVisualizationType) => void;
 
@@ -103,25 +111,17 @@ export const useAppModeStore = create<AppModeState>((set) => ({
   appMode: 'map',
   exploreFeature: 'heatmap',
   mapVisualization: 'heatmap',
-  setAppMode: (mode) => {
-    if (mode === 'explore') {
-      // Default to today so all cameras are visible (no timeline filtering).
-      // The /timeline route explicitly overrides this to '2024-07-01'.
-      set({
-        appMode: mode,
-        timelineSettings: {
-          currentDate: new Date().toISOString().slice(0, 10),
-          isPlaying: false,
-          playSpeed: DEFAULT_TIMELINE_SETTINGS.playSpeed,
-        },
-      });
-    } else {
-      set((state) => ({
-        appMode: mode,
-        timelineSettings: { ...state.timelineSettings, isPlaying: false },
-      }));
-    }
-  },
+  setAppMode: (mode) =>
+    set((state) => ({
+      appMode: mode,
+      timelineSettings: { ...state.timelineSettings, isPlaying: false },
+    })),
+  enterTimeline: (viz = 'dots') =>
+    set({
+      appMode: 'explore',
+      mapVisualization: viz,
+      timelineSettings: { ...DEFAULT_TIMELINE_SETTINGS },
+    }),
   setExploreFeature: (feature) => set({ exploreFeature: feature }),
   setMapVisualization: (type) => set((state) => ({
     mapVisualization: type,
@@ -152,6 +152,13 @@ export const useAppModeStore = create<AppModeState>((set) => ({
       densitySettings: { ...state.densitySettings, ...settings },
     })),
 
-  mapTileStyle: 'light',
-  setMapTileStyle: (style) => set({ mapTileStyle: style }),
+  mapTileStyle: loadStoredTheme(),
+  setMapTileStyle: (style) => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, style);
+    } catch {
+      // storage unavailable — theme applies for this session only
+    }
+    set({ mapTileStyle: style });
+  },
 }));

@@ -4,6 +4,8 @@ import { BottomSheet, type SnapPoint } from '../common/BottomSheet';
 import { DensityControls } from '../../modes/density/DensityControls';
 import { DensityLegend } from '../../modes/density/DensityLegend';
 import { ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
+import { Skeleton } from '../common';
+import { useDelayedFlag } from '../../hooks/useDelayedFlag';
 
 export function DensityPanel() {
   const [isMobile, setIsMobile] = useState(false);
@@ -31,13 +33,20 @@ export function DensityPanel() {
   }, [loadAllLevels]);
 
   const isLoading = loadPhase === 'fetching';
+  const showSkeleton = useDelayedFlag(isLoading);
 
   const panelContent = (
     <>
-      {isLoading && (
-        <div className="flex items-center gap-3 py-4">
-          <div className="w-5 h-5 border-2 border-dark-600 border-t-accent rounded-full animate-spin" />
-          <span className="text-sm text-dark-300">Loading density data...</span>
+      {isLoading && showSkeleton && (
+        <div className="space-y-3 py-2" aria-busy="true">
+          <Skeleton className="h-4 w-2/5" />
+          {[0, 1, 2, 3, 4].map(i => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="w-4 h-4" />
+              <Skeleton className="h-3 flex-1" />
+              <Skeleton className="h-3 w-8" />
+            </div>
+          ))}
         </div>
       )}
 

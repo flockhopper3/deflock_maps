@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MapState, MapBounds } from '../types';
+import type { TileViewBrandStats } from '../services/cameraIndexService';
 
 interface FlyToCommand {
   center: [number, number];
@@ -20,6 +21,17 @@ interface MapStoreState extends MapState {
   // Timeline tick callback - MapLibreContainer registers its filter handler here
   _timelineTickCallback: ((dateStr: string) => void) | null;
 
+  /** Approximate camera count in view when rendering from tiles (null = geojson mode). */
+  tileViewCameraCount: number | null;
+
+  /** Top-4 brand mix in view. Non-null only when rendering unfiltered tiles
+   *  with the positions index loaded; null hides the breakdown UI. */
+  tileViewBrandStats: TileViewBrandStats | null;
+
+  /** True when the boot URL pinned an explicit viewport (share link).
+   *  Set once by useUrlSync's seeding; never changes afterwards. */
+  urlHadViewport: boolean;
+
   // Actions
   setCenter: (center: [number, number]) => void;
   setZoom: (zoom: number) => void;
@@ -34,6 +46,14 @@ interface MapStoreState extends MapState {
   clearFlyToCommand: () => void;
   fitBounds: (bounds: MapBounds) => void;
   setTimelineTickCallback: (cb: ((dateStr: string) => void) | null) => void;
+  setTileViewCameraCount: (count: number | null) => void;
+  setTileViewBrandStats: (stats: TileViewBrandStats | null) => void;
+
+  /** One-shot command consumed by MapLibreContainer — frames the given
+   *  bounds with the map's real projection/aspect (unlike flyTo's guess). */
+  fitBoundsCommand: MapBounds | null;
+  requestFitBounds: (bounds: MapBounds) => void;
+  clearFitBoundsCommand: () => void;
 }
 
 // Default center: Geographic center of the contiguous US
@@ -51,6 +71,10 @@ export const useMapStore = create<MapStoreState>((set) => ({
   showRouteLayer: true,
   flyToCommand: null,
   _timelineTickCallback: null,
+  tileViewCameraCount: null,
+  tileViewBrandStats: null,
+  urlHadViewport: false,
+  fitBoundsCommand: null,
 
   setCenter: (center: [number, number]) => {
     set({ center });
@@ -100,6 +124,12 @@ export const useMapStore = create<MapStoreState>((set) => ({
     set({ bounds });
   },
 
+  requestFitBounds: (bounds) => set({ fitBoundsCommand: bounds }),
+  clearFitBoundsCommand: () => set({ fitBoundsCommand: null }),
+
   setTimelineTickCallback: (cb) => set({ _timelineTickCallback: cb }),
+
+  setTileViewCameraCount: (count) => set({ tileViewCameraCount: count }),
+  setTileViewBrandStats: (stats) => set({ tileViewBrandStats: stats }),
 }));
 

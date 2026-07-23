@@ -1,6 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { transformOverpassToGeoJSON, parseDirection, parseDirections, CAMERAS_OVERPASS_QUERY } from '../../src/fetchers/cameras';
-import type { OverpassResponse } from '../../src/types';
+import { transformOverpassToGeoJSON, addElementsToFeatures, parseDirection, parseDirections, CAMERAS_OVERPASS_QUERY, subtractForeign, buildDataset } from '../../src/fetchers/cameras';
+import type { OverpassResponse, OverpassElement, GeoJSON } from '../../src/types';
+
+describe('addElementsToFeatures (tile merge/dedupe)', () => {
+  const alprNode = (id: number, lat: number, lon: number): OverpassElement => ({
+    type: 'node', id, lat, lon,
+    tags: { 'man_made': 'surveillance', 'surveillance:type': 'ALPR' },
+  });
+
+  it('dedupes a camera that appears in two overlapping tiles', () => {
+    const map = new Map<string, GeoJSON.Feature>();
+    // Same node id 42 returned by two adjacent tiles (shared bbox edge).
+    addElementsToFeatures([alprNode(42, 38.0, -77.0)], map);
+    addElementsToFeatures([alprNode(42, 38.0, -77.0), alprNode(43, 39.0, -76.0)], map);
+    expect(map.size).toBe(2);
+    expect(map.has('node/42')).toBe(true);
+    expect(map.has('node/43')).toBe(true);
+  });
+
+  it('accumulates features across many tile batches', () => {
+    const map = new Map<string, GeoJSON.Feature>();
+    addElementsToFeatures([alprNode(1, 38, -77), alprNode(2, 38, -76)], map);
+    addElementsToFeatures([alprNode(3, 39, -75)], map);
+    expect(map.size).toBe(3);
+  });
+});
 
 describe('parseDirection', () => {
   it('parses numeric direction', () => {
@@ -325,5 +349,45 @@ describe('transformOverpassToGeoJSON', () => {
     expect(fc.features[0].properties.directionCardinal).toBe('N');
     // "NB" is a bound direction, not a cardinal → no directionCardinal
     expect(fc.features[1].properties.directionCardinal).toBeUndefined();
+  });
+});
+
+describe('subtractForeign', () => {
+  const feat = (osmId: number): GeoJSON.Feature => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [0, 0] },
+    properties: { osmId },
+  });
+
+  it('drops merged features whose key is in foreignKeys', () => {
+    const merged = new Map<string, GeoJSON.Feature>([
+      ['node/10', feat(10)], // US
+      ['node/20', feat(20)], // foreign (e.g. Toronto)
+    ]);
+    const us = subtractForeign(merged, new Set(['node/20']));
+    expect(us.map((f) => f.properties.osmId)).toEqual([10]);
+  });
+
+  it('ignores foreign keys absent from merged (no-op)', () => {
+    const merged = new Map<string, GeoJSON.Feature>([['node/10', feat(10)]]);
+    const us = subtractForeign(merged, new Set(['node/999']));
+    expect(us.map((f) => f.properties.osmId)).toEqual([10]);
+  });
+});
+
+describe('buildDataset', () => {
+  const feat = (osmId: number): GeoJSON.Feature => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [0, 0] },
+    properties: { osmId },
+  });
+
+  it('builds a keyed, sorted, counted dataset', () => {
+    const ds = buildDataset('US', 'cameras.geojson.gz', [feat(30), feat(10), feat(20)], 50000, 'ep');
+    expect(ds.country).toBe('US');
+    expect(ds.r2Key).toBe('cameras.geojson.gz');
+    expect(ds.minCount).toBe(50000);
+    expect(ds.featureCount).toBe(3);
+    expect(ds.featureCollection.features.map((f) => f.properties.osmId)).toEqual([10, 20, 30]);
   });
 });

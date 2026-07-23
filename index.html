@@ -6,11 +6,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0f" />
 
+    <!-- Critical inline style: paint the app's dark ground before any external
+         CSS/JS arrives, so slow connections never see a white screen. The
+         built stylesheet loads later and overrides as normal. -->
+    <style>
+      html { background-color: #0a0a0f; color-scheme: dark; }
+      /* Boot splash: hidden for the first 600ms, so fast connections never
+         see it (app mounts in ~100-500ms). On slow connections the logo
+         fades in over the dark ground instead of leaving a blank screen.
+         Removed by removeBootSplash() once the app (or an error UI) mounts. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        opacity: 1;
+        animation: boot-splash-in 500ms ease-out 600ms backwards;
+      }
+      #boot-splash img {
+        width: min(220px, 56vw);
+        height: auto;
+      }
+      @keyframes boot-splash-in {
+        from { opacity: 0; }
+      }
+    </style>
+
     <!-- DNS Prefetch for external resources -->
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org">
-
-    <!-- Prefetch camera data for instant map loading -->
-    <link rel="prefetch" href="/cameras-us.json" as="fetch" crossorigin="anonymous">
 
     <!-- Self-hosted fonts (no third-party requests) -->
     <link rel="preload" href="/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -90,6 +116,9 @@
       h1 { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
     </style>
     <div id="root"></div>
+    <div id="boot-splash" aria-hidden="true">
+      <img src="/deflock-logo.svg" alt="" />
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

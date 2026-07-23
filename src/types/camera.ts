@@ -30,6 +30,8 @@ export interface CameraFilters {
   brands: string[];
   surveillanceZones: string[];
   mountTypes: string[];
+  /** Two-letter US state postal code (URL-linkable via ?state=XX). */
+  state?: string;
   showAll: boolean;
   timelineDate?: string;  // YYYY-MM format, filters cameras by osmTimestamp
 }
@@ -61,5 +63,25 @@ export interface OverpassElement {
     'start_date'?: string;
     [key: string]: string | undefined;
   };
+}
+
+/** One selectable value in the filter manifest. Ids are build-scoped —
+ *  they match the codes baked into cameras-filter.pmtiles from the same
+ *  pipeline run and may change between builds. Never persist ids. */
+export interface ManifestFacetEntry {
+  id: number;
+  label: string;
+  count: number;
+}
+
+/** Filter dictionary generated alongside cameras-filter.pmtiles. */
+export interface CameraManifest {
+  version: string;
+  generatedAt: string;
+  total: number;
+  brands: ManifestFacetEntry[];
+  operators: ManifestFacetEntry[];
+  zones: ManifestFacetEntry[];
+  mounts: ManifestFacetEntry[];
 }
 
